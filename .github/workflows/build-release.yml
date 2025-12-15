@@ -1,0 +1,193 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Update package.json version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Update version in package.json
+          cat package.json | jq --arg ver "$VERSION" '.version = $ver' > package.json.tmp
+          mv package.json.tmp package.json
+          echo "Updated package.json to version $VERSION"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Create version.json
+        run: |
+          cat > dist/version.json << EOF
+          {
+            "version": "${{ steps.version.outputs.version }}",
+            "buildDate": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+          cat dist/version.json
+
+      - name: Create distribution archive
+        run: |
+          tar -czf dist.tar.gz -C dist .
+          ls -lh dist.tar.gz
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rx-viewer-${{ steps.version.outputs.version }}
+          path: dist.tar.gz
+          retention-days: 90
+
+      - name: Create Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## RX Viewer v${{ steps.version.outputs.version }}
+
+            Web-based frontend for RX (Regex Tracer).
+
+            ### Installation
+
+            This release is automatically downloaded by RX backends on first run.
+
+            Manual installation:
+            ```bash
+            # Download and extract
+            mkdir -p ~/.cache/rx/frontend
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/dist.tar.gz | tar -xz -C ~/.cache/rx/frontend
+            ```
+
+            ### What's Included
+
+            - Built frontend (HTML, JS, CSS)
+            - Version metadata
+            - Source maps for debugging
+
+            ### Backends Compatible With This Version
+
+            - rx-tool (Python) >= 1.4.0
+            - rx-tool-go >= 1.0.0
+
+            ### Files
+
+            - `dist.tar.gz` - Frontend distribution (compressed)
+
+      - name: Create Release (Manual)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: dist.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## RX Viewer v${{ steps.version.outputs.version }}
+
+            Web-based frontend for RX (Regex Tracer).
+
+            **Note**: This is a manually triggered release.
+
+            ### Installation
+
+            This release is automatically downloaded by RX backends on first run.
+
+            Manual installation:
+            ```bash
+            # Download and extract
+            mkdir -p ~/.cache/rx/frontend
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/dist.tar.gz | tar -xz -C ~/.cache/rx/frontend
+            ```
+
+  verify:
+    name: Verify Build
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rx-viewer-${{ needs.build.outputs.version || github.ref_name }}
+
+      - name: Extract and verify
+        run: |
+          mkdir -p extracted
+          tar -xzf dist.tar.gz -C extracted
+
+          echo "Verifying build contents..."
+
+          # Check required files
+          if [ ! -f extracted/index.html ]; then
+            echo "ERROR: index.html not found"
+            exit 1
+          fi
+
+          if [ ! -f extracted/version.json ]; then
+            echo "ERROR: version.json not found"
+            exit 1
+          fi
+
+          if [ ! -d extracted/assets ]; then
+            echo "ERROR: assets directory not found"
+            exit 1
+          fi
+
+          echo "✓ All required files present"
+
+          # Display version info
+          echo ""
+          echo "Version info:"
+          cat extracted/version.json | jq .
+
+          # Count files
+          FILE_COUNT=$(find extracted -type f | wc -l)
+          echo ""
+          echo "Total files: $FILE_COUNT"
+
+          # Check size
+          TOTAL_SIZE=$(du -sh extracted | cut -f1)
+          echo "Total size: $TOTAL_SIZE"

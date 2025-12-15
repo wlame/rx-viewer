@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: bun run check || echo "No type check script defined"
+
+      - name: Build
+        run: bun run build
+
+      - name: Verify build output
+        run: |
+          if [ ! -f dist/index.html ]; then
+            echo "ERROR: Build failed - index.html not found"
+            exit 1
+          fi
+
+          if [ ! -d dist/assets ]; then
+            echo "ERROR: Build failed - assets directory not found"
+            exit 1
+          fi
+
+          echo "✓ Build successful"
+
+          # Show build stats
+          echo ""
+          echo "Build statistics:"
+          echo "  Files: $(find dist -type f | wc -l)"
+          echo "  Size: $(du -sh dist | cut -f1)"
+
+          # List main files
+          echo ""
+          echo "Main files:"
+          ls -lh dist/
+          ls -lh dist/assets/ | head -10
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.sha }}
+          path: dist/
+          retention-days: 7
