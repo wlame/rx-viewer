@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { health, settings, resolvedTheme } from '$lib/stores';
+  import { health, settings, resolvedTheme, version } from '$lib/stores';
+
+  const GITHUB_REPO = 'https://github.com/wlame/rx-viewer';
 
   function toggleTheme() {
     settings.update((s) => ({
@@ -16,8 +18,21 @@
 >
   <div class="flex items-center gap-3">
     <h1 class="text-lg font-semibold">rx-trace</h1>
+    {#if $version.data}
+      <a
+        href="{GITHUB_REPO}/releases/tag/v{$version.data.version}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="badge badge-info hover:opacity-80 transition-opacity"
+        title="View release on GitHub"
+      >
+        v{$version.data.version}
+      </a>
+    {/if}
     {#if $health.data}
-      <span class="badge badge-info">v{$health.data.app_version}</span>
+      <span class="badge bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted">
+        backend v{$health.data.app_version}
+      </span>
       {#if !$health.data.ripgrep_available}
         <span class="badge bg-gh-danger-emphasis/10 text-gh-danger-fg dark:text-gh-danger-dark-fg">
           ripgrep missing
