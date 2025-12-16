@@ -18,6 +18,8 @@ jobs:
   build:
     name: Build Frontend
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -64,10 +66,50 @@ jobs:
           EOF
           cat dist/version.json
 
+      - name: Create files manifest
+        run: |
+          cd dist
+          # Create a list of all files for autodiscovery
+          find . -type f | sed 's|^\./||' | sort > files
+          echo "Created files manifest:"
+          cat files
+
       - name: Create distribution archive
         run: |
           tar -czf dist.tar.gz -C dist .
           ls -lh dist.tar.gz
+
+      - name: Create and push version branch
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH_NAME="v${VERSION}"
+
+          echo "Creating branch: $BRANCH_NAME"
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create orphan branch (no history, clean slate)
+          git checkout --orphan "$BRANCH_NAME"
+
+          # Remove all files from git index
+          git rm -rf .
+
+          # Copy dist contents to root
+          cp -r dist/* .
+
+          # Add only the dist files
+          git add .
+
+          # Commit
+          git commit -m "Release v${VERSION} - Built frontend distribution"
+
+          # Force push (overwrites if branch exists)
+          git push origin "$BRANCH_NAME" --force
+
+          echo "Branch $BRANCH_NAME created and pushed successfully"
+          echo "Files available at: https://raw.githubusercontent.com/${{ github.repository }}/$BRANCH_NAME/files"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -89,21 +131,39 @@ jobs:
 
             Web-based frontend for RX (Regex Tracer).
 
-            ### Installation
+            ### Installation Methods
 
-            This release is automatically downloaded by RX backends on first run.
-
-            Manual installation:
+            #### Method 1: GitHub Release (Recommended)
             ```bash
-            # Download and extract
+            # Download and extract from release assets
             mkdir -p ~/.cache/rx/frontend
             curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/dist.tar.gz | tar -xz -C ~/.cache/rx/frontend
+            ```
+
+            #### Method 2: Raw GitHub Content (No API rate limits)
+            ```bash
+            # Download individual files from version branch
+            VERSION="${{ steps.version.outputs.version }}"
+            BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/v${VERSION}"
+
+            mkdir -p ~/.cache/rx/frontend
+            cd ~/.cache/rx/frontend
+
+            # Get file list
+            curl -sL "$BASE_URL/files" -o files
+
+            # Download all files
+            while IFS= read -r file; do
+              mkdir -p "$(dirname "$file")"
+              curl -sL "$BASE_URL/$file" -o "$file"
+            done < files
             ```
 
             ### What's Included
 
             - Built frontend (HTML, JS, CSS)
-            - Version metadata
+            - Version metadata (`version.json`)
+            - File manifest (`files`) for autodiscovery
             - Source maps for debugging
 
             ### Backends Compatible With This Version
@@ -111,9 +171,10 @@ jobs:
             - rx-tool (Python) >= 1.4.0
             - rx-tool-go >= 1.0.0
 
-            ### Files
+            ### Distribution Files
 
-            - `dist.tar.gz` - Frontend distribution (compressed)
+            - `dist.tar.gz` - Complete frontend distribution (release asset)
+            - Branch `v${{ steps.version.outputs.version }}` - Individual files accessible via raw.githubusercontent.com
 
       - name: Create Release (Manual)
         if: github.event_name == 'workflow_dispatch'
@@ -131,15 +192,32 @@ jobs:
 
             **Note**: This is a manually triggered release.
 
-            ### Installation
+            ### Installation Methods
 
-            This release is automatically downloaded by RX backends on first run.
-
-            Manual installation:
+            #### Method 1: GitHub Release (Recommended)
             ```bash
-            # Download and extract
+            # Download and extract from release assets
             mkdir -p ~/.cache/rx/frontend
             curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/dist.tar.gz | tar -xz -C ~/.cache/rx/frontend
+            ```
+
+            #### Method 2: Raw GitHub Content (No API rate limits)
+            ```bash
+            # Download individual files from version branch
+            VERSION="${{ steps.version.outputs.version }}"
+            BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/v${VERSION}"
+
+            mkdir -p ~/.cache/rx/frontend
+            cd ~/.cache/rx/frontend
+
+            # Get file list
+            curl -sL "$BASE_URL/files" -o files
+
+            # Download all files
+            while IFS= read -r file; do
+              mkdir -p "$(dirname "$file")"
+              curl -sL "$BASE_URL/$file" -o "$file"
+            done < files
             ```
 
   verify:
@@ -151,7 +229,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: rx-viewer-${{ needs.build.outputs.version || github.ref_name }}
+          name: rx-viewer-${{ needs.build.outputs.version }}
 
       - name: Extract and verify
         run: |
