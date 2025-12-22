@@ -95,7 +95,7 @@ function createFilesStore() {
 
   /**
    * Load lines from the start of the file
-   * This loads line 1 with specified context after it
+   * This loads lines 1 to totalLines
    */
   async function loadLinesFromStart(path: string, totalLines: number) {
     update((s) => ({
@@ -106,28 +106,18 @@ function createFilesStore() {
     }));
 
     try {
-      const context = totalLines - 1; // Request line 1 with context to get totalLines total
+      // Request lines 1 to totalLines as a range
+      const range = `1-${totalLines}`;
+      const response = await api.getSamples(path, [range]);
 
-      // Request line 1 with large after context
-      const response = await api.getSamples(path, [1], context);
-
-      // Parse response - samples key is the line number as string
+      // Parse response - samples key is the range string (e.g., "1-100")
       const lines: FileLine[] = [];
 
-      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
-        const lineNum = parseInt(lineNumStr, 10);
-
-        // The API returns context around the requested line.
-        // The requested line appears at position min(lineNum - 1, response.before_context) in the array.
-        // For example: requesting line 1 with before=500, after=500
-        //   - The array starts at line max(1, 1-500) = 1
-        //   - Line 1 is at index 0 (since there are no lines before it)
-        // Another example: requesting line 100 with before=50, after=50
-        //   - The array starts at line max(1, 100-50) = 50
-        //   - Line 100 is at index 50 (100 - 50 = 50)
-
-        const actualBeforeContext = Math.min(lineNum - 1, response.before_context);
-        const startLineNum = lineNum - actualBeforeContext;
+      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
+        // Parse the range key to get the start line
+        // Range format: "start-end" (e.g., "1-100")
+        const dashIndex = rangeKey.indexOf('-');
+        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
 
         for (let i = 0; i < contentArr.length; i++) {
           const actualLineNum = startLineNum + i;
@@ -210,8 +200,8 @@ function createFilesStore() {
   }
 
   /**
-   * Load lines around a center line using context
-   * This uses the backend's context feature efficiently
+   * Load lines around a center line using a range
+   * This uses the backend's line range feature efficiently
    */
   async function loadLinesAroundCenter(path: string, centerLine: number, totalLines: number) {
     update((s) => ({
@@ -222,32 +212,31 @@ function createFilesStore() {
     }));
 
     try {
-      // Calculate context needed
+      // Calculate range around centerLine
       // We want totalLines around centerLine
-      const context = Math.floor(totalLines / 2);
+      const halfRange = Math.floor(totalLines / 2);
+      const startLine = Math.max(1, centerLine - halfRange);
+      const endLine = centerLine + halfRange;
 
-      // For lines near the start, request a line further down to get more content
-      const requestLine = centerLine < context ? context : centerLine;
+      // Request the range
+      const range = `${startLine}-${endLine}`;
+      const response = await api.getSamples(path, [range]);
 
-      // Request single line with large context
-      const response = await api.getSamples(path, [requestLine], context);
-
-      // Parse response - samples key is the line number as string
+      // Parse response - samples key is the range string (e.g., "100-200")
       const lines: FileLine[] = [];
 
-      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
-        const lineNum = parseInt(lineNumStr, 10);
+      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
+        // Parse the range key to get the start line
+        // Range format: "start-end" (e.g., "100-200")
+        const dashIndex = rangeKey.indexOf('-');
+        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
 
-        // The response includes context_before + the line + context_after
-        // Each entry in contentArr is a line
         for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = lineNum - response.before_context + i;
-          if (actualLineNum > 0) { // Skip negative line numbers
-            lines.push({
-              lineNumber: actualLineNum,
-              content: contentArr[i],
-            });
-          }
+          const actualLineNum = startLineNum + i;
+          lines.push({
+            lineNumber: actualLineNum,
+            content: contentArr[i],
+          });
         }
       }
 
@@ -325,9 +314,20 @@ function createFilesStore() {
     if (direction === 'after' && file.reachedEnd) return;
 
     const linesPerPage = get(settings).linesPerPage;
-    const centerLine = direction === 'before'
-      ? Math.max(1, file.startLine - linesPerPage / 2)
-      : file.endLine + linesPerPage / 2;
+
+    // Calculate the range to load based on direction
+    let startLine: number;
+    let endLine: number;
+
+    if (direction === 'before') {
+      // Load lines before the current start
+      endLine = file.startLine - 1;
+      startLine = Math.max(1, endLine - linesPerPage + 1);
+    } else {
+      // Load lines after the current end
+      startLine = file.endLine + 1;
+      endLine = startLine + linesPerPage - 1;
+    }
 
     update((s) => ({
       ...s,
@@ -337,23 +337,23 @@ function createFilesStore() {
     }));
 
     try {
-      const context = Math.floor(linesPerPage / 2);
-      const response = await api.getSamples(path, [Math.floor(centerLine)], context);
+      const range = `${startLine}-${endLine}`;
+      const response = await api.getSamples(path, [range]);
 
       // Parse response
       const newLines: FileLine[] = [];
 
-      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
-        const lineNum = parseInt(lineNumStr, 10);
+      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
+        // Parse the range key to get the start line
+        const dashIndex = rangeKey.indexOf('-');
+        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
 
         for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = lineNum - response.before_context + i;
-          if (actualLineNum > 0) {
-            newLines.push({
-              lineNumber: actualLineNum,
-              content: contentArr[i],
-            });
-          }
+          const actualLineNum = startLineNum + i;
+          newLines.push({
+            lineNumber: actualLineNum,
+            content: contentArr[i],
+          });
         }
       }
 

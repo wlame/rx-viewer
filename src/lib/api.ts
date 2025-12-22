@@ -56,20 +56,17 @@ export const api = {
   },
 
   /**
-   * Get file content samples around specific line numbers
+   * Get file content samples for specific line ranges
    * @param path - File path
-   * @param lines - Array of line numbers to fetch
-   * @param context - Number of context lines before and after (default 50)
+   * @param ranges - Array of line ranges in format "start-end" (e.g., ["1-100", "200-300"])
    */
   async getSamples(
     path: string,
-    lines: number[],
-    context: number = 50
+    ranges: string[]
   ): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
-      lines: lines.join(','),
-      context: context.toString(),
+      lines: ranges.join(','),
     });
     return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`);
   },
