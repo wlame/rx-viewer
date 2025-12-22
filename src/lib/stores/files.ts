@@ -18,6 +18,35 @@ function createFilesStore() {
   });
 
   /**
+   * Fetch file analysis in the background and update totalLines when available
+   */
+  function fetchFileAnalysis(path: string) {
+    api.analyse(path)
+      .then((result) => {
+        // Extract line_count from analysis result
+        // The response structure is: { results: [{ file: "f1", line_count: N, ... }], ... }
+        const results = result.results as Array<Record<string, unknown>> | undefined;
+        const fileResult = results?.[0];
+        const lineCount = fileResult?.line_count as number | null | undefined;
+
+        if (typeof lineCount === 'number' && lineCount > 0) {
+          update((s) => ({
+            ...s,
+            openFiles: s.openFiles.map((f) =>
+              f.path === path && f.totalLines === null
+                ? { ...f, totalLines: lineCount }
+                : f
+            ),
+          }));
+        }
+      })
+      .catch((e) => {
+        // Silently ignore analysis errors - it's just for enhancement
+        console.debug('File analysis failed (non-critical):', path, e);
+      });
+  }
+
+  /**
    * Open a file and load initial content
    */
   async function openFile(
@@ -81,6 +110,9 @@ function createFilesStore() {
       openFiles: [...s.openFiles, newFile],
       activeFilePath: path,
     }));
+
+    // Fetch file analysis in background to get total line count
+    fetchFileAnalysis(path);
 
     // Load initial content
     const linesPerPage = get(settings).linesPerPage;
