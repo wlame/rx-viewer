@@ -455,6 +455,112 @@ function createFilesStore() {
   }
 
   /**
+   * Jump to the end of a file using -1 line number
+   * This fetches the last N lines and discovers the total line count
+   */
+  async function jumpToEnd(path: string) {
+    const state = get({ subscribe });
+    const file = state.openFiles.find((f) => f.path === path);
+
+    if (!file) {
+      // Open file first, then jump to end
+      await openFile(path);
+      // After opening, call jumpToEnd again
+      await jumpToEnd(path);
+      return;
+    }
+
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path ? { ...f, loading: true, error: null } : f
+      ),
+    }));
+
+    try {
+      const linesPerPage = get(settings).linesPerPage;
+      const context = Math.floor(linesPerPage / 2);
+
+      // Request line -1 with context to get the last lines
+      const response = await api.getSamples(path, ['-1'], context);
+
+      // Parse response - the key will be the actual last line number
+      const lines: FileLine[] = [];
+      let discoveredTotalLines: number | null = null;
+
+      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
+        const lineNum = parseInt(lineNumStr, 10);
+
+        // The line number in response is the actual last line number
+        // This tells us the total line count
+        if (discoveredTotalLines === null || lineNum > discoveredTotalLines) {
+          discoveredTotalLines = lineNum;
+        }
+
+        // Calculate start line based on context
+        const startLineNum = lineNum - response.before_context;
+
+        for (let i = 0; i < contentArr.length; i++) {
+          const actualLineNum = startLineNum + i;
+          if (actualLineNum > 0) {
+            lines.push({
+              lineNumber: actualLineNum,
+              content: contentArr[i],
+            });
+          }
+        }
+      }
+
+      // Sort by line number and dedupe
+      const lineMap = new Map<number, FileLine>();
+      for (const line of lines) {
+        lineMap.set(line.lineNumber, line);
+      }
+      const sortedLines = Array.from(lineMap.values()).sort(
+        (a, b) => a.lineNumber - b.lineNumber
+      );
+
+      const newEndLine = sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0;
+
+      update((s) => ({
+        ...s,
+        openFiles: s.openFiles.map((f) =>
+          f.path === path
+            ? {
+                ...f,
+                lines: sortedLines,
+                startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
+                endLine: newEndLine,
+                loading: false,
+                isCompressed: response.is_compressed,
+                compressionFormat: response.compression_format,
+                scrollToLine: newEndLine, // Scroll to the last line
+                totalLines: discoveredTotalLines, // Update total lines
+                reachedEnd: true, // We're at the end
+              }
+            : f
+        ),
+      }));
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
+
+      update((s) => ({
+        ...s,
+        openFiles: s.openFiles.map((f) =>
+          f.path === path
+            ? {
+                ...f,
+                loading: false,
+                error: errorMessage,
+              }
+            : f
+        ),
+      }));
+      console.error('Failed to jump to end:', e);
+    }
+  }
+
+  /**
    * Close a file
    */
   function closeFile(path: string) {
@@ -622,6 +728,7 @@ function createFilesStore() {
     closeFile,
     loadMore,
     jumpToLine,
+    jumpToEnd,
     setMatches,
     clearScrollPosition,
     reorderFiles,

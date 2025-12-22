@@ -59,15 +59,21 @@ export const api = {
    * Get file content samples for specific line ranges
    * @param path - File path
    * @param ranges - Array of line ranges in format "start-end" (e.g., ["1-100", "200-300"])
+   *                 Can also include negative numbers like "-1" for end of file
+   * @param context - Optional context lines (used with single line numbers like "-1")
    */
   async getSamples(
     path: string,
-    ranges: string[]
+    ranges: string[],
+    context?: number
   ): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
       lines: ranges.join(','),
     });
+    if (context !== undefined) {
+      params.set('context', context.toString());
+    }
     return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`);
   },
 

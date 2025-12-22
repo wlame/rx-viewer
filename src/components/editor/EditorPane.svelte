@@ -758,11 +758,7 @@
         compressionFormat={file.compressionFormat}
         isIndexed={null}
       />
-      {#if file.totalLines !== null}
-        <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-          {file.totalLines.toLocaleString()} lines
-        </span>
-      {:else if file.lines.length > 0}
+      {#if file.lines.length > 0}
         <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1">
           <span>lines</span>
           <button
@@ -797,6 +793,24 @@
           >
             {file.endLine.toLocaleString()}
           </button>
+          <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">/</span>
+          {#if file.totalLines !== null}
+            <button
+              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+              on:click={() => jumpToLineNumber(file.totalLines)}
+              title="Jump to last line ({file.totalLines.toLocaleString()})"
+            >
+              {file.totalLines.toLocaleString()}
+            </button>
+          {:else}
+            <button
+              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+              on:click={() => files.jumpToEnd(file.path)}
+              title="Jump to end of file"
+            >
+              ⋯
+            </button>
+          {/if}
         </span>
       {/if}
     </div>
