@@ -5,11 +5,14 @@ FROM oven/bun:1
 
 WORKDIR /app
 
+# Increase memory limit for large builds (Monaco Editor is big)
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+
 # Copy package files first for better caching
 COPY package.json bun.lock* ./
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# Install dependencies (allow lockfile updates for new packages)
+RUN bun install
 
 # Copy source files
 COPY . .

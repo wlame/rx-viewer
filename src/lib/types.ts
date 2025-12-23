@@ -138,6 +138,20 @@ export interface AppSettings {
   showLineNumbers: boolean;
   wrapLines: boolean;
   linesPerPage: number;
+  showMinimap: boolean;
+  monacoTheme: MonacoTheme;
 }
 
 export type Theme = 'light' | 'dark';
+
+export type MonacoTheme = 'vs' | 'vs-dark' | 'github-light' | 'github-dark' | 'monokai' | 'solarized-light' | 'solarized-dark';
+
+export const MONACO_THEMES: { id: MonacoTheme; name: string; base: 'vs' | 'vs-dark' }[] = [
+  { id: 'vs', name: 'Light (VS)', base: 'vs' },
+  { id: 'vs-dark', name: 'Dark (VS)', base: 'vs-dark' },
+  { id: 'github-light', name: 'GitHub Light', base: 'vs' },
+  { id: 'github-dark', name: 'GitHub Dark', base: 'vs-dark' },
+  { id: 'monokai', name: 'Monokai', base: 'vs-dark' },
+  { id: 'solarized-light', name: 'Solarized Light', base: 'vs' },
+  { id: 'solarized-dark', name: 'Solarized Dark', base: 'vs-dark' },
+];

@@ -10,6 +10,8 @@ const defaultSettings: AppSettings = {
   showLineNumbers: true,
   wrapLines: false,
   linesPerPage: 1000,
+  showMinimap: true,
+  monacoTheme: 'vs',
 };
 
 function loadSettings(): AppSettings {

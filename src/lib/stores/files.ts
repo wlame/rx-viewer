@@ -117,8 +117,8 @@ function createFilesStore() {
     // Load initial content
     const linesPerPage = get(settings).linesPerPage;
     if (scrollToLine) {
-      // If scrolling to a specific line, load around that line
-      await loadLinesAroundCenter(path, scrollToLine, linesPerPage);
+      // If scrolling to a specific line, load around that line with context of 500
+      await loadLinesAroundCenter(path, scrollToLine, 500);
     } else {
       // When opening a file, always start from line 1
       await loadLinesFromStart(path, linesPerPage);
@@ -232,10 +232,11 @@ function createFilesStore() {
   }
 
   /**
-   * Load lines around a center line using a range
-   * This uses the backend's line range feature efficiently
+   * Load lines around a center line using context parameter
+   * Uses /v1/samples?path=...&lines=<centerLine>&context=<contextLines>
+   * This returns lines from (centerLine - context) to (centerLine + context)
    */
-  async function loadLinesAroundCenter(path: string, centerLine: number, totalLines: number) {
+  async function loadLinesAroundCenter(path: string, centerLine: number, contextLines: number = 500) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
@@ -244,31 +245,27 @@ function createFilesStore() {
     }));
 
     try {
-      // Calculate range around centerLine
-      // We want totalLines around centerLine
-      const halfRange = Math.floor(totalLines / 2);
-      const startLine = Math.max(1, centerLine - halfRange);
-      const endLine = centerLine + halfRange;
+      // Request the center line with context
+      // Backend returns lines from (centerLine - context) to (centerLine + context)
+      const response = await api.getSamples(path, [centerLine.toString()], contextLines);
 
-      // Request the range
-      const range = `${startLine}-${endLine}`;
-      const response = await api.getSamples(path, [range]);
-
-      // Parse response - samples key is the range string (e.g., "100-200")
+      // Parse response - the key is the requested line number
       const lines: FileLine[] = [];
 
-      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
-        // Parse the range key to get the start line
-        // Range format: "start-end" (e.g., "100-200")
-        const dashIndex = rangeKey.indexOf('-');
-        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
+      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
+        const requestedLine = parseInt(lineNumStr, 10);
+
+        // Calculate start line based on before_context from response
+        const startLineNum = requestedLine - response.before_context;
 
         for (let i = 0; i < contentArr.length; i++) {
           const actualLineNum = startLineNum + i;
-          lines.push({
-            lineNumber: actualLineNum,
-            content: contentArr[i],
-          });
+          if (actualLineNum > 0) {
+            lines.push({
+              lineNumber: actualLineNum,
+              content: contentArr[i],
+            });
+          }
         }
       }
 
@@ -313,7 +310,8 @@ function createFilesStore() {
       } else if (errorMessage.includes('EOF reached') || errorMessage.includes('out of bounds')) {
         // If we tried to load around a line that's out of bounds, fall back to loading from start
         console.warn(`Line ${centerLine} is out of bounds, loading from start instead`);
-        await loadLinesFromStart(path, totalLines);
+        const linesPerPage = get(settings).linesPerPage;
+        await loadLinesFromStart(path, linesPerPage);
       } else {
         // For other errors, show in the tab
         update((s) => ({
@@ -451,6 +449,7 @@ function createFilesStore() {
 
   /**
    * Jump to a specific line in a file
+   * Uses context=500 to load lines from (lineNumber - 500) to (lineNumber + 500)
    */
   async function jumpToLine(path: string, lineNumber: number) {
     const state = get({ subscribe });
@@ -464,25 +463,26 @@ function createFilesStore() {
 
     // Check if line is already loaded
     if (lineNumber >= file.startLine && lineNumber <= file.endLine) {
-      // Line is already loaded, just scroll to it
+      // Line is already loaded, just scroll to it and make file active
       update((s) => ({
         ...s,
+        activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
           f.path === path ? { ...f, scrollToLine: lineNumber } : f
         ),
       }));
     } else {
-      // Set scroll position BEFORE loading to prevent scroll handlers from triggering
+      // Set scroll position and active file BEFORE loading
       update((s) => ({
         ...s,
+        activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
           f.path === path ? { ...f, scrollToLine: lineNumber } : f
         ),
       }));
 
-      // Load lines around the target
-      const linesPerPage = get(settings).linesPerPage;
-      await loadLinesAroundCenter(path, lineNumber, linesPerPage);
+      // Load lines around the target with context of 500 lines
+      await loadLinesAroundCenter(path, lineNumber, 500);
     }
   }
 
@@ -705,11 +705,7 @@ function createFilesStore() {
         if (pattern.trim()) {
           try {
             compiledRegex = new RegExp(pattern, 'g');
-            // Test if regex has capturing groups
-            if (compiledRegex.source.indexOf('(') === -1 || compiledRegex.source.indexOf('(?:') !== -1) {
-              error = 'Regex must contain at least one capturing group ()';
-              compiledRegex = null;
-            }
+            // No longer require capturing groups - if no groups, treat whole match as one group
           } catch (e) {
             error = e instanceof Error ? e.message : 'Invalid regex pattern';
             compiledRegex = null;
@@ -754,6 +750,16 @@ function createFilesStore() {
     }));
   }
 
+  /**
+   * Set the active file path (used when switching tabs manually)
+   */
+  function setActiveFile(path: string) {
+    update((s) => ({
+      ...s,
+      activeFilePath: path,
+    }));
+  }
+
   return {
     subscribe,
     openFile,
@@ -769,6 +775,7 @@ function createFilesStore() {
     updateRegexFilter,
     clearRegexFilter,
     toggleInvisibleChars,
+    setActiveFile,
   };
 }
 

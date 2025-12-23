@@ -1,30 +1,33 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import type { OpenFile } from '$lib/types';
-  import { files, settings } from '$lib/stores';
+  import type { OpenFile, MonacoTheme } from '$lib/types';
+  import { MONACO_THEMES } from '$lib/types';
+  import { files, settings, resolvedTheme } from '$lib/stores';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
-  import { detectLanguage, highlightLine } from '$lib/utils/highlighter';
+  import MonacoEditor from './MonacoEditor.svelte';
+  import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { updateUrlState, debounce } from '$lib/utils/urlState';
-  import { applyRegexFilter } from '$lib/utils/regexFilter';
   import Prism from 'prismjs';
   import 'prismjs/components/prism-regex';
+  import type * as Monaco from 'monaco-editor';
 
   export let file: OpenFile;
   export let hideHeader: boolean = false;
   export let isActive: boolean = false;
 
-  let contentEl: HTMLDivElement;
   let paneEl: HTMLDivElement;
+  let monacoComponent: MonacoEditor;
+  let monacoEditor: Monaco.editor.IStandaloneCodeEditor | null = null;
+  let decorationsCollection: Monaco.editor.IEditorDecorationsCollection | null = null;
 
-  // Search state
-  let searchVisible = false;
-  let searchQuery = '';
-  let searchMatches: number[] = []; // Line numbers with matches
-  let currentMatchIndex = -1;
-  let searchInputEl: HTMLInputElement;
+  // Store hidden content for hover tooltips: Map<"lineNum:markerIndex", hiddenText>
+  let hiddenContentMap: Map<string, string> = new Map();
 
-  // Goto line state (consolidated - used by both : and dash click)
+  // Marker character for hidden content (using a single space that we style)
+  const HIDDEN_MARKER = '\u200A'; // Hair space (very thin)
+
+  // Goto line state
   let dashGotoVisible = false;
   let dashGotoLineNumber = '';
   let dashGotoInputEl: HTMLInputElement;
@@ -34,32 +37,396 @@
   let filterPattern = '';
   let filterMode: 'hide' | 'show' | 'highlight' = 'highlight';
   let regexInputEl: HTMLDivElement;
-  let highlightedRegex = '';
   let highlightTimeout: number | null = null;
 
-  // Track scroll state for preserving position when loading at top
-  let previousStartLine = file.startLine;
-  let previousScrollHeight = 0;
+  // Theme dropdown state
+  let themeDropdownVisible = false;
 
-  // Prevent auto-loading when scrolling to a target line
+  // Track scroll state for content loading
   let isScrollingToTarget = false;
+  let lastScrollTop = 0;
+  let lastContentLoadTime = 0; // Timestamp of last content load to prevent immediate loadMore
 
+  // Settings
   $: fontSize = $settings.editorFontSize;
   $: showLineNumbers = $settings.showLineNumbers;
-  $: syntaxHighlighting = file.syntaxHighlighting;
+  $: wrapLines = $settings.wrapLines;
+  $: showMinimap = $settings.showMinimap;
+  $: monacoTheme = $settings.monacoTheme;
+
+  // File matches from trace search
   $: fileMatches = $files.matches.get(file.path) || [];
-  $: matchLineNumbers = new Set(fileMatches.map(m => m.lineNumber));
-  $: detectedLanguage = detectLanguage(file.name);
+
+  // Detect language for Monaco
+  $: monacoLanguage = detectMonacoLanguage(file.name);
+
+  // Theme - use resolved theme from settings store (reacts to dark/light mode changes)
+  $: theme = $resolvedTheme;
+
+  // Convert file lines to content string for Monaco
+  // Apply regex filter pre-processing for hide/show modes
+  // Note: We need to reference file.lines directly to trigger reactivity
+  $: content = getProcessedContent(file.lines, file.regexFilter);
+
+  function getProcessedContent(lines: typeof file.lines, regexFilter: typeof file.regexFilter): string {
+    // Clear hidden content map when reprocessing
+    hiddenContentMap = new Map();
+
+    const rawContent = lines.map(l => l.content).join('\n');
+
+    // Apply regex filter for hide/show modes (not highlight - that uses decorations)
+    if (regexFilter?.enabled && regexFilter?.compiledRegex) {
+      const mode = regexFilter.mode;
+      const pattern = regexFilter.pattern;
+
+      // Check if regex has capturing groups
+      const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
+
+      if (mode === 'hide') {
+        // Hide matching groups (or entire match if no groups) - replace with marker
+        try {
+          const resultLines: string[] = [];
+
+          lines.forEach((line, lineIdx) => {
+            const monacoLine = lineIdx + 1;
+            const lineRegex = new RegExp(pattern, 'g');
+            let match;
+
+            // Collect all group matches with their positions
+            const replacements: Array<{start: number, end: number, text: string}> = [];
+
+            while ((match = lineRegex.exec(line.content)) !== null) {
+              if (hasGroups && match.length > 1) {
+                // Find and replace each captured group
+                let matchOffset = match.index;
+                for (let i = 1; i < match.length; i++) {
+                  if (match[i] !== undefined) {
+                    const groupText = match[i];
+                    const groupStart = line.content.indexOf(groupText, matchOffset);
+                    if (groupStart !== -1) {
+                      replacements.push({
+                        start: groupStart,
+                        end: groupStart + groupText.length,
+                        text: groupText
+                      });
+                      matchOffset = groupStart + groupText.length;
+                    }
+                  }
+                }
+              } else {
+                // No groups - hide entire match
+                replacements.push({
+                  start: match.index,
+                  end: match.index + match[0].length,
+                  text: match[0]
+                });
+              }
+            }
+
+            // Sort by position and apply replacements from end to start
+            replacements.sort((a, b) => b.start - a.start);
+
+            let result = line.content;
+            // Store in reverse order but with forward marker indices
+            const reversedReplacements = [...replacements];
+            for (let i = reversedReplacements.length - 1; i >= 0; i--) {
+              const rep = reversedReplacements[i];
+              // Key is line:markerIndex (0-based index of marker on this line)
+              const key = `${monacoLine}:${reversedReplacements.length - 1 - i}`;
+              hiddenContentMap.set(key, rep.text);
+            }
+
+            // Apply replacements from end to start
+            for (const rep of replacements) {
+              result = result.substring(0, rep.start) + HIDDEN_MARKER + result.substring(rep.end);
+            }
+
+            resultLines.push(result);
+          });
+
+          return resultLines.join('\n');
+        } catch (e) {
+          return rawContent;
+        }
+      } else if (mode === 'show') {
+        // Show only matching groups (or entire match if no groups) - replace non-matching parts with marker
+        try {
+          const resultLines: string[] = [];
+
+          lines.forEach((line, lineIdx) => {
+            const monacoLine = lineIdx + 1;
+            const lineRegex = new RegExp(pattern, 'g');
+            let match;
+
+            // Collect all "show" ranges (captured groups or entire matches)
+            const showRanges: Array<{start: number, end: number, text: string}> = [];
+
+            while ((match = lineRegex.exec(line.content)) !== null) {
+              if (hasGroups && match.length > 1) {
+                // Find actual positions of each captured group within the line
+                let searchStart = match.index;
+                for (let i = 1; i < match.length; i++) {
+                  if (match[i] !== undefined) {
+                    const groupText = match[i];
+                    const groupStart = line.content.indexOf(groupText, searchStart);
+                    if (groupStart !== -1) {
+                      showRanges.push({
+                        start: groupStart,
+                        end: groupStart + groupText.length,
+                        text: groupText
+                      });
+                      searchStart = groupStart + groupText.length;
+                    }
+                  }
+                }
+              } else {
+                // No groups - show entire match
+                showRanges.push({
+                  start: match.index,
+                  end: match.index + match[0].length,
+                  text: match[0]
+                });
+              }
+            }
+
+            // Build segments: alternating between hidden and shown parts
+            const segments: Array<{isMatch: boolean, text: string}> = [];
+            let lastEnd = 0;
+
+            // Sort showRanges by start position
+            showRanges.sort((a, b) => a.start - b.start);
+
+            for (const range of showRanges) {
+              // Add hidden segment before this show range
+              if (range.start > lastEnd) {
+                segments.push({
+                  isMatch: false,
+                  text: line.content.substring(lastEnd, range.start)
+                });
+              }
+              // Add the shown segment
+              segments.push({
+                isMatch: true,
+                text: range.text
+              });
+              lastEnd = range.end;
+            }
+
+            // Add remaining hidden segment after last show range
+            if (lastEnd < line.content.length) {
+              segments.push({
+                isMatch: false,
+                text: line.content.substring(lastEnd)
+              });
+            }
+
+            // Build result line
+            if (segments.length === 0) {
+              // No matches - entire line is hidden
+              if (line.content.length > 0) {
+                const key = `${monacoLine}:0`;
+                hiddenContentMap.set(key, line.content);
+                resultLines.push(HIDDEN_MARKER);
+              } else {
+                resultLines.push('');
+              }
+            } else {
+              let resultLine = '';
+              let markerIndex = 0;
+
+              for (const seg of segments) {
+                if (seg.isMatch) {
+                  resultLine += seg.text;
+                } else if (seg.text.length > 0) {
+                  // Hidden segment (including whitespace-only)
+                  const key = `${monacoLine}:${markerIndex}`;
+                  hiddenContentMap.set(key, seg.text);
+                  resultLine += HIDDEN_MARKER;
+                  markerIndex++;
+                }
+              }
+
+              resultLines.push(resultLine || HIDDEN_MARKER);
+            }
+          });
+
+          return resultLines.join('\n');
+        } catch (e) {
+          return rawContent;
+        }
+      }
+    }
+
+    return rawContent;
+  }
+
+  // Apply decorations when matches change or content changes
+  $: if (monacoEditor && file.lines.length > 0) {
+    updateDecorations();
+  }
+
+  // Also update decorations when regex filter changes
+  $: if (monacoEditor && file.regexFilter) {
+    updateDecorations();
+  }
+
+  function updateDecorations() {
+    if (!monacoEditor) return;
+
+    // Clear previous decorations
+    if (decorationsCollection) {
+      decorationsCollection.clear();
+    }
+
+    const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
+
+    // Add decorations for trace search matches
+    for (const match of fileMatches) {
+      // Convert file line number to Monaco line number
+      const monacoLine = match.lineNumber - file.startLine + 1;
+      if (monacoLine >= 1 && monacoLine <= file.lines.length) {
+        decorations.push({
+          range: {
+            startLineNumber: monacoLine,
+            startColumn: 1,
+            endLineNumber: monacoLine,
+            endColumn: 1,
+          },
+          options: {
+            isWholeLine: true,
+            className: 'monaco-match-line',
+            glyphMarginClassName: 'monaco-match-glyph',
+          },
+        });
+      }
+    }
+
+    // Add decorations for regex filter in highlight mode
+    if (file.regexFilter?.enabled && file.regexFilter?.compiledRegex && file.regexFilter.mode === 'highlight') {
+      const model = monacoEditor.getModel();
+      if (model) {
+        try {
+          // Use our own regex matching for more control
+          const pattern = file.regexFilter.pattern;
+          const regex = new RegExp(pattern, 'g');
+          const lineCount = model.getLineCount();
+
+          // Check if regex has capturing groups
+          const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
+
+          for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
+            const lineContent = model.getLineContent(lineNum);
+            let match;
+            regex.lastIndex = 0; // Reset regex state
+
+            while ((match = regex.exec(lineContent)) !== null) {
+              if (hasGroups && match.length > 1) {
+                // Highlight only captured groups
+                let searchStart = match.index;
+                for (let i = 1; i < match.length; i++) {
+                  if (match[i] !== undefined) {
+                    const groupText = match[i];
+                    const groupStart = lineContent.indexOf(groupText, searchStart);
+                    if (groupStart !== -1) {
+                      decorations.push({
+                        range: {
+                          startLineNumber: lineNum,
+                          startColumn: groupStart + 1,
+                          endLineNumber: lineNum,
+                          endColumn: groupStart + groupText.length + 1,
+                        },
+                        options: {
+                          inlineClassName: 'monaco-regex-highlight',
+                        },
+                      });
+                      searchStart = groupStart + groupText.length;
+                    }
+                  }
+                }
+              } else {
+                // No groups - highlight entire match
+                const startCol = match.index + 1;
+                const endCol = match.index + match[0].length + 1;
+
+                decorations.push({
+                  range: {
+                    startLineNumber: lineNum,
+                    startColumn: startCol,
+                    endLineNumber: lineNum,
+                    endColumn: endCol,
+                  },
+                  options: {
+                    inlineClassName: 'monaco-regex-highlight',
+                  },
+                });
+              }
+
+              // Prevent infinite loop on zero-width matches
+              if (match[0].length === 0) {
+                regex.lastIndex++;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Regex filter error:', e);
+        }
+      }
+    }
+
+    // Add decorations for hidden content markers (hide/show modes)
+    if (file.regexFilter?.enabled && file.regexFilter?.compiledRegex &&
+        (file.regexFilter.mode === 'hide' || file.regexFilter.mode === 'show')) {
+      const model = monacoEditor.getModel();
+      if (model) {
+        const markerClass = file.regexFilter.mode === 'hide'
+          ? 'monaco-hidden-marker-red'
+          : 'monaco-hidden-marker-blue';
+
+        const lineCount = model.getLineCount();
+        for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
+          const lineContent = model.getLineContent(lineNum);
+          let col = 1;
+          let markerIndex = 0;
+          for (const char of lineContent) {
+            if (char === HIDDEN_MARKER) {
+              // Get the hidden text for this marker
+              const key = `${lineNum}:${markerIndex}`;
+              const hiddenText = hiddenContentMap.get(key);
+
+              decorations.push({
+                range: {
+                  startLineNumber: lineNum,
+                  startColumn: col,
+                  endLineNumber: lineNum,
+                  endColumn: col + 1,
+                },
+                options: {
+                  inlineClassName: markerClass,
+                  hoverMessage: hiddenText ? { value: hiddenText } : undefined,
+                },
+              });
+              markerIndex++;
+            }
+            col++;
+          }
+        }
+      }
+    }
+
+    // Create new decorations collection
+    if (decorations.length > 0) {
+      decorationsCollection = monacoEditor.createDecorationsCollection(decorations);
+    }
+  }
 
   function toggleSyntaxHighlighting() {
     files.toggleSyntaxHighlighting(file.path);
-    // Update URL immediately when syntax highlighting is toggled
     if (isActive) {
       const centerLine = getCurrentViewportCenterLine();
       updateUrlState({
         path: file.path,
         line: centerLine,
-        syntaxHighlighting: !file.syntaxHighlighting, // Use the new state
+        syntaxHighlighting: !file.syntaxHighlighting,
       });
     }
   }
@@ -67,13 +434,28 @@
   function toggleFilterPanel() {
     filterPanelVisible = !filterPanelVisible;
     if (filterPanelVisible && !file.regexFilter) {
-      // Initialize filter when opening panel
       files.toggleRegexFilter(file.path);
     }
   }
 
   function toggleInvisibleChars() {
     files.toggleInvisibleChars(file.path);
+  }
+
+  function toggleThemeDropdown() {
+    themeDropdownVisible = !themeDropdownVisible;
+  }
+
+  function selectTheme(themeId: MonacoTheme) {
+    settings.update(s => ({ ...s, monacoTheme: themeId }));
+    themeDropdownVisible = false;
+  }
+
+  function handleClickOutsideThemeDropdown(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.theme-dropdown-container')) {
+      themeDropdownVisible = false;
+    }
   }
 
   function applyFilter() {
@@ -97,22 +479,18 @@
     }
   }
 
-  // Highlight regex pattern using Prism.js
   function highlightRegexPattern(pattern: string): string {
     if (!pattern) return '';
     try {
       return Prism.highlight(pattern, Prism.languages.regex, 'regex');
     } catch (e) {
-      // If highlighting fails, return escaped HTML
       return pattern.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
   }
 
-  // Get absolute cursor position in text content
   function getCursorPosition(element: HTMLElement): number {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return 0;
-
     const range = selection.getRangeAt(0);
     const preCaretRange = range.cloneRange();
     preCaretRange.selectNodeContents(element);
@@ -120,18 +498,11 @@
     return preCaretRange.toString().length;
   }
 
-  // Set cursor position in contenteditable
   function setCursorPosition(element: HTMLElement, position: number) {
     const selection = window.getSelection();
     if (!selection) return;
-
     let currentPos = 0;
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null
-    );
-
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
     let node: Node | null;
     while ((node = walker.nextNode())) {
       const textLength = node.textContent?.length || 0;
@@ -145,8 +516,6 @@
       }
       currentPos += textLength;
     }
-
-    // If we couldn't find the position, place cursor at the end
     if (element.lastChild) {
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -156,50 +525,31 @@
     }
   }
 
-  // Update regex pattern from contenteditable
   function handleRegexInput(e: Event) {
     const target = e.target as HTMLDivElement;
     const text = target.textContent || '';
-
-    // Don't process if it's just the placeholder
-    if (text === 'e.g. (\\w+)@(\\w+)\\.com') {
-      return;
-    }
-
+    if (text === 'e.g. (\\w+)@(\\w+)\\.com') return;
     filterPattern = text;
-
-    // Clear any pending highlight
     if (highlightTimeout !== null) {
       cancelAnimationFrame(highlightTimeout);
     }
-
-    // Save cursor position before scheduling update
     const cursorPos = getCursorPosition(target);
-
-    // Defer highlighting to next animation frame to avoid interrupting typing
     highlightTimeout = requestAnimationFrame(() => {
       if (!regexInputEl) return;
-
-      // Apply syntax highlighting
       const highlighted = highlightRegexPattern(text);
       if (highlighted) {
         regexInputEl.innerHTML = highlighted;
-
-        // Restore cursor position in the next frame after DOM update
         requestAnimationFrame(() => {
           setCursorPosition(regexInputEl, cursorPos);
         });
       }
-
       highlightTimeout = null;
     });
   }
 
-  // Initialize with highlighting when panel opens
   $: if (filterPanelVisible && regexInputEl) {
     if (filterPattern) {
-      const highlighted = highlightRegexPattern(filterPattern);
-      regexInputEl.innerHTML = highlighted;
+      regexInputEl.innerHTML = highlightRegexPattern(filterPattern);
     } else {
       regexInputEl.textContent = '';
     }
@@ -215,209 +565,91 @@
     });
   }
 
-  // Reactive scroll to target line
-  $: if (file.scrollToLine !== undefined && contentEl && file.lines.length > 0) {
+  // Track when content is loaded to prevent immediate loadMore calls
+  $: if (file.lines.length > 0 && !file.loading) {
+    lastContentLoadTime = Date.now();
+  }
+
+  // Scroll to target line when requested
+  // Use a longer delay to ensure Monaco has fully rendered the content
+  $: if (file.scrollToLine !== undefined && monacoComponent && file.lines.length > 0 && !file.loading) {
     isScrollingToTarget = true;
-    scrollToTargetLine(file.scrollToLine);
+    // Delay scroll to ensure content is rendered in Monaco
+    setTimeout(() => {
+      scrollToLine(file.scrollToLine!);
+    }, 100);
   }
-
-  // Keyboard shortcuts
-  function handleKeyDown(e: KeyboardEvent) {
-    // Check if user is typing in an input field (search, goto, or regex filter)
-    // Don't intercept shortcuts if they're focused on an input
-    const target = e.target as HTMLElement;
-    const isInputFocused = target.tagName === 'INPUT' ||
-                          target.tagName === 'TEXTAREA' ||
-                          target.contentEditable === 'true' ||
-                          target.contentEditable === 'plaintext-only';
-
-    // Cmd/Ctrl + F - open search
-    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-      e.preventDefault();
-      openSearch();
-      return;
-    }
-
-    // / - open search (vim style) - only if not in an input field
-    if (e.key === '/' && !searchVisible && !dashGotoVisible && !isInputFocused) {
-      e.preventDefault();
-      openSearch();
-      return;
-    }
-
-    // : - open goto line (vim style) - only if not in an input field
-    if (e.key === ':' && !searchVisible && !dashGotoVisible && !isInputFocused) {
-      e.preventDefault();
-      openDashGoto();
-      return;
-    }
-
-    // Escape - close search/goto
-    if (e.key === 'Escape') {
-      if (searchVisible) {
-        closeSearch();
-      }
-      if (dashGotoVisible) {
-        closeDashGoto();
-      }
-      return;
-    }
-
-    // Keyboard scrolling - only if not focused on an input field
-    if (!isInputFocused && contentEl) {
-      const scrollAmount = 40; // pixels per arrow key press
-      const pageScrollAmount = contentEl.clientHeight * 0.9; // 90% of viewport height
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        contentEl.scrollTop += scrollAmount;
-        return;
-      }
-
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        contentEl.scrollTop -= scrollAmount;
-        return;
-      }
-
-      if (e.key === 'PageDown') {
-        e.preventDefault();
-        contentEl.scrollTop += pageScrollAmount;
-        return;
-      }
-
-      if (e.key === 'PageUp') {
-        e.preventDefault();
-        contentEl.scrollTop -= pageScrollAmount;
-        return;
-      }
-
-      if (e.key === 'Home') {
-        e.preventDefault();
-        contentEl.scrollTop = 0;
-        return;
-      }
-
-      if (e.key === 'End') {
-        e.preventDefault();
-        contentEl.scrollTop = contentEl.scrollHeight;
-        return;
-      }
-    }
-  }
-
-  function openSearch() {
-    searchVisible = true;
-    dashGotoVisible = false;
-    setTimeout(() => searchInputEl?.focus(), 10);
-  }
-
-  function closeSearch() {
-    searchVisible = false;
-    searchQuery = '';
-    searchMatches = [];
-    currentMatchIndex = -1;
-  }
-
-
 
   function getCurrentViewportCenterLine(): number {
-    if (!contentEl || file.lines.length === 0) return file.startLine;
+    if (!monacoEditor || file.lines.length === 0) return file.startLine;
 
-    const rect = contentEl.getBoundingClientRect();
-    const centerY = rect.top + rect.height / 2;
+    const visibleRanges = monacoEditor.getVisibleRanges();
+    if (visibleRanges.length === 0) return file.startLine;
 
-    // Find line element closest to center
-    const lineElements = contentEl.querySelectorAll('[data-line]');
-    let closestLine = file.startLine;
-    let closestDistance = Infinity;
+    const firstVisible = visibleRanges[0].startLineNumber;
+    const lastVisible = visibleRanges[visibleRanges.length - 1].endLineNumber;
+    const centerMonacoLine = Math.floor((firstVisible + lastVisible) / 2);
 
-    lineElements.forEach((el) => {
-      const lineRect = el.getBoundingClientRect();
-      const distance = Math.abs(lineRect.top + lineRect.height / 2 - centerY);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestLine = parseInt(el.getAttribute('data-line') || String(file.startLine), 10);
-      }
-    });
-
-    return closestLine;
+    // Convert Monaco line to file line number
+    return file.startLine + centerMonacoLine - 1;
   }
 
-  function performSearch() {
-    if (!searchQuery.trim()) {
-      searchMatches = [];
-      currentMatchIndex = -1;
-      return;
+  /**
+   * Check if we need to load more content based on current scroll position
+   */
+  function checkAndLoadMore() {
+    if (!monacoEditor || file.loading) return;
+
+    const scrollTop = monacoEditor.getScrollTop();
+    const scrollHeight = monacoEditor.getScrollHeight();
+    const clientHeight = monacoEditor.getDomNode()?.clientHeight ?? 0;
+
+    // Load more when near top
+    if (scrollTop < 200 && file.startLine > 1 && !file.reachedStart) {
+      files.loadMore(file.path, 'before');
     }
 
-    // Find all lines containing the search query (case-insensitive)
-    const query = searchQuery.toLowerCase();
-    searchMatches = file.lines
-      .filter(line => line.content.toLowerCase().includes(query))
-      .map(line => line.lineNumber);
+    // Load more when near bottom
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    if (distanceFromBottom < 200 && !file.reachedEnd) {
+      files.loadMore(file.path, 'after');
+    }
+  }
 
-    if (searchMatches.length > 0) {
-      currentMatchIndex = 0;
-      scrollToSearchMatch(0);
+  function scrollToLine(targetLine: number) {
+    if (!monacoComponent) return;
+
+    // Convert file line number to Monaco line number
+    const monacoLine = targetLine - file.startLine + 1;
+
+    if (monacoLine >= 1 && monacoLine <= file.lines.length) {
+      monacoComponent.revealLine(targetLine);
+      // Keep isScrollingToTarget true for longer to prevent scroll handlers from triggering loadMore
+      setTimeout(() => {
+        files.clearScrollPosition(file.path);
+        // Delay clearing isScrollingToTarget to prevent immediate loadMore calls
+        setTimeout(() => {
+          isScrollingToTarget = false;
+        }, 200);
+      }, 300);
     } else {
-      currentMatchIndex = -1;
+      isScrollingToTarget = false;
     }
   }
-
-  function nextSearchMatch() {
-    if (searchMatches.length === 0) return;
-    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
-    scrollToSearchMatch(currentMatchIndex);
-  }
-
-  function prevSearchMatch() {
-    if (searchMatches.length === 0) return;
-    currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
-    scrollToSearchMatch(currentMatchIndex);
-  }
-
-  function scrollToSearchMatch(index: number) {
-    const lineNumber = searchMatches[index];
-    scrollToTargetLine(lineNumber);
-  }
-
-  function handleSearchKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        prevSearchMatch();
-      } else {
-        if (searchMatches.length === 0) {
-          performSearch();
-        } else {
-          nextSearchMatch();
-        }
-      }
-    }
-  }
-
-
 
   function jumpToLineNumber(lineNum: number) {
-    // Check if the line is actually in the loaded range
     if (lineNum >= file.startLine && lineNum <= file.endLine) {
-      // Line is loaded, just scroll to it
       isScrollingToTarget = true;
-      scrollToTargetLine(lineNum);
+      scrollToLine(lineNum);
     } else {
-      // Line is not loaded, use the store's jumpToLine which will load it
       files.jumpToLine(file.path, lineNum);
     }
   }
 
   function openDashGoto() {
-    // Calculate center line
     const centerLine = Math.round((file.startLine + file.endLine) / 2);
     dashGotoLineNumber = centerLine.toString();
     dashGotoVisible = true;
-
-    // Focus input after it's rendered
     setTimeout(() => {
       dashGotoInputEl?.focus();
       dashGotoInputEl?.select();
@@ -443,48 +675,6 @@
     }
   }
 
-  function scrollToTargetLine(targetLine: number) {
-    // Use requestAnimationFrame to ensure DOM is fully rendered
-    requestAnimationFrame(() => {
-      if (!contentEl) return;
-
-      const lineEl = contentEl.querySelector(`[data-line="${targetLine}"]`);
-      if (lineEl) {
-        lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Clear scroll position after scroll completes
-        setTimeout(() => {
-          files.clearScrollPosition(file.path);
-          isScrollingToTarget = false;
-          // Update tracking after target scroll completes
-          if (contentEl) {
-            previousStartLine = file.startLine;
-            previousScrollHeight = contentEl.scrollHeight;
-          }
-        }, 500);
-      } else {
-        // If line element not found, retry after a short delay
-        setTimeout(() => {
-          const retryLineEl = contentEl?.querySelector(`[data-line="${targetLine}"]`);
-          if (retryLineEl) {
-            retryLineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setTimeout(() => {
-              files.clearScrollPosition(file.path);
-              isScrollingToTarget = false;
-              // Update tracking after target scroll completes
-              if (contentEl) {
-                previousStartLine = file.startLine;
-                previousScrollHeight = contentEl.scrollHeight;
-              }
-            }, 500);
-          } else {
-            // Line not found even after retry, reset flag
-            isScrollingToTarget = false;
-          }
-        }, 100);
-      }
-    });
-  }
-
   // Debounced URL update on scroll
   const updateUrlOnScroll = debounce(() => {
     if (isActive && file.lines.length > 0) {
@@ -495,80 +685,62 @@
         syntaxHighlighting: file.syntaxHighlighting,
       });
     }
-  }, 500); // Update URL 500ms after user stops scrolling
+  }, 500);
 
-  function handleScroll() {
-    if (!contentEl) return;
+  function handleMonacoScroll(e: CustomEvent<{ scrollTop: number; scrollHeight: number; clientHeight: number }>) {
+    const { scrollTop, scrollHeight, clientHeight } = e.detail;
 
-    const { scrollTop, scrollHeight, clientHeight } = contentEl;
-
-    // Update URL on scroll (debounced)
     updateUrlOnScroll();
 
-    // Don't trigger loads if we're scrolling to a target line
+    // Don't trigger loadMore during programmatic scrolling or right after content load
     if (file.scrollToLine !== undefined || isScrollingToTarget) {
+      lastScrollTop = scrollTop;
       return;
     }
 
-    // Don't trigger new loads while loading, unless we're at the very edge
-    if (file.loading) {
-      // Only trigger if we're actually at the edge (scrolled past the threshold)
-      const atTop = scrollTop === 0;
-      const atBottom = scrollHeight - scrollTop - clientHeight === 0;
-
-      if (!atTop && !atBottom) {
-        return;
-      }
+    // Skip loadMore for 1 second after content was loaded (prevents extra calls after jumpToLine)
+    const timeSinceLoad = Date.now() - lastContentLoadTime;
+    if (timeSinceLoad < 1000) {
+      lastScrollTop = scrollTop;
+      return;
     }
 
-    // Load more when near top (200px threshold) or at the very top
-    if ((scrollTop < 200 || scrollTop === 0) && file.startLine > 1) {
+    if (file.loading) {
+      lastScrollTop = scrollTop;
+      return;
+    }
+
+    // Load more when near top
+    if (scrollTop < 200 && file.startLine > 1 && !file.reachedStart) {
       files.loadMore(file.path, 'before');
     }
 
-    // Load more when near bottom (200px threshold) or at the very bottom
+    // Load more when near bottom
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    if (distanceFromBottom < 200 || distanceFromBottom === 0) {
+    if (distanceFromBottom < 200 && !file.reachedEnd) {
       files.loadMore(file.path, 'after');
     }
+
+    lastScrollTop = scrollTop;
   }
 
-  // Preserve scroll position when loading content at the top
-  // But NOT when we're scrolling to a target line
-  $: if (contentEl && file.startLine < previousStartLine && !file.loading && !file.scrollToLine) {
-    // Content was added at the top - adjust scroll to keep same lines visible
-    const newScrollHeight = contentEl.scrollHeight;
-    const addedHeight = newScrollHeight - previousScrollHeight;
+  function handleMonacoReady(e: CustomEvent<{ editor: Monaco.editor.IStandaloneCodeEditor }>) {
+    monacoEditor = e.detail.editor;
 
-    if (addedHeight > 0) {
-      contentEl.scrollTop += addedHeight;
+    // Listen for content changes to apply decorations after content is set
+    const model = monacoEditor.getModel();
+    if (model) {
+      model.onDidChangeContent(() => {
+        // Delay slightly to ensure content is fully rendered
+        setTimeout(() => {
+          updateDecorations();
+        }, 50);
+      });
     }
 
-    previousStartLine = file.startLine;
-    previousScrollHeight = newScrollHeight;
-  }
-
-  // Update tracking variables when file changes (but not during target scroll)
-  $: if (contentEl && !file.scrollToLine) {
-    previousStartLine = file.startLine;
-    previousScrollHeight = contentEl.scrollHeight;
-  }
-
-  // Check if we need to load more after loading completes (only for bottom edge)
-  $: if (!file.loading && contentEl && !isScrollingToTarget) {
-    // Use setTimeout to ensure DOM is updated
+    // Initial decoration update (with delay to ensure content is ready)
     setTimeout(() => {
-      if (!contentEl || isScrollingToTarget) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = contentEl;
-      const atBottom = scrollHeight - scrollTop - clientHeight === 0;
-
-      // Only auto-load at bottom edge
-      // For top edge, user needs to manually scroll up
-      // This prevents the multiple fetches when jumping to a line near the top
-      if (atBottom) {
-        files.loadMore(file.path, 'after');
-      }
+      updateDecorations();
     }, 100);
   }
 
@@ -576,163 +748,39 @@
     files.closeFile(file.path);
   }
 
-  function isMatchLine(lineNumber: number): boolean {
-    return fileMatches.some((m) => m.lineNumber === lineNumber);
-  }
+  function handleKeyDown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement;
+    const isInputFocused = target.tagName === 'INPUT' ||
+                          target.tagName === 'TEXTAREA' ||
+                          target.contentEditable === 'true' ||
+                          target.contentEditable === 'plaintext-only';
 
-  function isSearchMatch(lineNumber: number): boolean {
-    return searchMatches.includes(lineNumber);
-  }
-
-  function isCurrentSearchMatch(lineNumber: number): boolean {
-    return currentMatchIndex >= 0 && searchMatches[currentMatchIndex] === lineNumber;
-  }
-
-  // Calculate the maximum line number width based on loaded lines
-  // Dynamically grows to accommodate any line number length
-  $: maxLineNumberWidth = file.lines.length > 0
-    ? Math.max(...file.lines.map(l => l.lineNumber)).toString().length
-    : 7;
-
-  function formatLineNumber(n: number): string {
-    // Pad line numbers for alignment using the maximum line number in loaded scope
-    return n.toString().padStart(maxLineNumberWidth, ' ');
-  }
-
-  function getMatchPatterns(lineNumber: number): string[] {
-    return fileMatches
-      .filter((m) => m.lineNumber === lineNumber)
-      .map((m) => m.pattern);
-  }
-
-  function getLineMarkerColor(lineNumber: number): string {
-    // No marks by default - mechanism ready for future custom logic
-    return 'transparent';
-  }
-
-  function replaceInvisibleChars(html: string): string {
-    // Replace invisible characters with visible symbols in HTML
-    // This needs to work with syntax-highlighted HTML, so we replace carefully
-    // to avoid breaking HTML tags
-
-    // Use a regex that avoids replacing inside HTML tags
-    // This regex matches text content outside of < and >
-    const textOutsideTags = /(?:^|>)([^<]*)(?=<|$)/g;
-
-    return html.replace(textOutsideTags, (match, textContent, offset) => {
-      // Keep the delimiters (> or start/end), only transform the text content
-      const prefix = match[0] === '>' ? '>' : '';
-      const transformed = textContent
-        // Space → middle dot (·)
-        .replace(/ /g, '<span class="invisible-char">·</span>')
-        // Tab → arrow (→)
-        .replace(/\t/g, '<span class="invisible-char">→</span>')
-        // Carriage return (CR) → ⏎
-        .replace(/\r/g, '<span class="invisible-char">⏎</span>')
-        // Non-breaking space → ° (degree symbol)
-        .replace(/\u00A0/g, '<span class="invisible-char">°</span>')
-        // Zero-width space → |
-        .replace(/\u200B/g, '<span class="invisible-char">|</span>')
-        // Zero-width non-joiner → |
-        .replace(/\u200C/g, '<span class="invisible-char">|</span>')
-        // Zero-width joiner → |
-        .replace(/\u200D/g, '<span class="invisible-char">|</span>')
-        // Word joiner → |
-        .replace(/\u2060/g, '<span class="invisible-char">|</span>')
-        // Zero-width no-break space (BOM) → |
-        .replace(/\uFEFF/g, '<span class="invisible-char">|</span>');
-
-      return prefix + transformed;
-    });
-  }
-
-  function highlightContent(content: string, lineNumber: number, patterns: string[]): string {
-    function escapeHtml(text: string): string {
-      return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    // : - open goto line (vim style)
+    if (e.key === ':' && !dashGotoVisible && !isInputFocused) {
+      e.preventDefault();
+      openDashGoto();
+      return;
     }
 
-    // STEP 1: Apply regex filter first (if enabled)
-    // This returns already-escaped HTML with filter transformations
-    if (file.regexFilter && file.regexFilter.enabled && file.regexFilter.compiledRegex) {
-      let result = applyRegexFilter(content, file.regexFilter);
-
-      // For highlight mode, we can still apply syntax highlighting before the filter
-      // For hide/show modes, we skip syntax highlighting as the content is already transformed
-      if (file.regexFilter.mode === 'highlight' && syntaxHighlighting) {
-        // Re-apply syntax highlighting on the original content first
-        result = highlightLine(content, detectedLanguage);
-        // Then apply regex highlighting on top
-        if (file.regexFilter.compiledRegex) {
-          const regex = new RegExp(file.regexFilter.pattern, 'g');
-          result = result.replace(regex, (match, ...groups) => {
-            // Highlight the entire match
-            return `<span class="regex-highlight">${match}</span>`;
-          });
-        }
+    if (e.key === 'Escape') {
+      if (dashGotoVisible) {
+        closeDashGoto();
       }
-
-      // Apply trace search pattern highlighting
-      if (patterns.length > 0) {
-        for (const pattern of patterns) {
-          try {
-            const regex = new RegExp(pattern, 'g');
-            result = result.replace(regex, (match) => {
-              return `<strong style="background-color: rgba(139, 69, 19, 0.2); border-bottom: 2px solid #8B4513; font-weight: 700;">${match}</strong>`;
-            });
-          } catch (e) {
-            console.warn('Invalid regex pattern:', pattern, e);
-          }
-        }
-      }
-
-      return result;
+      return;
     }
-
-    // STEP 2: Normal flow (no regex filter) - apply syntax highlighting
-    let result = syntaxHighlighting ? highlightLine(content, detectedLanguage) : escapeHtml(content);
-
-    // STEP 3: Apply invisible characters replacement if enabled
-    if (file.showInvisibleChars) {
-      result = replaceInvisibleChars(result);
-    }
-
-    // Highlight regex matches (from trace search) - wrap with strong tag
-    if (patterns.length > 0) {
-      for (const pattern of patterns) {
-        try {
-          const regex = new RegExp(pattern, 'g');
-          result = result.replace(regex, (match) => {
-            return `<strong style="background-color: rgba(139, 69, 19, 0.2); border-bottom: 2px solid #8B4513; font-weight: 700;">${match}</strong>`;
-          });
-        } catch (e) {
-          console.warn('Invalid regex pattern:', pattern, e);
-        }
-      }
-    }
-
-    // Highlight in-file search matches
-    if (searchQuery && content.toLowerCase().includes(searchQuery.toLowerCase())) {
-      const isCurrentMatch = isCurrentSearchMatch(lineNumber);
-      const bgColor = isCurrentMatch ? '#ff9632' : '#ffeb3b';
-      const query = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape special chars
-      const regex = new RegExp(`(${query})`, 'gi');
-      result = result.replace(regex, (match) => {
-        return `<mark style="background-color: ${bgColor}; color: #000; padding: 0 2px; font-weight: 600;">${match}</mark>`;
-      });
-    }
-
-    return result;
   }
 
   onMount(() => {
     paneEl?.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('click', handleClickOutsideThemeDropdown);
   });
 
   onDestroy(() => {
     paneEl?.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('click', handleClickOutsideThemeDropdown);
+    if (decorationsCollection) {
+      decorationsCollection.clear();
+    }
   });
 </script>
 
@@ -744,6 +792,7 @@
          last:border-r-0"
 >
   <!-- File header -->
+  {#if !hideHeader}
   <div
     class="flex items-center justify-between px-3 py-1.5 gap-2
            bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
@@ -816,41 +865,13 @@
     </div>
 
     <div class="flex items-center gap-2">
-      <!-- Search box -->
-      {#if searchVisible}
-        <div class="flex items-center gap-1 bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-2 py-0.5">
-          <input
-            bind:this={searchInputEl}
-            bind:value={searchQuery}
-            on:keydown={handleSearchKeyDown}
-            on:input={performSearch}
-            placeholder="Search in file..."
-            class="text-xs bg-transparent outline-none w-40"
-          />
-          {#if searchMatches.length > 0}
-            <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-              {currentMatchIndex + 1}/{searchMatches.length}
-            </span>
-          {/if}
-          <button
-            on:click={closeSearch}
-            class="text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default"
-            title="Close search (Esc)"
-          >
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      {/if}
-
       <!-- Syntax highlighting toggle -->
       <button
         class="p-1 rounded flex-shrink-0 transition-colors
-               {syntaxHighlighting
+               {file.syntaxHighlighting
                  ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
                  : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-        title="{syntaxHighlighting ? 'Disable' : 'Enable'} syntax highlighting"
+        title="{file.syntaxHighlighting ? 'Disable' : 'Enable'} syntax highlighting"
         on:click={toggleSyntaxHighlighting}
       >
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -886,6 +907,48 @@
         </svg>
       </button>
 
+      <!-- Theme selector dropdown -->
+      <div class="relative theme-dropdown-container">
+        <button
+          class="p-1 rounded flex-shrink-0 transition-colors
+                 {themeDropdownVisible
+                   ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white'
+                   : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+          title="Editor theme: {MONACO_THEMES.find(t => t.id === monacoTheme)?.name || 'Default'}"
+          on:click={toggleThemeDropdown}
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+          </svg>
+        </button>
+
+        {#if themeDropdownVisible}
+          <div class="absolute right-0 top-full mt-1 z-50
+                      bg-gh-canvas-default dark:bg-gh-canvas-dark-default
+                      border border-gh-border-default dark:border-gh-border-dark-default
+                      rounded-md shadow-lg py-1 min-w-[160px]">
+            {#each MONACO_THEMES as themeOption}
+              <button
+                class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
+                       hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
+                       {monacoTheme === themeOption.id ? 'text-gh-accent-fg dark:text-gh-accent-dark-fg font-medium' : 'text-gh-fg-default dark:text-gh-fg-dark-default'}"
+                on:click={() => selectTheme(themeOption.id)}
+              >
+                <span class="w-3 h-3 rounded-full border
+                             {themeOption.base === 'vs' ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-600'}"></span>
+                {themeOption.name}
+                {#if monacoTheme === themeOption.id}
+                  <svg class="w-4 h-4 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
       <button
         class="p-1 rounded hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
                text-gh-fg-muted dark:text-gh-fg-dark-muted flex-shrink-0"
@@ -898,6 +961,7 @@
       </button>
     </div>
   </div>
+  {/if}
 
   <!-- Regex filter panel (expandable) -->
   {#if filterPanelVisible}
@@ -984,13 +1048,8 @@
     </div>
   {/if}
 
-  <!-- Content container -->
-  <div
-    bind:this={contentEl}
-    class="flex-1 min-h-0 overflow-y-scroll font-mono"
-    style="font-size: {fontSize}px;"
-    on:scroll={handleScroll}
-  >
+  <!-- Content container with Monaco Editor -->
+  <div class="flex-1 min-h-0 relative">
     {#if file.loading && file.lines.length === 0}
       <div class="flex items-center justify-center h-full">
         <Spinner size="lg" />
@@ -1007,107 +1066,36 @@
         <p>Empty file</p>
       </div>
     {:else}
-      <!-- Load more indicator (top) -->
-      {#if file.loading && file.startLine > 1}
-        <div class="flex items-center justify-center py-2">
-          <Spinner size="sm" />
-        </div>
-      {:else if file.startLine > 1}
-        <button
-          class="w-full py-1 text-xs text-gh-accent-fg dark:text-gh-accent-dark-fg
-                 hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
-          on:click={() => files.loadMore(file.path, 'before')}
-        >
-          Load earlier lines...
-        </button>
-      {/if}
-
-      <table class="w-full border-collapse">
-        <tbody>
-          {#key syntaxHighlighting}
-            {#each file.lines as line (line.lineNumber)}
-              {@const isMatch = isMatchLine(line.lineNumber)}
-              {@const isSearch = isSearchMatch(line.lineNumber)}
-              {@const patterns = getMatchPatterns(line.lineNumber)}
-              {@const highlightedContent = highlightContent(line.content, line.lineNumber, patterns)}
-              {@const markerColor = getLineMarkerColor(line.lineNumber)}
-              <tr
-                data-line={line.lineNumber}
-                class="{isMatch
-                  ? 'bg-gh-attention-emphasis/10 dark:bg-gh-attention-dark-emphasis/20 border-l-2 border-gh-attention-fg dark:border-gh-attention-dark-fg'
-                  : isSearch
-                  ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                  : 'hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-              >
-                {#if showLineNumbers}
-                  <td
-                    class="select-none text-right pr-2 pl-2 text-gh-fg-subtle dark:text-gh-fg-dark-subtle
-                           align-top whitespace-nowrap line-number-col"
-                    style="line-height: {fontSize * 1.5}px; width: {maxLineNumberWidth * 0.65 + 2}em; min-width: {maxLineNumberWidth * 0.65 + 2}em; max-width: {maxLineNumberWidth * 0.65 + 2}em;"
-                  >
-                    {formatLineNumber(line.lineNumber)}
-                  </td>
-                {/if}
-                <!-- Line marker column -->
-                <td
-                  class="line-marker-col select-none p-0 align-top border-r border-gh-border-default dark:border-gh-border-dark-default"
-                  style="line-height: {fontSize * 1.5}px; background-color: {markerColor}; width: 5px; min-width: 5px; max-width: 5px;"
-                >
-                  &nbsp;
-                </td>
-                <td
-                  class="pl-3 pr-2 whitespace-pre"
-                  style="line-height: {fontSize * 1.5}px"
-                >
-                  {@html highlightedContent}
-                </td>
-              </tr>
-            {/each}
-          {/key}
-        </tbody>
-      </table>
-
-      <!-- Load more indicator (bottom) -->
+      <!-- Loading indicator overlay -->
       {#if file.loading}
-        <div class="flex items-center justify-center py-2">
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle rounded-full px-3 py-1 shadow-md flex items-center gap-2">
           <Spinner size="sm" />
+          <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Loading...</span>
         </div>
-      {:else}
-        <button
-          class="w-full py-1 text-xs text-gh-accent-fg dark:text-gh-accent-dark-fg
-                 hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
-          on:click={() => files.loadMore(file.path, 'after')}
-        >
-          Load more lines...
-        </button>
       {/if}
+
+      <MonacoEditor
+        bind:this={monacoComponent}
+        {content}
+        language={file.syntaxHighlighting ? monacoLanguage : 'plaintext'}
+        readonly={true}
+        {theme}
+        {monacoTheme}
+        {fontSize}
+        lineNumbersStart={file.startLine}
+        {showLineNumbers}
+        wordWrap={wrapLines}
+        {showMinimap}
+        showInvisibleChars={file.showInvisibleChars}
+        on:scroll={handleMonacoScroll}
+        on:ready={handleMonacoReady}
+      />
     {/if}
   </div>
 </div>
 
 <style>
-  /* Regex filter styles */
-  :global(.hidden-bar) {
-    display: inline-block;
-    width: 5px;
-    font-weight: bold;
-  }
-
-  :global(.hidden-bar.red) {
-    background-color: #ef4444; /* Bright red */
-  }
-
-  :global(.hidden-bar.blue) {
-    background-color: #3b82f6; /* Bright blue */
-  }
-
-  :global(.regex-highlight) {
-    background-color: rgba(255, 235, 59, 0.4);
-    padding: 0 2px;
-    border-radius: 2px;
-  }
-
-  /* Regex input contenteditable styles */
+  /* Regex filter input styles */
   .regex-input {
     white-space: pre;
     overflow-x: auto;
@@ -1118,57 +1106,73 @@
     color: #9ca3af;
   }
 
-  :global(.regex-placeholder) {
-    color: #9ca3af;
-    pointer-events: none;
-  }
-
   /* Prism.js regex syntax highlighting */
   :global(.token.char-class) {
-    color: #0ea5e9; /* Blue for character classes like \w \d */
+    color: #0ea5e9;
   }
 
   :global(.token.quantifier) {
-    color: #f59e0b; /* Orange for quantifiers like + * ? */
+    color: #f59e0b;
   }
 
   :global(.token.anchor) {
-    color: #8b5cf6; /* Purple for anchors like ^ $ */
+    color: #8b5cf6;
   }
 
   :global(.token.group) {
-    color: #10b981; /* Green for groups () */
+    color: #10b981;
     font-weight: 600;
   }
 
   :global(.token.alternation) {
-    color: #ef4444; /* Red for | */
+    color: #ef4444;
   }
 
   :global(.token.escape) {
-    color: #06b6d4; /* Cyan for escape sequences */
+    color: #06b6d4;
   }
 
   :global(.token.char-set) {
-    color: #8b5cf6; /* Purple for character sets [] */
+    color: #8b5cf6;
   }
 
-  /* Fixed width line numbers column */
-  .line-number-col {
-    box-sizing: border-box;
-    overflow: hidden;
+  /* Monaco decorations for trace matches */
+  :global(.monaco-match-line) {
+    background-color: rgba(255, 200, 100, 0.2) !important;
   }
 
-  /* Line marker column - thin vertical bar for line status indicators */
-  .line-marker-col {
-    box-sizing: border-box;
-    overflow: hidden;
-    padding: 0 !important;
+  :global(.monaco-match-glyph) {
+    background-color: #f59e0b;
+    width: 4px !important;
+    margin-left: 3px;
   }
 
-  /* Invisible characters display */
-  :global(.invisible-char) {
-    color: #9ca3af;
-    user-select: none;
+  /* Monaco decorations for regex filter highlight mode */
+  :global(.monaco-regex-highlight) {
+    background-color: rgba(255, 235, 59, 0.4);
+    border-radius: 2px;
+  }
+
+  /* Monaco decorations for hidden content markers */
+  :global(.monaco-hidden-marker-red) {
+    background-color: rgb(239, 68, 68) !important;
+    color: transparent !important;
+    border-radius: 1px;
+    cursor: help;
+    display: inline-block;
+    width: 4px !important;
+    min-width: 4px !important;
+    max-width: 4px !important;
+  }
+
+  :global(.monaco-hidden-marker-blue) {
+    background-color: rgb(59, 130, 246) !important;
+    color: transparent !important;
+    border-radius: 1px;
+    cursor: help;
+    display: inline-block;
+    width: 4px !important;
+    min-width: 4px !important;
+    max-width: 4px !important;
   }
 </style>

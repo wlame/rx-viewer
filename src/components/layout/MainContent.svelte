@@ -3,47 +3,41 @@
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
 
-  let activeFileIndex = 0;
   let draggedIndex: number | null = null;
   let dragOverIndex: number | null = null;
 
-  // Track if we're manually switching tabs to avoid reactivity conflicts
-  let manualTabSwitch = false;
+  // Derive active file index from the store's activeFilePath
+  $: activeFileIndex = $files.activeFilePath
+    ? $files.openFiles.findIndex(f => f.path === $files.activeFilePath)
+    : 0;
 
-  // React to active file path changes from the store (e.g., from search results)
-  $: if ($files.activeFilePath && !manualTabSwitch) {
-    const index = $files.openFiles.findIndex(f => f.path === $files.activeFilePath);
-    if (index >= 0) {
-      activeFileIndex = index;
-    }
-  }
+  // Ensure valid index (fallback to last file if current is invalid)
+  $: validActiveIndex = activeFileIndex >= 0 && activeFileIndex < $files.openFiles.length
+    ? activeFileIndex
+    : Math.max(0, $files.openFiles.length - 1);
 
-  // When files change, ensure active index is valid
-  // Only adjust if current index is truly out of bounds
-  $: if ($files.openFiles.length > 0 && activeFileIndex >= $files.openFiles.length) {
-    activeFileIndex = $files.openFiles.length - 1;
-  }
-
-  $: activeFile = $files.openFiles[activeFileIndex];
+  $: activeFile = $files.openFiles[validActiveIndex];
 
   function selectTab(index: number) {
-    manualTabSwitch = true;
-    activeFileIndex = index;
-    // Reset the flag after reactivity has settled
-    setTimeout(() => {
-      manualTabSwitch = false;
-    }, 0);
+    const file = $files.openFiles[index];
+    if (file) {
+      files.setActiveFile(file.path);
+    }
   }
 
   function handleClose(index: number, event: Event) {
     event.stopPropagation();
     const file = $files.openFiles[index];
-    files.closeFile(file.path);
 
-    // Adjust active index after close
-    if (activeFileIndex >= $files.openFiles.length - 1) {
-      activeFileIndex = Math.max(0, $files.openFiles.length - 2);
+    // If closing the active file, switch to an adjacent tab first
+    if (index === validActiveIndex) {
+      const newIndex = index > 0 ? index - 1 : (index < $files.openFiles.length - 1 ? index + 1 : -1);
+      if (newIndex >= 0) {
+        files.setActiveFile($files.openFiles[newIndex].path);
+      }
     }
+
+    files.closeFile(file.path);
   }
 
   // Drag and drop handlers
@@ -75,17 +69,9 @@
       return;
     }
 
-    // Reorder files
+    // Reorder files (the activeFilePath in store stays the same,
+    // so the correct tab remains active after reordering)
     files.reorderFiles(draggedIndex, dropIndex);
-
-    // Update active index if needed
-    if (activeFileIndex === draggedIndex) {
-      activeFileIndex = dropIndex;
-    } else if (draggedIndex < activeFileIndex && dropIndex >= activeFileIndex) {
-      activeFileIndex--;
-    } else if (draggedIndex > activeFileIndex && dropIndex <= activeFileIndex) {
-      activeFileIndex++;
-    }
 
     draggedIndex = null;
     dragOverIndex = null;
@@ -125,7 +111,7 @@
           draggable="true"
           class="flex items-center gap-2 px-3 py-1.5 rounded-t
                  transition-colors text-sm whitespace-nowrap cursor-pointer
-                 {index === activeFileIndex
+                 {index === validActiveIndex
                    ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
                    : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
                  {dragOverIndex === index ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg' : ''}"
@@ -162,7 +148,7 @@
     <!-- Single active file editor -->
     <div class="flex-1 min-h-0 overflow-hidden">
       {#if activeFile}
-        <EditorPane file={activeFile} hideHeader={true} isActive={true} />
+        <EditorPane file={activeFile} hideHeader={false} isActive={true} />
       {/if}
     </div>
   {/if}

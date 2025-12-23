@@ -2,23 +2,6 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'path';
 
-// Plugin to copy Monaco editor workers
-function monacoEditorPlugin() {
-  return {
-    name: 'monaco-editor-plugin',
-    configureServer(server: any) {
-      server.middlewares.use((req: any, res: any, next: any) => {
-        if (req.url?.includes('/monaco-editor/')) {
-          // Let Vite handle Monaco editor files
-          next();
-        } else {
-          next();
-        }
-      });
-    },
-  };
-}
-
 export default defineConfig({
   plugins: [
     svelte({
@@ -30,7 +13,6 @@ export default defineConfig({
         handler(warning);
       },
     }),
-    monacoEditorPlugin(),
   ],
   resolve: {
     alias: {
@@ -41,6 +23,17 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split Monaco into its own chunk
+          'monaco-editor': ['monaco-editor'],
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ['monaco-editor'],
   },
   server: {
     proxy: {
