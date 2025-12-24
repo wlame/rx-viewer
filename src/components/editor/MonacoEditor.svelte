@@ -7,6 +7,7 @@
   import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
   import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
   import type { MonacoTheme } from '$lib/types';
+  import { registerLogLanguage, getLogLanguageThemeRules, getLogLanguageThemeRulesDark } from '$lib/utils/monacoLogLanguage';
 
   // Props
   export let content: string = '';
@@ -55,6 +56,13 @@
     if (themesRegistered) return;
     themesRegistered = true;
 
+    // Register the custom log language first
+    registerLogLanguage();
+
+    // Get log language theme rules
+    const logRulesLight = getLogLanguageThemeRules();
+    const logRulesDark = getLogLanguageThemeRulesDark();
+
     // GitHub Light theme
     monaco.editor.defineTheme('github-light', {
       base: 'vs',
@@ -72,6 +80,7 @@
         { token: 'parameter', foreground: '24292e' },
         { token: 'builtin', foreground: '005cc5' },
         { token: 'operator', foreground: 'd73a49' },
+        ...logRulesLight,
       ],
       colors: {
         'editor.background': '#ffffff',
@@ -101,6 +110,7 @@
         { token: 'parameter', foreground: 'c9d1d9' },
         { token: 'builtin', foreground: '79c0ff' },
         { token: 'operator', foreground: 'ff7b72' },
+        ...logRulesDark,
       ],
       colors: {
         'editor.background': '#0d1117',
@@ -130,6 +140,7 @@
         { token: 'parameter', foreground: 'fd971f', fontStyle: 'italic' },
         { token: 'builtin', foreground: '66d9ef' },
         { token: 'operator', foreground: 'f92672' },
+        ...logRulesDark,
       ],
       colors: {
         'editor.background': '#272822',
@@ -159,6 +170,7 @@
         { token: 'parameter', foreground: '657b83' },
         { token: 'builtin', foreground: '6c71c4' },
         { token: 'operator', foreground: '859900' },
+        ...logRulesLight,
       ],
       colors: {
         'editor.background': '#fdf6e3',
@@ -188,6 +200,7 @@
         { token: 'parameter', foreground: '839496' },
         { token: 'builtin', foreground: '6c71c4' },
         { token: 'operator', foreground: '859900' },
+        ...logRulesDark,
       ],
       colors: {
         'editor.background': '#002b36',
@@ -238,7 +251,7 @@
       folding: true,
       glyphMargin: true,
       lineDecorationsWidth: 5,
-      lineNumbersMinChars: 6,
+      lineNumbersMinChars: 10,
       // Smooth scrolling
       smoothScrolling: true,
       // Cursor settings for readonly

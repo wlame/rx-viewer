@@ -39,9 +39,11 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   /**
    * Check API health status
+   * @param clientId - Optional client identifier for tracking
    */
-  async getHealth(): Promise<HealthResponse> {
-    return fetchJson<HealthResponse>('/health');
+  async getHealth(clientId?: string): Promise<HealthResponse> {
+    const url = clientId ? `/health?client=${encodeURIComponent(clientId)}` : '/health';
+    return fetchJson<HealthResponse>(url);
   },
 
   /**

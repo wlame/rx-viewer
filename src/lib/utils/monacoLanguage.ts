@@ -3,6 +3,8 @@
  * Maps file extensions to Monaco language IDs
  */
 
+import { LOG_LANGUAGE_ID } from './monacoLogLanguage';
+
 const extensionToLanguage: Record<string, string> = {
   // JavaScript/TypeScript
   js: 'javascript',
@@ -103,8 +105,6 @@ const extensionToLanguage: Record<string, string> = {
   // Other
   diff: 'diff',
   patch: 'diff',
-  log: 'plaintext',
-  txt: 'plaintext',
 };
 
 // Special filenames that map to languages
@@ -138,5 +138,7 @@ export function detectMonacoLanguage(filename: string): string {
     return extensionToLanguage[ext];
   }
 
-  return 'plaintext';
+  // Use custom log language as fallback for unknown file types
+  // This provides useful highlighting for log files, txt files, and files without extensions
+  return LOG_LANGUAGE_ID;
 }

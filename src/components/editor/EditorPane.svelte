@@ -66,13 +66,21 @@
   // Convert file lines to content string for Monaco
   // Apply regex filter pre-processing for hide/show modes
   // Note: We need to reference file.lines directly to trigger reactivity
-  $: content = getProcessedContent(file.lines, file.regexFilter);
+  $: content = getProcessedContent(file.lines, file.regexFilter, file.showInvisibleChars);
 
-  function getProcessedContent(lines: typeof file.lines, regexFilter: typeof file.regexFilter): string {
+  function getProcessedContent(lines: typeof file.lines, regexFilter: typeof file.regexFilter, showInvisibleChars: boolean): string {
     // Clear hidden content map when reprocessing
     hiddenContentMap = new Map();
 
-    const rawContent = lines.map(l => l.content).join('\n');
+    // Process line content - handle \r characters
+    // When showing invisible chars: replace \r with visible symbol (␍ - U+240D SYMBOL FOR CARRIAGE RETURN)
+    // Otherwise: strip \r completely to prevent Monaco from treating them as line breaks
+    const CR_SYMBOL = '\u240D'; // ␍ - Symbol for Carriage Return
+    const processedLines = showInvisibleChars
+      ? lines.map(l => l.content.replace(/\r/g, CR_SYMBOL))
+      : lines.map(l => l.content.replace(/\r/g, ''));
+
+    const rawContent = processedLines.join('\n');
 
     // Apply regex filter for hide/show modes (not highlight - that uses decorations)
     if (regexFilter?.enabled && regexFilter?.compiledRegex) {
@@ -87,7 +95,7 @@
         try {
           const resultLines: string[] = [];
 
-          lines.forEach((line, lineIdx) => {
+          processedLines.forEach((lineContent, lineIdx) => {
             const monacoLine = lineIdx + 1;
             const lineRegex = new RegExp(pattern, 'g');
             let match;
@@ -95,14 +103,14 @@
             // Collect all group matches with their positions
             const replacements: Array<{start: number, end: number, text: string}> = [];
 
-            while ((match = lineRegex.exec(line.content)) !== null) {
+            while ((match = lineRegex.exec(lineContent)) !== null) {
               if (hasGroups && match.length > 1) {
                 // Find and replace each captured group
                 let matchOffset = match.index;
                 for (let i = 1; i < match.length; i++) {
                   if (match[i] !== undefined) {
                     const groupText = match[i];
-                    const groupStart = line.content.indexOf(groupText, matchOffset);
+                    const groupStart = lineContent.indexOf(groupText, matchOffset);
                     if (groupStart !== -1) {
                       replacements.push({
                         start: groupStart,
@@ -126,7 +134,7 @@
             // Sort by position and apply replacements from end to start
             replacements.sort((a, b) => b.start - a.start);
 
-            let result = line.content;
+            let result = lineContent;
             // Store in reverse order but with forward marker indices
             const reversedReplacements = [...replacements];
             for (let i = reversedReplacements.length - 1; i >= 0; i--) {
@@ -153,7 +161,7 @@
         try {
           const resultLines: string[] = [];
 
-          lines.forEach((line, lineIdx) => {
+          processedLines.forEach((lineContent, lineIdx) => {
             const monacoLine = lineIdx + 1;
             const lineRegex = new RegExp(pattern, 'g');
             let match;
@@ -161,14 +169,14 @@
             // Collect all "show" ranges (captured groups or entire matches)
             const showRanges: Array<{start: number, end: number, text: string}> = [];
 
-            while ((match = lineRegex.exec(line.content)) !== null) {
+            while ((match = lineRegex.exec(lineContent)) !== null) {
               if (hasGroups && match.length > 1) {
                 // Find actual positions of each captured group within the line
                 let searchStart = match.index;
                 for (let i = 1; i < match.length; i++) {
                   if (match[i] !== undefined) {
                     const groupText = match[i];
-                    const groupStart = line.content.indexOf(groupText, searchStart);
+                    const groupStart = lineContent.indexOf(groupText, searchStart);
                     if (groupStart !== -1) {
                       showRanges.push({
                         start: groupStart,
@@ -201,7 +209,7 @@
               if (range.start > lastEnd) {
                 segments.push({
                   isMatch: false,
-                  text: line.content.substring(lastEnd, range.start)
+                  text: lineContent.substring(lastEnd, range.start)
                 });
               }
               // Add the shown segment
@@ -213,19 +221,19 @@
             }
 
             // Add remaining hidden segment after last show range
-            if (lastEnd < line.content.length) {
+            if (lastEnd < lineContent.length) {
               segments.push({
                 isMatch: false,
-                text: line.content.substring(lastEnd)
+                text: lineContent.substring(lastEnd)
               });
             }
 
             // Build result line
             if (segments.length === 0) {
               // No matches - entire line is hidden
-              if (line.content.length > 0) {
+              if (lineContent.length > 0) {
                 const key = `${monacoLine}:0`;
-                hiddenContentMap.set(key, line.content);
+                hiddenContentMap.set(key, lineContent);
                 resultLines.push(HIDDEN_MARKER);
               } else {
                 resultLines.push('');
@@ -641,6 +649,17 @@
     if (lineNum >= file.startLine && lineNum <= file.endLine) {
       isScrollingToTarget = true;
       scrollToLine(lineNum);
+
+      // If jumping to boundary lines, trigger loading more content after scroll completes
+      if (lineNum === file.startLine && file.startLine > 1 && !file.reachedStart) {
+        setTimeout(() => {
+          files.loadMore(file.path, 'before');
+        }, 400);
+      } else if (lineNum === file.endLine && !file.reachedEnd) {
+        setTimeout(() => {
+          files.loadMore(file.path, 'after');
+        }, 400);
+      }
     } else {
       files.jumpToLine(file.path, lineNum);
     }
