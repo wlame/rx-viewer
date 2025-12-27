@@ -18,16 +18,14 @@ function createFilesStore() {
   });
 
   /**
-   * Fetch file analysis in the background and update totalLines when available
+   * Fetch file index in the background and update totalLines when available
+   * Uses GET /v1/index to get cached index data
    */
-  function fetchFileAnalysis(path: string) {
-    api.analyse(path)
-      .then((result) => {
-        // Extract line_count from analysis result
-        // The response structure is: { results: [{ file: "f1", line_count: N, ... }], ... }
-        const results = result.results as Array<Record<string, unknown>> | undefined;
-        const fileResult = results?.[0];
-        const lineCount = fileResult?.line_count as number | null | undefined;
+  function fetchFileIndex(path: string) {
+    api.getIndex(path)
+      .then((indexData) => {
+        // Extract line_count from index data
+        const lineCount = indexData.line_count;
 
         if (typeof lineCount === 'number' && lineCount > 0) {
           update((s) => ({
@@ -41,8 +39,9 @@ function createFilesStore() {
         }
       })
       .catch((e) => {
-        // Silently ignore analysis errors - it's just for enhancement
-        console.debug('File analysis failed (non-critical):', path, e);
+        // Silently ignore index errors - it's just for enhancement
+        // 404 means no index exists, which is fine
+        console.debug('File index fetch failed (non-critical):', path, e);
       });
   }
 
@@ -112,7 +111,7 @@ function createFilesStore() {
     }));
 
     // Fetch file analysis in background to get total line count
-    fetchFileAnalysis(path);
+    fetchFileIndex(path);
 
     // Load initial content
     const linesPerPage = get(settings).linesPerPage;

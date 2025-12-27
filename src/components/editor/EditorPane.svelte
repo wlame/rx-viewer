@@ -813,12 +813,12 @@
   <!-- File header -->
   {#if !hideHeader}
   <div
-    class="flex items-center justify-between px-3 py-1.5 gap-2
+    class="flex items-center justify-between px-3 py-2 gap-3
            bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
            border-b border-gh-border-default dark:border-gh-border-dark-default"
   >
-    <div class="flex items-center gap-2 min-w-0">
-      <span class="text-sm font-medium truncate" title={file.path}>
+    <div class="flex items-center gap-3 min-w-0">
+      <span class="text-base font-medium truncate" title={file.path}>
         {file.name}
       </span>
       <FileBadges
@@ -827,7 +827,7 @@
         isIndexed={null}
       />
       {#if file.lines.length > 0}
-        <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1">
+        <span class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1.5">
           <span>lines</span>
           <button
             class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
@@ -843,11 +843,11 @@
               on:keydown={handleDashGotoKeyDown}
               on:blur={closeDashGoto}
               type="number"
-              class="text-xs bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-1 outline-none w-20 text-center font-bold"
+              class="text-sm bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-2 py-0.5 outline-none w-32 text-center font-bold"
             />
           {:else}
             <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline px-1"
               on:click={openDashGoto}
               title="Jump to line..."
             >
@@ -984,9 +984,9 @@
 
   <!-- Regex filter panel (expandable) -->
   {#if filterPanelVisible}
-    <div class="px-3 py-2 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default">
-      <div class="flex items-center gap-2 mb-2">
-        <label for="regex-filter-input" class="text-xs font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
+    <div class="px-3 py-3 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default">
+      <div class="flex items-center gap-3 mb-3">
+        <label for="regex-filter-input" class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
           Regex:
         </label>
         <div
@@ -999,14 +999,14 @@
           tabindex="0"
           aria-label="Regex pattern"
           data-placeholder="e.g. (\w+)@(\w+)\.com"
-          class="flex-1 text-sm bg-gh-canvas-default dark:bg-gh-canvas-dark-default
+          class="flex-1 text-base bg-gh-canvas-default dark:bg-gh-canvas-dark-default
                  border border-gh-border-default dark:border-gh-border-dark-default
-                 rounded px-3 py-1.5 outline-none focus:border-gh-accent-fg dark:focus:border-gh-accent-dark-fg
-                 font-mono regex-input min-h-[28px]"
+                 rounded px-3 py-2 outline-none focus:border-gh-accent-fg dark:focus:border-gh-accent-dark-fg
+                 font-mono regex-input min-h-[36px]"
         ></div>
         <button
           on:click={applyFilter}
-          class="px-3 py-1 text-xs font-medium rounded
+          class="px-4 py-1.5 text-sm font-medium rounded
                  bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white
                  hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg"
         >
@@ -1014,7 +1014,7 @@
         </button>
         <button
           on:click={clearFilter}
-          class="px-3 py-1 text-xs font-medium rounded
+          class="px-4 py-1.5 text-sm font-medium rounded
                  bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset
                  text-gh-fg-muted dark:text-gh-fg-dark-muted
                  hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
@@ -1024,43 +1024,43 @@
       </div>
 
       <div class="flex items-center gap-4">
-        <span class="text-xs font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
+        <span class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
           Mode:
         </span>
-        <label class="flex items-center gap-1 text-xs cursor-pointer">
+        <label class="flex items-center gap-1.5 text-sm cursor-pointer">
           <input
             type="radio"
             bind:group={filterMode}
             value="hide"
             on:change={applyFilter}
-            class="cursor-pointer"
+            class="cursor-pointer w-4 h-4"
           />
           <span>Hide groups</span>
         </label>
-        <label class="flex items-center gap-1 text-xs cursor-pointer">
+        <label class="flex items-center gap-1.5 text-sm cursor-pointer">
           <input
             type="radio"
             bind:group={filterMode}
             value="show"
             on:change={applyFilter}
-            class="cursor-pointer"
+            class="cursor-pointer w-4 h-4"
           />
           <span>Show only</span>
         </label>
-        <label class="flex items-center gap-1 text-xs cursor-pointer">
+        <label class="flex items-center gap-1.5 text-sm cursor-pointer">
           <input
             type="radio"
             bind:group={filterMode}
             value="highlight"
             on:change={applyFilter}
-            class="cursor-pointer"
+            class="cursor-pointer w-4 h-4"
           />
           <span>Highlight</span>
         </label>
       </div>
 
       {#if file.regexFilter?.error}
-        <div class="mt-2 text-xs text-gh-danger-fg dark:text-gh-danger-dark-fg">
+        <div class="mt-2 text-sm text-gh-danger-fg dark:text-gh-danger-dark-fg">
           {file.regexFilter.error}
         </div>
       {/if}

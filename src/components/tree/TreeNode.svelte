@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { TreeNode as TreeNodeType } from '$lib/types';
+  import type { TreeNode as TreeNodeType, IndexData } from '$lib/types';
   import { tree, files, notifications } from '$lib/stores';
-  import { api } from '$lib/api';
+  import { api, ApiError } from '$lib/api';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -18,9 +18,9 @@
   // Analyze popup state
   let showAnalyzePopup = false;
   let analyzeLoading = false;
-  let analyzeResult: any | null = null;
-  let selectedFileId: string | null = null; // For directory analysis
-  let expandedDirs: Set<string> = new Set(); // Track expanded directories in analyze tree
+  let analyzeStatusMessage = ''; // Status message during analysis
+  let analyzeResult: IndexData | null = null;
+  let selectedAnomalyDetector: string | null = null; // Selected tab for anomaly detector
 
   function handleClick() {
     if (node.type === 'directory') {
@@ -57,15 +57,86 @@
     showContextMenu = false;
   }
 
-  async function handleAnalyse() {
+  /**
+   * Poll a task until it completes or fails
+   */
+  async function pollTaskUntilComplete(taskId: string, intervalMs = 2000, maxAttempts = 300): Promise<IndexData> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const task = await api.getTaskStatus(taskId);
+
+      if (task.status === 'completed' && task.result) {
+        return task.result;
+      }
+
+      if (task.status === 'failed') {
+        throw new Error(task.error || 'Task failed');
+      }
+
+      // Update status message
+      analyzeStatusMessage = `Analyzing... (${task.status})`;
+
+      // Still running, wait and poll again
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('Task polling timeout');
+  }
+
+  async function handleAnalyze() {
     closeContextMenu();
     analyzeLoading = true;
     showAnalyzePopup = true;
     analyzeResult = null;
+    analyzeStatusMessage = 'Checking for cached index...';
 
     try {
-      const result = await api.analyse(node.path);
-      console.log('Analyse result:', result);
+      // Step 1: Try to get cached index data
+      try {
+        const indexData = await api.getIndex(node.path);
+        console.log('Index data (cached):', indexData);
+        analyzeResult = indexData;
+        notifications.success(`Analysis loaded for ${node.name}`, 3000);
+        analyzeLoading = false;
+        return;
+      } catch (e) {
+        // If not 404, rethrow
+        if (!(e instanceof ApiError && e.status === 404)) {
+          throw e;
+        }
+        // 404 means no index exists, proceed to create one
+        console.log('No cached index found, starting indexing task...');
+      }
+
+      // Step 2: Start indexing task with analyze=true
+      analyzeStatusMessage = 'Starting analysis...';
+      let taskResponse;
+      try {
+        taskResponse = await api.startIndex(node.path, { analyze: true });
+      } catch (e) {
+        // Handle 409 Conflict (task already in progress)
+        if (e instanceof ApiError && e.status === 409) {
+          // Extract task ID from error message if possible
+          const errorText = e.message;
+          const taskIdMatch = errorText.match(/task:\s*([a-f0-9-]+)/i);
+          if (taskIdMatch) {
+            analyzeStatusMessage = 'Joining existing analysis task...';
+            const result = await pollTaskUntilComplete(taskIdMatch[1]);
+            console.log('Index data (from existing task):', result);
+            analyzeResult = result;
+            notifications.success(`Analysis complete for ${node.name}`, 3000);
+            analyzeLoading = false;
+            return;
+          }
+        }
+        throw e;
+      }
+
+      console.log('Task started:', taskResponse);
+      analyzeStatusMessage = 'Analyzing file...';
+
+      // Step 3: Poll until task completes
+      const result = await pollTaskUntilComplete(taskResponse.task_id);
+      console.log('Index data (from task):', result);
       analyzeResult = result;
       notifications.success(`Analysis complete for ${node.name}`, 3000);
     } catch (e) {
@@ -74,108 +145,82 @@
       showAnalyzePopup = false;
     } finally {
       analyzeLoading = false;
+      analyzeStatusMessage = '';
     }
   }
 
   function closeAnalyzePopup() {
     showAnalyzePopup = false;
     analyzeResult = null;
-    selectedFileId = null;
-    expandedDirs = new Set();
+    analyzeStatusMessage = '';
+    selectedAnomalyDetector = null;
   }
 
-  // Build tree structure from file paths
-  function buildFileTree(files: Record<string, string>, results: any[], analyzedPath: string) {
-    const tree: any = { children: {} };
-
-    // Normalize the analyzed path (remove trailing slash)
-    const basePath = analyzedPath.endsWith('/') ? analyzedPath.slice(0, -1) : analyzedPath;
-
-    Object.entries(files).forEach(([fileId, filePath]) => {
-      // Strip the base path to get relative path
-      let relativePath = filePath;
-      if (filePath.startsWith(basePath + '/')) {
-        relativePath = filePath.slice(basePath.length + 1);
-      } else if (filePath === basePath) {
-        // Single file analysis
-        relativePath = filePath.split('/').pop() || filePath;
+  // Group anomalies by detector
+  function getAnomaliesByDetector(anomalies: any[]): Record<string, any[]> {
+    if (!anomalies || !Array.isArray(anomalies)) return {};
+    const grouped: Record<string, any[]> = {};
+    for (const anomaly of anomalies) {
+      const detector = anomaly.detector || 'unknown';
+      if (!grouped[detector]) {
+        grouped[detector] = [];
       }
-
-      const parts = relativePath.split('/');
-      let current = tree;
-
-      // Build path through directories
-      for (let i = 0; i < parts.length - 1; i++) {
-        const dirName = parts[i];
-        if (!dirName) continue; // Skip empty parts
-
-        const dirPath = parts.slice(0, i + 1).join('/');
-        if (!current.children[dirName]) {
-          current.children[dirName] = {
-            type: 'dir',
-            name: dirName,
-            path: dirPath,
-            children: {}
-          };
-          // Auto-expand all directories
-          expandedDirs.add(dirPath);
-        }
-        current = current.children[dirName];
-      }
-
-      // Add file
-      const fileName = parts[parts.length - 1];
-      const fileResult = results.find((r: any) => r.file === fileId);
-      current.children[fileName] = {
-        type: 'file',
-        name: fileName,
-        path: relativePath,
-        fileId: fileId,
-        result: fileResult
-      };
-    });
-
-    return tree.children;
-  }
-
-  // Reactive tree structure
-  $: fileTree = analyzeResult && analyzeResult.files
-    ? buildFileTree(analyzeResult.files, analyzeResult.results, node.path)
-    : {};
-
-  // Toggle directory expansion
-  function toggleDir(dirPath: string) {
-    if (expandedDirs.has(dirPath)) {
-      expandedDirs.delete(dirPath);
-    } else {
-      expandedDirs.add(dirPath);
+      grouped[detector].push(anomaly);
     }
-    expandedDirs = expandedDirs; // Trigger reactivity
+    return grouped;
   }
 
-  // Helper to check if result is a directory analysis
-  $: isDirectoryAnalysis = analyzeResult && analyzeResult.results && analyzeResult.results.length > 1;
+  // Get detector display name
+  function getDetectorDisplayName(detector: string): string {
+    const names: Record<string, string> = {
+      'error': 'Errors',
+      'traceback': 'Tracebacks',
+      'format': 'Format Issues',
+      'warning': 'Warnings',
+      'exception': 'Exceptions',
+      'unknown': 'Other'
+    };
+    return names[detector] || detector.charAt(0).toUpperCase() + detector.slice(1);
+  }
 
-  // Helper to get currently selected file result
-  $: currentFileResult = analyzeResult && analyzeResult.results ?
-    (selectedFileId
-      ? analyzeResult.results.find((r: any) => r.file === selectedFileId)
-      : analyzeResult.results[0])
-    : null;
+  // Get severity color class
+  function getSeverityColor(severity: number): string {
+    if (severity >= 0.8) return 'text-red-600 dark:text-red-400';
+    if (severity >= 0.5) return 'text-orange-500 dark:text-orange-400';
+    if (severity >= 0.3) return 'text-yellow-600 dark:text-yellow-400';
+    return 'text-gh-fg-muted dark:text-gh-fg-dark-muted';
+  }
+
+  // Handle clicking on an anomaly row to navigate to the line
+  function handleAnomalyClick(anomaly: any) {
+    closeAnalyzePopup();
+    // Open the file and navigate to the line
+    files.openFile(node.path, anomaly.start_line);
+  }
 
   // Helper to format file size
-  function formatBytes(bytes: number | null): string {
-    if (bytes === null) return 'N/A';
+  function formatBytes(bytes: number | null | undefined): string {
+    if (bytes === null || bytes === undefined) return 'N/A';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
     return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
   }
 
+  // Format build time
+  function formatBuildTime(seconds: number | null | undefined): string {
+    if (seconds === null || seconds === undefined) return 'N/A';
+    if (seconds < 1) return `${(seconds * 1000).toFixed(0)} ms`;
+    if (seconds < 60) return `${seconds.toFixed(2)} s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs.toFixed(0)}s`;
+  }
+
   async function handleIndex() {
     closeContextMenu();
     try {
-      const result = await api.index(node.path, false);
+      const result = await api.startIndex(node.path, { force: false });
       console.log('Index result:', result);
       notifications.success(`Indexing started for ${node.name}`, 3000);
     } catch (e) {
@@ -284,9 +329,9 @@
     {#if node.type === 'file'}
       <button
         class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-        on:click={handleAnalyse}
+        on:click={handleAnalyze}
       >
-        Analyse
+        Analyze
       </button>
       {#if node.is_compressed}
         <button
@@ -299,9 +344,9 @@
     {:else}
       <button
         class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-        on:click={handleAnalyse}
+        on:click={handleAnalyze}
       >
-        Analyse Directory
+        Analyze
       </button>
     {/if}
   </div>
@@ -314,13 +359,13 @@
     on:click={closeAnalyzePopup}
   >
     <div
-      class="bg-gh-canvas-default dark:bg-gh-canvas-dark-default rounded-lg shadow-xl max-w-3xl w-full h-[70vh] flex flex-col overflow-hidden"
+      class="bg-gh-canvas-default dark:bg-gh-canvas-dark-default rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col overflow-hidden"
       on:click={(e) => e.stopPropagation()}
     >
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0">
         <h2 class="text-lg font-semibold text-gh-fg-default dark:text-gh-fg-dark-default">
-          Analysis Results: {node.name}
+          Analysis: {node.name}
         </h2>
         <button
           class="p-1 rounded hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
@@ -334,327 +379,225 @@
       </div>
 
       <!-- Content -->
-      <div class="flex flex-1 overflow-hidden">
+      <div class="flex-1 overflow-y-auto p-6">
         {#if analyzeLoading}
-          <div class="flex flex-col items-center justify-center py-12 w-full">
+          <div class="flex flex-col items-center justify-center py-12">
             <Spinner size="lg" />
-            <p class="mt-4 text-gh-fg-muted dark:text-gh-fg-dark-muted">Analyzing file...</p>
+            <p class="mt-4 text-gh-fg-muted dark:text-gh-fg-dark-muted">{analyzeStatusMessage || 'Analyzing...'}</p>
           </div>
         {:else if analyzeResult}
-          <!-- File list sidebar for directory analysis -->
-          {#if isDirectoryAnalysis}
-            <div class="w-[300px] border-r border-gh-border-default dark:border-gh-border-dark-default overflow-y-auto">
-              <div class="p-3 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default">
-                <div class="text-xs font-semibold text-gh-fg-muted dark:text-gh-fg-dark-muted">
-                  Files ({analyzeResult.results.length})
+          <div class="space-y-6">
+            <!-- General Information -->
+            <div>
+              <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                General Information
+              </h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">File Size</div>
+                  <div class="text-sm font-medium">{formatBytes(analyzeResult.size_bytes)}</div>
                 </div>
-              </div>
-              <!-- Render tree (inline to avoid recursion issues in Svelte 4) -->
-              <div class="py-2">
-                {#each Object.entries(fileTree) as [rootName, rootItem]}
-                  <!-- Level 0 -->
-                  {#if rootItem.type === 'dir'}
-                    {@const isExpanded0 = expandedDirs.has(rootItem.path)}
-                    <div>
-                      <button
-                        class="w-full flex items-center gap-1 px-2 py-1 text-sm hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
-                        style="padding-left: 8px"
-                        on:click={() => toggleDir(rootItem.path)}
-                      >
-                        <span class="w-4 h-4 flex-shrink-0">
-                          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            {#if isExpanded0}
-                              <path d="M19 9l-7 7-7-7" />
-                            {:else}
-                              <path d="M9 5l7 7-7 7" />
-                            {/if}
-                          </svg>
-                        </span>
-                        <svg class="w-4 h-4 flex-shrink-0 text-gh-fg-muted dark:text-gh-fg-dark-muted" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-                        </svg>
-                        <span class="flex-1 truncate text-left">{rootName}</span>
-                      </button>
-                      {#if isExpanded0}
-                        {#each Object.entries(rootItem.children) as [name1, item1]}
-                          <!-- Level 1 -->
-                          {#if item1.type === 'dir'}
-                            {@const isExpanded1 = expandedDirs.has(item1.path)}
-                            <div>
-                              <button
-                                class="w-full flex items-center gap-1 px-2 py-1 text-sm hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
-                                style="padding-left: 24px"
-                                on:click={() => toggleDir(item1.path)}
-                              >
-                                <span class="w-4 h-4 flex-shrink-0">
-                                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    {#if isExpanded1}
-                                      <path d="M19 9l-7 7-7-7" />
-                                    {:else}
-                                      <path d="M9 5l7 7-7 7" />
-                                    {/if}
-                                  </svg>
-                                </span>
-                                <svg class="w-4 h-4 flex-shrink-0 text-gh-fg-muted dark:text-gh-fg-dark-muted" viewBox="0 0 24 24" fill="currentColor">
-                                  <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
-                                </svg>
-                                <span class="flex-1 truncate text-left">{name1}</span>
-                              </button>
-                              {#if isExpanded1}
-                                {#each Object.entries(item1.children) as [name2, item2]}
-                                  <!-- Level 2+ - Files only (simplified) -->
-                                  {#if item2.type === 'file'}
-                                    <button
-                                      class="w-full flex items-center gap-1 px-2 py-1 text-sm hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
-                                             {(selectedFileId || analyzeResult.results[0].file) === item2.fileId ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
-                                      style="padding-left: 44px"
-                                      on:click={() => selectedFileId = item2.fileId}
-                                    >
-                                      <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                                        <polyline points="13 2 13 9 20 9"></polyline>
-                                      </svg>
-                                      <span class="flex-1 truncate text-left text-xs" title={item2.path}>{name2}</span>
-                                      <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted flex-shrink-0">
-                                        {item2.result?.size_human || formatBytes(item2.result?.size_bytes)}
-                                      </span>
-                                    </button>
-                                  {/if}
-                                {/each}
-                              {/if}
-                            </div>
-                          {:else}
-                            <!-- Level 1 file -->
-                            <button
-                              class="w-full flex items-center gap-1 px-2 py-1 text-sm hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
-                                     {(selectedFileId || analyzeResult.results[0].file) === item1.fileId ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
-                              style="padding-left: 28px"
-                              on:click={() => selectedFileId = item1.fileId}
-                            >
-                              <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                                <polyline points="13 2 13 9 20 9"></polyline>
-                              </svg>
-                              <span class="flex-1 truncate text-left text-xs" title={item1.path}>{name1}</span>
-                              <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted flex-shrink-0">
-                                {item1.result?.size_human || formatBytes(item1.result?.size_bytes)}
-                              </span>
-                            </button>
-                          {/if}
-                        {/each}
-                      {/if}
-                    </div>
-                  {:else}
-                    <!-- Level 0 file -->
-                    <button
-                      class="w-full flex items-center gap-1 px-2 py-1 text-sm hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
-                             {(selectedFileId || analyzeResult.results[0].file) === rootItem.fileId ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
-                      style="padding-left: 8px"
-                      on:click={() => selectedFileId = rootItem.fileId}
-                    >
-                      <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-                        <polyline points="13 2 13 9 20 9"></polyline>
-                      </svg>
-                      <span class="flex-1 truncate text-left text-xs" title={rootItem.path}>{rootName}</span>
-                      <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted flex-shrink-0">
-                        {rootItem.result?.size_human || formatBytes(rootItem.result?.size_bytes)}
-                      </span>
-                    </button>
-                  {/if}
-                {/each}
+                <div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Type</div>
+                  <div class="text-sm font-medium">{analyzeResult.file_type}</div>
+                </div>
+                <div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Indexed At</div>
+                  <div class="text-sm font-medium">{new Date(analyzeResult.created_at).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Build Time</div>
+                  <div class="text-sm font-medium">{formatBuildTime(analyzeResult.build_time_seconds)}</div>
+                </div>
               </div>
             </div>
-          {/if}
 
-          <!-- File analysis details -->
-          <div class="flex-1 p-6 overflow-y-auto">
-            {#if currentFileResult}
-              {@const filePath = analyzeResult.files[currentFileResult.file]}
-
-              <!-- File header -->
-              {#if isDirectoryAnalysis}
-                <div class="mb-4 pb-4 border-b border-gh-border-default dark:border-gh-border-dark-default">
-                  <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted font-mono truncate" title={filePath}>
-                    {filePath}
-                  </div>
-                </div>
-              {/if}
-
-              <div class="space-y-6">
-                <!-- General Information -->
-                <div>
-                  <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
-                    General Information
-                  </h3>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">File Size</div>
-                      <div class="text-sm font-medium">{currentFileResult.size_human || formatBytes(currentFileResult.size_bytes)}</div>
+            <!-- Line Statistics -->
+            {#if analyzeResult.line_count}
+              <div>
+                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                  Line Statistics
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Total Lines</div>
+                    <div class="text-lg font-bold text-gh-accent-fg dark:text-gh-accent-dark-fg">
+                      {analyzeResult.line_count.toLocaleString()}
                     </div>
-                    <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Type</div>
-                      <div class="text-sm font-medium">{currentFileResult.is_text ? 'Text' : 'Binary'}</div>
-                    </div>
-                    {#if currentFileResult.modified_at}
-                      <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Modified</div>
-                        <div class="text-sm font-medium">{new Date(currentFileResult.modified_at).toLocaleString()}</div>
-                      </div>
-                    {/if}
-                    {#if currentFileResult.permissions}
-                      <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Permissions</div>
-                        <div class="text-sm font-medium font-mono">{currentFileResult.permissions}</div>
-                      </div>
-                    {/if}
                   </div>
+                  {#if analyzeResult.empty_line_count !== null && analyzeResult.empty_line_count !== undefined}
+                    <div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Empty Lines</div>
+                      <div class="text-lg font-bold">
+                        {analyzeResult.empty_line_count.toLocaleString()}
+                      </div>
+                    </div>
+                  {/if}
+                  {#if analyzeResult.line_ending}
+                    <div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Line Ending</div>
+                      <div class="text-sm font-medium font-mono">{analyzeResult.line_ending}</div>
+                    </div>
+                  {/if}
+                  {#if analyzeResult.index_entries}
+                    <div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Index Entries</div>
+                      <div class="text-sm font-medium">{analyzeResult.index_entries.toLocaleString()}</div>
+                    </div>
+                  {/if}
                 </div>
 
-                <!-- Line Statistics (for text files) -->
-                {#if currentFileResult.is_text && currentFileResult.line_count !== null}
-                  <div>
-                    <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
-                      Line Statistics
-                    </h3>
-                    <div class="grid grid-cols-2 gap-4">
+                <!-- Line Length Statistics -->
+                {#if analyzeResult.line_length}
+                  <div class="mt-4">
+                    <div class="text-xs font-semibold text-gh-fg-muted dark:text-gh-fg-dark-muted mb-2">Line Length</div>
+                    <div class="grid grid-cols-3 gap-3 text-sm">
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Total Lines</div>
-                        <div class="text-lg font-bold text-gh-accent-fg dark:text-gh-accent-dark-fg">
-                          {currentFileResult.line_count?.toLocaleString()}
-                        </div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Max</div>
+                        <div class="font-semibold">{analyzeResult.line_length.max}</div>
+                        {#if analyzeResult.longest_line}
+                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Line {analyzeResult.longest_line.line_number.toLocaleString()}</div>
+                        {/if}
                       </div>
-                      {#if currentFileResult.empty_line_count !== null}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Empty Lines</div>
-                          <div class="text-lg font-bold">
-                            {currentFileResult.empty_line_count?.toLocaleString()}
-                          </div>
-                        </div>
-                      {/if}
-                      {#if currentFileResult.line_ending}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Line Ending</div>
-                          <div class="text-sm font-medium font-mono">{currentFileResult.line_ending}</div>
-                        </div>
-                      {/if}
-                    </div>
-
-                    <!-- Line Length Statistics -->
-                    {#if currentFileResult.line_length_max !== null}
-                      <div class="mt-4">
-                        <div class="text-xs font-semibold text-gh-fg-muted dark:text-gh-fg-dark-muted mb-2">Line Length</div>
-                        <div class="grid grid-cols-3 gap-3 text-sm">
-                          <div>
-                            <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Max</div>
-                            <div class="font-semibold">{currentFileResult.line_length_max}</div>
-                            {#if currentFileResult.line_length_max_line_number}
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Line {currentFileResult.line_length_max_line_number}</div>
-                            {/if}
-                          </div>
-                          {#if currentFileResult.line_length_avg !== null}
-                            <div>
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Average</div>
-                              <div class="font-semibold">{currentFileResult.line_length_avg.toFixed(1)}</div>
-                            </div>
-                          {/if}
-                          {#if currentFileResult.line_length_median !== null}
-                            <div>
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Median</div>
-                              <div class="font-semibold">{currentFileResult.line_length_median.toFixed(1)}</div>
-                            </div>
-                          {/if}
-                          {#if currentFileResult.line_length_p95 !== null}
-                            <div>
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">95th %ile</div>
-                              <div class="font-semibold">{currentFileResult.line_length_p95.toFixed(1)}</div>
-                            </div>
-                          {/if}
-                          {#if currentFileResult.line_length_p99 !== null}
-                            <div>
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">99th %ile</div>
-                              <div class="font-semibold">{currentFileResult.line_length_p99.toFixed(1)}</div>
-                            </div>
-                          {/if}
-                          {#if currentFileResult.line_length_stddev !== null}
-                            <div>
-                              <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Std Dev</div>
-                              <div class="font-semibold">{currentFileResult.line_length_stddev.toFixed(1)}</div>
-                            </div>
-                          {/if}
-                        </div>
-                      </div>
-                    {/if}
-                  </div>
-                {/if}
-
-                <!-- Compression Information -->
-                {#if currentFileResult.is_compressed}
-                  <div>
-                    <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
-                      Compression
-                    </h3>
-                    <div class="grid grid-cols-2 gap-4">
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Format</div>
-                        <div class="text-sm font-medium uppercase">{currentFileResult.compression_format}</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Average</div>
+                        <div class="font-semibold">{analyzeResult.line_length.avg.toFixed(1)}</div>
                       </div>
-                      {#if currentFileResult.compression_ratio !== null}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Ratio</div>
-                          <div class="text-sm font-medium">{currentFileResult.compression_ratio.toFixed(2)}x</div>
-                        </div>
-                      {/if}
-                      {#if currentFileResult.compressed_size !== null}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Compressed Size</div>
-                          <div class="text-sm font-medium">{formatBytes(currentFileResult.compressed_size)}</div>
-                        </div>
-                      {/if}
-                      {#if currentFileResult.decompressed_size !== null}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Decompressed Size</div>
-                          <div class="text-sm font-medium">{formatBytes(currentFileResult.decompressed_size)}</div>
-                        </div>
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Index Information -->
-                {#if currentFileResult.has_index}
-                  <div>
-                    <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
-                      Index
-                    </h3>
-                    <div class="grid grid-cols-2 gap-4">
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Status</div>
-                        <div class="text-sm font-medium">
-                          {currentFileResult.index_valid ? '✓ Valid' : '✗ Invalid'}
-                        </div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Median</div>
+                        <div class="font-semibold">{analyzeResult.line_length.median.toFixed(1)}</div>
                       </div>
-                      {#if currentFileResult.index_checkpoint_count !== null}
-                        <div>
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Checkpoints</div>
-                          <div class="text-sm font-medium">{currentFileResult.index_checkpoint_count}</div>
-                        </div>
-                      {/if}
+                      <div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">95th %ile</div>
+                        <div class="font-semibold">{analyzeResult.line_length.p95.toFixed(1)}</div>
+                      </div>
+                      <div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">99th %ile</div>
+                        <div class="font-semibold">{analyzeResult.line_length.p99.toFixed(1)}</div>
+                      </div>
+                      <div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Std Dev</div>
+                        <div class="font-semibold">{analyzeResult.line_length.stddev.toFixed(1)}</div>
+                      </div>
                     </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            <!-- Compression Information -->
+            {#if analyzeResult.compression_format}
+              <div>
+                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                  Compression
+                </h3>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Format</div>
+                    <div class="text-sm font-medium uppercase">{analyzeResult.compression_format}</div>
+                  </div>
+                  {#if analyzeResult.compression_ratio !== null}
+                    <div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Ratio</div>
+                      <div class="text-sm font-medium">{analyzeResult.compression_ratio.toFixed(2)}x</div>
+                    </div>
+                  {/if}
+                  {#if analyzeResult.decompressed_size_bytes !== null}
+                    <div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Decompressed Size</div>
+                      <div class="text-sm font-medium">{formatBytes(analyzeResult.decompressed_size_bytes)}</div>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Anomalies Detection -->
+            {#if analyzeResult.anomalies && analyzeResult.anomalies.length > 0}
+              {@const anomaliesByDetector = getAnomaliesByDetector(analyzeResult.anomalies)}
+              {@const detectors = Object.keys(anomaliesByDetector)}
+              {@const activeDetector = selectedAnomalyDetector || detectors[0]}
+              <div>
+                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                  Anomalies Detection
+                </h3>
+
+                <!-- Summary line -->
+                {#if analyzeResult.anomaly_summary}
+                  <div class="mb-3 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                    Found:
+                    {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
+                      <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span> {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1 ? ', ' : ''}
+                    {/each}
                   </div>
                 {/if}
 
-                <!-- Custom Metrics -->
-                {#if currentFileResult.custom_metrics && Object.keys(currentFileResult.custom_metrics).length > 0}
-                  <div>
-                    <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
-                      Custom Metrics
-                    </h3>
-                    <div class="border border-gh-border-default dark:border-gh-border-dark-default rounded p-4 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle">
-                      <pre class="text-xs font-mono overflow-x-auto">{JSON.stringify(currentFileResult.custom_metrics, null, 2)}</pre>
-                    </div>
+                <!-- Detector tabs -->
+                <div class="flex flex-wrap border-b border-gh-border-default dark:border-gh-border-dark-default mb-3">
+                  {#each detectors as detector}
+                    <button
+                      class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors
+                             {activeDetector === detector
+                               ? 'border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis text-gh-accent-fg dark:text-gh-accent-dark-fg'
+                               : 'border-transparent text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
+                      on:click={() => selectedAnomalyDetector = detector}
+                    >
+                      {getDetectorDisplayName(detector)}
+                      <span class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle">
+                        {anomaliesByDetector[detector].length}
+                      </span>
+                    </button>
+                  {/each}
+                </div>
+
+                <!-- Anomaly list for selected detector -->
+                <div class="border border-gh-border-default dark:border-gh-border-dark-default rounded overflow-hidden">
+                  <div class="max-h-[300px] overflow-y-auto">
+                    <table class="w-full text-sm">
+                      <thead class="bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle sticky top-0">
+                        <tr>
+                          <th class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Line</th>
+                          <th class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Description</th>
+                          <th class="text-right px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Severity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {#each anomaliesByDetector[activeDetector] as anomaly}
+                          <tr
+                            class="border-t border-gh-border-default dark:border-gh-border-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle cursor-pointer"
+                            on:click={() => handleAnomalyClick(anomaly)}
+                          >
+                            <td class="px-3 py-2 font-mono text-gh-accent-fg dark:text-gh-accent-dark-fg whitespace-nowrap">
+                              {anomaly.start_line.toLocaleString()}
+                              {#if anomaly.end_line && anomaly.end_line !== anomaly.start_line}
+                                <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">-{anomaly.end_line.toLocaleString()}</span>
+                              {/if}
+                            </td>
+                            <td class="px-3 py-2 truncate max-w-[300px]" title={anomaly.description}>
+                              {anomaly.description}
+                            </td>
+                            <td class="px-3 py-2 text-right font-medium whitespace-nowrap {getSeverityColor(anomaly.severity)}">
+                              {(anomaly.severity * 100).toFixed(0)}%
+                            </td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
                   </div>
-                {/if}
+                </div>
+              </div>
+            {:else if analyzeResult.anomaly_summary}
+              <!-- Show summary even if no detailed anomalies -->
+              <div>
+                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                  Anomalies Summary
+                </h3>
+                <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                  Found:
+                  {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
+                    <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span> {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1 ? ', ' : ''}
+                  {/each}
+                </div>
               </div>
             {/if}
           </div>

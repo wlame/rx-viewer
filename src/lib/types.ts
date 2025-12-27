@@ -75,7 +75,69 @@ export interface TaskStatus {
   started_at: string | null;
   completed_at: string | null;
   error: string | null;
-  result: Record<string, unknown> | null;
+  result: IndexData | null;
+}
+
+// Index endpoint types (GET /v1/index, POST /v1/index)
+
+/** Anomaly detected in a file */
+export interface Anomaly {
+  start_line: number;
+  end_line: number;
+  start_offset: number;
+  end_offset: number;
+  severity: number; // 0.0 to 1.0
+  category: string; // 'error', 'warning', 'security', 'format', 'timing', etc.
+  description: string;
+  detector: string; // 'traceback', 'error_keyword', 'high_entropy', 'line_length_spike', etc.
+}
+
+/** Line length statistics */
+export interface LineLengthStats {
+  max: number;
+  avg: number;
+  median: number;
+  p95: number;
+  p99: number;
+  stddev: number;
+}
+
+/** Longest line info */
+export interface LongestLineInfo {
+  line_number: number;
+  byte_offset: number;
+}
+
+/** Index data returned by GET /v1/index or in task result */
+export interface IndexData {
+  path: string;
+  file_type: string; // 'text', 'binary', etc.
+  size_bytes: number;
+  created_at: string;
+  build_time_seconds: number;
+  analysis_performed: boolean;
+  line_index: [number, number][]; // Array of [line_number, byte_offset] tuples
+  index_entries: number;
+  line_count: number;
+  empty_line_count: number;
+  line_ending: string | null; // 'LF', 'CRLF', etc.
+  line_length: LineLengthStats | null;
+  longest_line: LongestLineInfo | null;
+  compression_format: string | null;
+  decompressed_size_bytes: number | null;
+  compression_ratio: number | null;
+  anomaly_count: number;
+  anomaly_summary: Record<string, number> | null; // category -> count
+  anomalies: Anomaly[] | null;
+}
+
+/** Response from POST /v1/index */
+export interface IndexTaskResponse {
+  task_id: string;
+  status: string;
+  message: string;
+  path: string;
+  started_at: string;
 }
 
 // Frontend-specific types

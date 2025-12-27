@@ -4,6 +4,8 @@ import type {
   SamplesResponse,
   TraceResponse,
   TaskStatus,
+  IndexData,
+  IndexTaskResponse,
 } from './types';
 
 const API_BASE = '/v1';
@@ -115,30 +117,35 @@ export const api = {
   },
 
   /**
-   * Analyse files to get metadata and statistics
-   * @param paths - File or directory paths to analyse
+   * Get cached index data for a file (instant response)
+   * @param path - File path to get index for
+   * @returns Index data if exists, or throws 404 ApiError if not found
    */
-  async analyse(
-    paths: string | string[]
-  ): Promise<Record<string, unknown>> {
-    const pathList = Array.isArray(paths) ? paths : [paths];
-    const params = new URLSearchParams();
-    pathList.forEach((p) => params.append('path', p));
-    return fetchJson<Record<string, unknown>>(`${API_BASE}/analyse?${params}`);
+  async getIndex(path: string): Promise<IndexData> {
+    const params = new URLSearchParams({ path });
+    return fetchJson<IndexData>(`${API_BASE}/index?${params}`);
   },
 
   /**
-   * Start file indexing task
+   * Start a background indexing task for a file
    * @param path - File path to index
-   * @param force - Force rebuild even if valid index exists
+   * @param options - Indexing options
+   * @param options.force - Force rebuild even if valid index exists
+   * @param options.analyze - Run full analysis with anomaly detection
+   * @param options.threshold - Minimum file size in MB to index (default 50)
    */
-  async index(
+  async startIndex(
     path: string,
-    force: boolean = false
-  ): Promise<{ task_id: string; status: string; message: string }> {
-    return fetchJson(`${API_BASE}/index`, {
+    options: { force?: boolean; analyze?: boolean; threshold?: number } = {}
+  ): Promise<IndexTaskResponse> {
+    const { force = false, analyze = false, threshold } = options;
+    const body: Record<string, unknown> = { path, force, analyze };
+    if (threshold !== undefined) {
+      body.threshold = threshold;
+    }
+    return fetchJson<IndexTaskResponse>(`${API_BASE}/index`, {
       method: 'POST',
-      body: JSON.stringify({ path, force }),
+      body: JSON.stringify(body),
     });
   },
 
