@@ -194,8 +194,8 @@
   // Handle clicking on an anomaly row to navigate to the line
   function handleAnomalyClick(anomaly: any) {
     closeAnalyzePopup();
-    // Open the file and navigate to the line
-    files.openFile(node.path, anomaly.start_line);
+    // Jump to the line - this properly loads content around the target line
+    files.jumpToLine(node.path, anomaly.start_line);
   }
 
   // Helper to format file size

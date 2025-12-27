@@ -255,16 +255,17 @@ function createFilesStore() {
         const requestedLine = parseInt(lineNumStr, 10);
 
         // Calculate start line based on before_context from response
-        const startLineNum = requestedLine - response.before_context;
+        // But clamp to 1 since we can't have negative line numbers
+        // The actual start is: max(1, requestedLine - before_context)
+        const theoreticalStart = requestedLine - response.before_context;
+        const actualStart = Math.max(1, theoreticalStart);
 
         for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = startLineNum + i;
-          if (actualLineNum > 0) {
-            lines.push({
-              lineNumber: actualLineNum,
-              content: contentArr[i],
-            });
-          }
+          const actualLineNum = actualStart + i;
+          lines.push({
+            lineNumber: actualLineNum,
+            content: contentArr[i],
+          });
         }
       }
 
