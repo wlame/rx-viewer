@@ -184,6 +184,7 @@ export interface OpenFile {
   fileSize: number | null; // File size in bytes (for determining default highlighting state)
   regexFilter: RegexFilter | null; // Regex-based content filter
   showInvisibleChars: boolean; // Show invisible characters (spaces, tabs, CR, etc.)
+  highlightedLines?: { start: number; end: number } | null; // Highlighted line range (e.g., from anomaly click)
 }
 
 /** Match info for highlighting in file viewer */

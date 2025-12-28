@@ -194,6 +194,9 @@
   // Handle clicking on an anomaly row to navigate to the line
   function handleAnomalyClick(anomaly: any) {
     closeAnalyzePopup();
+    // Set highlighted lines for the anomaly range
+    const endLine = anomaly.end_line || anomaly.start_line;
+    files.setHighlightedLines(node.path, { start: anomaly.start_line, end: endLine });
     // Jump to the line - this properly loads content around the target line
     files.jumpToLine(node.path, anomaly.start_line);
   }

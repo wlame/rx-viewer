@@ -257,6 +257,10 @@
       // Cursor settings for readonly
       cursorStyle: 'line',
       cursorBlinking: 'solid',
+      // Enable bracket colorization only when syntax highlighting is on
+      'bracketPairColorization.enabled': language !== 'plaintext',
+      // Match brackets only when syntax highlighting is on
+      matchBrackets: language !== 'plaintext' ? 'always' : 'never',
       // Disable unicode highlighting (prevents orange border on our marker characters)
       unicodeHighlight: {
         ambiguousCharacters: false,
@@ -374,6 +378,11 @@
   // Update language when it changes
   $: if (editor && model) {
     monaco.editor.setModelLanguage(model, language);
+    // Update bracket colorization and matching based on language
+    editor.updateOptions({
+      'bracketPairColorization.enabled': language !== 'plaintext',
+      matchBrackets: language !== 'plaintext' ? 'always' : 'never',
+    });
   }
 
   // Public methods accessible via bind:this

@@ -278,6 +278,11 @@
     updateDecorations();
   }
 
+  // Update decorations when highlighted lines change
+  $: if (monacoEditor && file.highlightedLines !== undefined) {
+    updateDecorations();
+  }
+
   function updateDecorations() {
     if (!monacoEditor) return;
 
@@ -306,6 +311,30 @@
             glyphMarginClassName: 'monaco-match-glyph',
           },
         });
+      }
+    }
+
+    // Add decorations for highlighted lines (e.g., from anomaly click)
+    if (file.highlightedLines) {
+      const { start, end } = file.highlightedLines;
+      for (let lineNum = start; lineNum <= end; lineNum++) {
+        // Convert file line number to Monaco line number
+        const monacoLine = lineNum - file.startLine + 1;
+        if (monacoLine >= 1 && monacoLine <= file.lines.length) {
+          decorations.push({
+            range: {
+              startLineNumber: monacoLine,
+              startColumn: 1,
+              endLineNumber: monacoLine,
+              endColumn: 1,
+            },
+            options: {
+              isWholeLine: true,
+              className: 'monaco-anomaly-line',
+              glyphMarginClassName: 'monaco-anomaly-glyph',
+            },
+          });
+        }
       }
     }
 
@@ -1162,6 +1191,17 @@
 
   :global(.monaco-match-glyph) {
     background-color: #f59e0b;
+    width: 4px !important;
+    margin-left: 3px;
+  }
+
+  /* Monaco decorations for anomaly highlighting */
+  :global(.monaco-anomaly-line) {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+  }
+
+  :global(.monaco-anomaly-glyph) {
+    background-color: #ef4444;
     width: 4px !important;
     margin-left: 3px;
   }

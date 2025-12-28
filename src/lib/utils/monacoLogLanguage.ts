@@ -26,6 +26,30 @@ export function registerLogLanguage() {
   // Register the language
   monaco.languages.register({ id: LOG_LANGUAGE_ID });
 
+  // Set language configuration for bracket colorization
+  monaco.languages.setLanguageConfiguration(LOG_LANGUAGE_ID, {
+    brackets: [
+      ['[', ']'],
+      ['(', ')'],
+      ['{', '}'],
+      ['<', '>'],
+    ],
+    colorizedBracketPairs: [
+      ['[', ']'],
+      ['(', ')'],
+      ['{', '}'],
+      ['<', '>'],
+    ],
+    autoClosingPairs: [
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '{', close: '}' },
+      { open: '<', close: '>' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+    ],
+  });
+
   // Define tokenization rules using Monarch
   monaco.languages.setMonarchTokensProvider(LOG_LANGUAGE_ID, {
     defaultToken: '',
@@ -94,10 +118,7 @@ export function registerLogLanguage() {
         [/'[^']*'/, 'string'],
         [/`[^`]*`/, 'string'],
 
-        // Brackets content - different colors for different bracket types
-        [/\[[^\[\]]*\]/, 'bracket-square'],
-        [/\([^()]*\)/, 'bracket-round'],
-        [/<[^<>]+>/, 'bracket-angle'],
+        // Note: We don't tokenize brackets here to let Monaco's bracketPairColorization handle them
 
         // Numbers (integers and floats, including negative and scientific notation)
         [/[+-]?\b\d+\.?\d*(?:[eE][+-]?\d+)?\b/, 'number'],
@@ -164,11 +185,6 @@ export function getLogLanguageThemeRules(): monaco.editor.ITokenThemeRule[] {
     { token: 'string', foreground: '16a34a' },        // green-600
     { token: 'json-structure', foreground: '4f46e5' }, // indigo-600
 
-    // Brackets
-    { token: 'bracket-square', foreground: '0284c7' }, // sky-600
-    { token: 'bracket-round', foreground: '7c3aed' },  // violet-600
-    { token: 'bracket-angle', foreground: 'db2777' },  // pink-600
-
     // Key-value
     { token: 'key', foreground: '0891b2' },           // cyan-600
     { token: 'value', foreground: '65a30d' },         // lime-600
@@ -214,11 +230,6 @@ export function getLogLanguageThemeRulesDark(): monaco.editor.ITokenThemeRule[] 
     // Strings and structures
     { token: 'string', foreground: '4ade80' },        // green-400
     { token: 'json-structure', foreground: '818cf8' }, // indigo-400
-
-    // Brackets
-    { token: 'bracket-square', foreground: '38bdf8' }, // sky-400
-    { token: 'bracket-round', foreground: 'a78bfa' },  // violet-400
-    { token: 'bracket-angle', foreground: 'f472b6' },  // pink-400
 
     // Key-value
     { token: 'key', foreground: '22d3ee' },           // cyan-400

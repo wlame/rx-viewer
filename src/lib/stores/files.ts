@@ -760,6 +760,25 @@ function createFilesStore() {
     }));
   }
 
+  /**
+   * Set highlighted line range for a file (e.g., from anomaly click)
+   */
+  function setHighlightedLines(path: string, lines: { start: number; end: number } | null) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path ? { ...f, highlightedLines: lines } : f
+      ),
+    }));
+  }
+
+  /**
+   * Clear highlighted lines for a file
+   */
+  function clearHighlightedLines(path: string) {
+    setHighlightedLines(path, null);
+  }
+
   return {
     subscribe,
     openFile,
@@ -776,6 +795,8 @@ function createFilesStore() {
     clearRegexFilter,
     toggleInvisibleChars,
     setActiveFile,
+    setHighlightedLines,
+    clearHighlightedLines,
   };
 }
 
