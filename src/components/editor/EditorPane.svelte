@@ -361,6 +361,18 @@
       const categoryAnomalies = file.anomalies.filter(a => a.category === selectedCategory);
 
       for (const anomaly of categoryAnomalies) {
+        // Build hover message with anomaly details
+        const hoverMessage = {
+          value: [
+            `**${anomaly.category.toUpperCase()}** | Severity: ${anomaly.severity}`,
+            ``,
+            `**Detector:** ${anomaly.detector}`,
+            ``,
+            anomaly.description || '_No description_',
+          ].join('\n'),
+          isTrusted: true,
+        };
+
         for (let lineNum = anomaly.start_line; lineNum <= anomaly.end_line; lineNum++) {
           // Convert file line number to Monaco line number
           const monacoLine = lineNum - file.startLine + 1;
@@ -376,6 +388,7 @@
                 isWholeLine: true,
                 className: `monaco-anomaly-category-line monaco-anomaly-${selectedCategory}`,
                 glyphMarginClassName: `monaco-anomaly-category-glyph monaco-anomaly-${selectedCategory}-glyph`,
+                glyphMarginHoverMessage: hoverMessage,
                 minimap: {
                   color: categoryColor,
                   position: 1, // Monaco.editor.MinimapPosition.Inline
@@ -540,6 +553,85 @@
       multiline: '\u2630',  // ☰ Trigram for heaven (hamburger menu)
     };
     return symbols[category] || '\u2022'; // • Bullet as fallback
+  }
+
+  // Handle anomaly category button click with modifier key detection
+  function handleCategoryClick(e: MouseEvent, category: string) {
+    const isNavModifier = e.metaKey || e.altKey; // Cmd or Alt/Option
+    const isReverse = e.shiftKey;
+
+    // If category is not currently selected, or no navigation modifier pressed, just toggle
+    if (file.selectedAnomalyCategory !== category || !isNavModifier) {
+      files.toggleAnomalyCategory(file.path, category);
+      return;
+    }
+
+    // Navigation mode: find next/previous anomaly of this category
+    if (!file.anomalies) return;
+
+    // Get anomalies of this category, sorted by start_line
+    const categoryAnomalies = file.anomalies
+      .filter(a => a.category === category)
+      .sort((a, b) => a.start_line - b.start_line);
+
+    if (categoryAnomalies.length === 0) return;
+
+    // Get current center line of the viewport
+    let currentCenterLine: number;
+    if (monacoEditor) {
+      const visibleRanges = monacoEditor.getVisibleRanges();
+      if (visibleRanges.length > 0) {
+        const firstRange = visibleRanges[0];
+        const lastRange = visibleRanges[visibleRanges.length - 1];
+        const monacoCenter = Math.floor((firstRange.startLineNumber + lastRange.endLineNumber) / 2);
+        // Convert Monaco line to file line
+        currentCenterLine = monacoCenter + file.startLine - 1;
+      } else {
+        currentCenterLine = file.startLine;
+      }
+    } else {
+      currentCenterLine = file.startLine;
+    }
+
+    let targetAnomaly;
+
+    if (isReverse) {
+      // Find previous anomaly (start_line < currentCenterLine)
+      // Use currentCenterLine - 1 to ensure we move past the current anomaly if centered on it
+      const previousAnomalies = categoryAnomalies.filter(a => a.start_line < currentCenterLine - 1);
+      if (previousAnomalies.length > 0) {
+        targetAnomaly = previousAnomalies[previousAnomalies.length - 1];
+      } else {
+        // Wrap around to the last anomaly
+        targetAnomaly = categoryAnomalies[categoryAnomalies.length - 1];
+      }
+    } else {
+      // Find next anomaly (start_line > currentCenterLine)
+      // Use currentCenterLine + 1 to ensure we move past the current anomaly if centered on it
+      const nextAnomalies = categoryAnomalies.filter(a => a.start_line > currentCenterLine + 1);
+      if (nextAnomalies.length > 0) {
+        targetAnomaly = nextAnomalies[0];
+      } else {
+        // Wrap around to the first anomaly
+        targetAnomaly = categoryAnomalies[0];
+      }
+    }
+
+    if (targetAnomaly) {
+      const targetLine = targetAnomaly.start_line;
+
+      // Check if target line is already loaded
+      const isLoaded = targetLine >= file.startLine && targetLine <= file.startLine + file.lines.length - 1;
+
+      if (isLoaded && monacoEditor) {
+        // Scroll to the line within the editor
+        const monacoLine = targetLine - file.startLine + 1;
+        monacoEditor.revealLineInCenter(monacoLine);
+      } else {
+        // Jump to the line (will trigger loading)
+        files.jumpToLine(file.path, targetLine);
+      }
+    }
   }
 
   function toggleThemeDropdown() {
@@ -985,8 +1077,8 @@
             style="{file.selectedAnomalyCategory === category
               ? `background-color: ${categoryInfo.color}; color: white;`
               : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}"
-            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
-            on:click={() => files.toggleAnomalyCategory(file.path, category)}
+            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'} | Cmd/Alt+Click: next | Shift+Cmd/Alt+Click: previous"
+            on:click={(e) => handleCategoryClick(e, category)}
           >
             <span class="anomaly-icon" style="font-size: 10px;">{getCategorySymbol(category)}</span>
             <span>{count}</span>
