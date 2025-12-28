@@ -6,6 +6,7 @@ import type {
   TaskStatus,
   IndexData,
   IndexTaskResponse,
+  DetectorsResponse,
 } from './types';
 
 const API_BASE = '/v1';
@@ -155,6 +156,14 @@ export const api = {
    */
   async getTaskStatus(taskId: string): Promise<TaskStatus> {
     return fetchJson<TaskStatus>(`${API_BASE}/tasks/${taskId}`);
+  },
+
+  /**
+   * Get available anomaly detectors metadata
+   * @returns Detectors, categories, and severity scale information
+   */
+  async getDetectors(): Promise<DetectorsResponse> {
+    return fetchJson<DetectorsResponse>(`${API_BASE}/detectors`);
   },
 };
 

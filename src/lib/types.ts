@@ -140,6 +140,45 @@ export interface IndexTaskResponse {
   started_at: string;
 }
 
+// Detectors endpoint types (GET /v1/detectors)
+
+/** Severity range for a detector */
+export interface SeverityRange {
+  min: number;
+  max: number;
+}
+
+/** Detector metadata */
+export interface DetectorInfo {
+  name: string;
+  category: string;
+  description: string;
+  severity_range: SeverityRange;
+  examples: string[];
+}
+
+/** Category metadata */
+export interface CategoryInfo {
+  name: string;
+  description: string;
+  detectors: string[];
+}
+
+/** Severity scale level */
+export interface SeverityLevel {
+  min: number;
+  max: number;
+  label: string;
+  description: string;
+}
+
+/** Response from GET /v1/detectors */
+export interface DetectorsResponse {
+  detectors: DetectorInfo[];
+  categories: CategoryInfo[];
+  severity_scale: SeverityLevel[];
+}
+
 // Frontend-specific types
 
 export interface TreeNode extends TreeEntry {
@@ -185,6 +224,11 @@ export interface OpenFile {
   regexFilter: RegexFilter | null; // Regex-based content filter
   showInvisibleChars: boolean; // Show invisible characters (spaces, tabs, CR, etc.)
   highlightedLines?: { start: number; end: number } | null; // Highlighted line range (e.g., from anomaly click)
+  // Anomaly data from index
+  isIndexed: boolean; // Whether the file has an index
+  anomalies: Anomaly[] | null; // Anomalies detected in the file
+  anomalySummary: Record<string, number> | null; // Category -> count
+  selectedAnomalyCategory: string | null; // Currently selected category for highlighting (null = none)
 }
 
 /** Match info for highlighting in file viewer */

@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
-import type { OpenFile, FileLine, FileMatch } from '../types';
+import type { OpenFile, FileLine, FileMatch, Anomaly } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -18,29 +18,40 @@ function createFilesStore() {
   });
 
   /**
-   * Fetch file index in the background and update totalLines when available
-   * Uses GET /v1/index to get cached index data
+   * Fetch file index in the background and update file metadata
+   * Uses GET /v1/index to get cached index data including anomalies
    */
-  function fetchFileIndex(path: string) {
+  function fetchFileIndex(path: string, isIndexed?: boolean) {
+    // If we know the file is not indexed, skip the fetch
+    if (isIndexed === false) {
+      return;
+    }
+
     api.getIndex(path)
       .then((indexData) => {
-        // Extract line_count from index data
-        const lineCount = indexData.line_count;
-
-        if (typeof lineCount === 'number' && lineCount > 0) {
-          update((s) => ({
-            ...s,
-            openFiles: s.openFiles.map((f) =>
-              f.path === path && f.totalLines === null
-                ? { ...f, totalLines: lineCount }
-                : f
-            ),
-          }));
-        }
+        update((s) => ({
+          ...s,
+          openFiles: s.openFiles.map((f) => {
+            if (f.path !== path) return f;
+            return {
+              ...f,
+              totalLines: indexData.line_count ?? f.totalLines,
+              isIndexed: true,
+              anomalies: indexData.anomalies ?? null,
+              anomalySummary: indexData.anomaly_summary ?? null,
+            };
+          }),
+        }));
       })
       .catch((e) => {
         // Silently ignore index errors - it's just for enhancement
         // 404 means no index exists, which is fine
+        update((s) => ({
+          ...s,
+          openFiles: s.openFiles.map((f) =>
+            f.path === path ? { ...f, isIndexed: false } : f
+          ),
+        }));
         console.debug('File index fetch failed (non-critical):', path, e);
       });
   }
@@ -52,7 +63,8 @@ function createFilesStore() {
     path: string,
     scrollToLine?: number,
     fileSize?: number | null,
-    syntaxHighlightingOverride?: boolean
+    syntaxHighlightingOverride?: boolean,
+    isIndexed?: boolean
   ) {
     const state = get({ subscribe });
 
@@ -101,6 +113,11 @@ function createFilesStore() {
       fileSize: fileSize ?? null,
       regexFilter: null, // Disabled by default
       showInvisibleChars: false, // Disabled by default
+      // Anomaly data - will be populated from index fetch
+      isIndexed: isIndexed ?? false,
+      anomalies: null,
+      anomalySummary: null,
+      selectedAnomalyCategory: null,
     };
 
     // Add file to the end and make it active
@@ -110,8 +127,8 @@ function createFilesStore() {
       activeFilePath: path,
     }));
 
-    // Fetch file analysis in background to get total line count
-    fetchFileIndex(path);
+    // Fetch file index in background to get total line count and anomalies
+    fetchFileIndex(path, isIndexed);
 
     // Load initial content
     const linesPerPage = get(settings).linesPerPage;
@@ -779,6 +796,35 @@ function createFilesStore() {
     setHighlightedLines(path, null);
   }
 
+  /**
+   * Set the selected anomaly category for highlighting
+   * @param path - File path
+   * @param category - Category name to highlight, or null to clear
+   */
+  function setSelectedAnomalyCategory(path: string, category: string | null) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path
+          ? { ...f, selectedAnomalyCategory: category, highlightedLines: null }
+          : f
+      ),
+    }));
+  }
+
+  /**
+   * Toggle an anomaly category for highlighting (radio button behavior)
+   * If the category is already selected, it will be deselected
+   */
+  function toggleAnomalyCategory(path: string, category: string) {
+    const state = get({ subscribe });
+    const file = state.openFiles.find((f) => f.path === path);
+    if (!file) return;
+
+    const newCategory = file.selectedAnomalyCategory === category ? null : category;
+    setSelectedAnomalyCategory(path, newCategory);
+  }
+
   return {
     subscribe,
     openFile,
@@ -797,6 +843,8 @@ function createFilesStore() {
     setActiveFile,
     setHighlightedLines,
     clearHighlightedLines,
+    setSelectedAnomalyCategory,
+    toggleAnomalyCategory,
   };
 }
 

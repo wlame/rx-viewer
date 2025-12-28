@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import type { OpenFile, MonacoTheme } from '$lib/types';
   import { MONACO_THEMES } from '$lib/types';
-  import { files, settings, resolvedTheme } from '$lib/stores';
+  import { files, settings, resolvedTheme, CATEGORY_ICONS } from '$lib/stores';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import MonacoEditor from './MonacoEditor.svelte';
@@ -283,6 +283,16 @@
     updateDecorations();
   }
 
+  // Update decorations when selected anomaly category changes
+  $: if (monacoEditor && file.selectedAnomalyCategory !== undefined) {
+    updateDecorations();
+  }
+
+  // Update decorations when anomalies data is loaded
+  $: if (monacoEditor && file.anomalies) {
+    updateDecorations();
+  }
+
   function updateDecorations() {
     if (!monacoEditor) return;
 
@@ -314,7 +324,7 @@
       }
     }
 
-    // Add decorations for highlighted lines (e.g., from anomaly click)
+    // Add decorations for highlighted lines (e.g., from single anomaly click)
     if (file.highlightedLines) {
       const { start, end } = file.highlightedLines;
       for (let lineNum = start; lineNum <= end; lineNum++) {
@@ -332,8 +342,47 @@
               isWholeLine: true,
               className: 'monaco-anomaly-line',
               glyphMarginClassName: 'monaco-anomaly-glyph',
+              minimap: {
+                color: { id: 'minimap.findMatchHighlight' },
+                position: 1, // Monaco.editor.MinimapPosition.Inline
+              },
             },
           });
+        }
+      }
+    }
+
+    // Add decorations for selected anomaly category (highlights all lines in that category)
+    if (file.selectedAnomalyCategory && file.anomalies) {
+      const selectedCategory = file.selectedAnomalyCategory;
+      const categoryColor = CATEGORY_ICONS[selectedCategory]?.color || '#6b7280';
+
+      // Filter anomalies by selected category
+      const categoryAnomalies = file.anomalies.filter(a => a.category === selectedCategory);
+
+      for (const anomaly of categoryAnomalies) {
+        for (let lineNum = anomaly.start_line; lineNum <= anomaly.end_line; lineNum++) {
+          // Convert file line number to Monaco line number
+          const monacoLine = lineNum - file.startLine + 1;
+          if (monacoLine >= 1 && monacoLine <= file.lines.length) {
+            decorations.push({
+              range: {
+                startLineNumber: monacoLine,
+                startColumn: 1,
+                endLineNumber: monacoLine,
+                endColumn: 1,
+              },
+              options: {
+                isWholeLine: true,
+                className: `monaco-anomaly-category-line monaco-anomaly-${selectedCategory}`,
+                glyphMarginClassName: `monaco-anomaly-category-glyph monaco-anomaly-${selectedCategory}-glyph`,
+                minimap: {
+                  color: categoryColor,
+                  position: 1, // Monaco.editor.MinimapPosition.Inline
+                },
+              },
+            });
+          }
         }
       }
     }
@@ -477,6 +526,20 @@
 
   function toggleInvisibleChars() {
     files.toggleInvisibleChars(file.path);
+  }
+
+  // Get unique symbol for each anomaly category
+  function getCategorySymbol(category: string): string {
+    const symbols: Record<string, string> = {
+      error: '\u2716',      // ✖ Heavy multiplication X
+      warning: '\u26A0',    // ⚠ Warning sign
+      traceback: '\u2261',  // ≡ Identical to (stack symbol)
+      format: '\u00B6',     // ¶ Pilcrow sign
+      security: '\u2622',   // ☢ Radioactive (or use 🔒)
+      timing: '\u23F1',     // ⏱ Stopwatch
+      multiline: '\u2630',  // ☰ Trigram for heaven (hamburger menu)
+    };
+    return symbols[category] || '\u2022'; // • Bullet as fallback
   }
 
   function toggleThemeDropdown() {
@@ -913,6 +976,27 @@
     </div>
 
     <div class="flex items-center gap-2">
+      <!-- Anomaly category toggles (only shown if file has anomalies) -->
+      {#if file.anomalySummary && Object.keys(file.anomalySummary).length > 0}
+        {#each Object.entries(file.anomalySummary) as [category, count]}
+          {@const categoryInfo = CATEGORY_ICONS[category] || { icon: '?', color: '#6b7280', label: category }}
+          <button
+            class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
+            style="{file.selectedAnomalyCategory === category
+              ? `background-color: ${categoryInfo.color}; color: white;`
+              : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}"
+            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
+            on:click={() => files.toggleAnomalyCategory(file.path, category)}
+          >
+            <span class="anomaly-icon" style="font-size: 10px;">{getCategorySymbol(category)}</span>
+            <span>{count}</span>
+          </button>
+        {/each}
+
+        <!-- Vertical divider -->
+        <div class="w-px h-5 bg-gh-border-default dark:bg-gh-border-dark-default mx-1"></div>
+      {/if}
+
       <!-- Syntax highlighting toggle -->
       <button
         class="p-1 rounded flex-shrink-0 transition-colors
@@ -1195,7 +1279,7 @@
     margin-left: 3px;
   }
 
-  /* Monaco decorations for anomaly highlighting */
+  /* Monaco decorations for single anomaly highlighting (from popup click) */
   :global(.monaco-anomaly-line) {
     background-color: rgba(239, 68, 68, 0.15) !important;
   }
@@ -1204,6 +1288,72 @@
     background-color: #ef4444;
     width: 4px !important;
     margin-left: 3px;
+  }
+
+  /* Monaco decorations for category-based anomaly highlighting */
+  :global(.monaco-anomaly-category-line) {
+    background-color: rgba(107, 114, 128, 0.15) !important; /* default gray */
+  }
+
+  :global(.monaco-anomaly-category-glyph) {
+    width: 4px !important;
+    margin-left: 3px;
+  }
+
+  /* Error category - red */
+  :global(.monaco-anomaly-error) {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+  }
+  :global(.monaco-anomaly-error-glyph) {
+    background-color: #ef4444 !important;
+  }
+
+  /* Warning category - amber */
+  :global(.monaco-anomaly-warning) {
+    background-color: rgba(245, 158, 11, 0.15) !important;
+  }
+  :global(.monaco-anomaly-warning-glyph) {
+    background-color: #f59e0b !important;
+  }
+
+  /* Traceback category - dark red */
+  :global(.monaco-anomaly-traceback) {
+    background-color: rgba(220, 38, 38, 0.15) !important;
+  }
+  :global(.monaco-anomaly-traceback-glyph) {
+    background-color: #dc2626 !important;
+  }
+
+  /* Format category - violet */
+  :global(.monaco-anomaly-format) {
+    background-color: rgba(139, 92, 246, 0.15) !important;
+  }
+  :global(.monaco-anomaly-format-glyph) {
+    background-color: #8b5cf6 !important;
+  }
+
+  /* Security category - pink */
+  :global(.monaco-anomaly-security) {
+    background-color: rgba(236, 72, 153, 0.15) !important;
+  }
+  :global(.monaco-anomaly-security-glyph) {
+    background-color: #ec4899 !important;
+  }
+
+  /* Timing category - cyan */
+  :global(.monaco-anomaly-timing) {
+    background-color: rgba(6, 182, 212, 0.15) !important;
+  }
+  :global(.monaco-anomaly-timing-glyph) {
+    background-color: #06b6d4 !important;
+  }
+
+  /* Multiline category - indigo */
+  :global(.monaco-anomaly-multiline) {
+    background-color: rgba(99, 102, 241, 0.15) !important;
+  }
+  :global(.monaco-anomaly-multiline-glyph) {
+    background-color: #6366f1 !important;
   }
 
   /* Monaco decorations for regex filter highlight mode */

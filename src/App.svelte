@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { health, settings, files, tree } from '$lib/stores';
+  import { health, settings, files, tree, detectors } from '$lib/stores';
   import { readUrlState } from '$lib/utils/urlState';
   import Header from './components/layout/Header.svelte';
   import Sidebar from './components/layout/Sidebar.svelte';
@@ -11,6 +11,9 @@
 
   onMount(() => {
     health.startPolling();
+
+    // Fetch detector metadata on app load (non-blocking)
+    detectors.fetchDetectors();
 
     // Read URL params and open file if specified
     const urlState = readUrlState();
