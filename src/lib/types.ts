@@ -223,6 +223,7 @@ export interface OpenFile {
   fileSize: number | null; // File size in bytes (for determining default highlighting state)
   regexFilter: RegexFilter | null; // Regex-based content filter
   showInvisibleChars: boolean; // Show invisible characters (spaces, tabs, CR, etc.)
+  wordWrap: boolean; // Wrap long lines instead of horizontal scrolling
   highlightedLines?: { start: number; end: number } | null; // Highlighted line range (e.g., from anomaly click)
   // Anomaly data from index
   isIndexed: boolean; // Whether the file has an index

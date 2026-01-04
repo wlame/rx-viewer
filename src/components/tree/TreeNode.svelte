@@ -27,7 +27,7 @@
       tree.toggleExpanded(node.path);
     } else {
       tree.selectPath(node.path);
-      files.openFile(node.path, undefined, node.size, undefined, node.is_indexed ?? undefined);
+      files.openFile(node.path, undefined, node.size, undefined, node.is_indexed ?? undefined, node.line_count ?? undefined);
     }
   }
 

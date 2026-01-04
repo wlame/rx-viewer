@@ -50,7 +50,6 @@
   // Settings
   $: fontSize = $settings.editorFontSize;
   $: showLineNumbers = $settings.showLineNumbers;
-  $: wrapLines = $settings.wrapLines;
   $: showMinimap = $settings.showMinimap;
   $: monacoTheme = $settings.monacoTheme;
 
@@ -1103,6 +1102,20 @@
         </svg>
       </button>
 
+      <!-- Word wrap toggle -->
+      <button
+        class="p-1 rounded flex-shrink-0 transition-colors
+               {file.wordWrap
+                 ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
+                 : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+        title="{file.wordWrap ? 'Disable' : 'Enable'} word wrap"
+        on:click={() => files.toggleWordWrap(file.path)}
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M3 12h15a3 3 0 110 6h-4m0 0l2-2m-2 2l2 2M3 18h7" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+
       <!-- Invisible characters toggle -->
       <button
         class="p-1 rounded flex-shrink-0 transition-colors
@@ -1308,7 +1321,7 @@
         {fontSize}
         lineNumbersStart={file.startLine}
         {showLineNumbers}
-        wordWrap={wrapLines}
+        wordWrap={file.wordWrap}
         {showMinimap}
         showInvisibleChars={file.showInvisibleChars}
         on:scroll={handleMonacoScroll}

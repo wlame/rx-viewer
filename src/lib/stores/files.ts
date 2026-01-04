@@ -64,7 +64,8 @@ function createFilesStore() {
     scrollToLine?: number,
     fileSize?: number | null,
     syntaxHighlightingOverride?: boolean,
-    isIndexed?: boolean
+    isIndexed?: boolean,
+    lineCount?: number | null
   ) {
     const state = get({ subscribe });
 
@@ -99,7 +100,7 @@ function createFilesStore() {
       path,
       name,
       lines: [],
-      totalLines: null,
+      totalLines: lineCount ?? null,
       startLine: 1,
       endLine: 0,
       loading: true,
@@ -113,6 +114,7 @@ function createFilesStore() {
       fileSize: fileSize ?? null,
       regexFilter: null, // Disabled by default
       showInvisibleChars: false, // Disabled by default
+      wordWrap: false, // Disabled by default (horizontal scroll)
       // Anomaly data - will be populated from index fetch
       isIndexed: isIndexed ?? false,
       anomalies: null,
@@ -768,6 +770,18 @@ function createFilesStore() {
   }
 
   /**
+   * Toggle word wrap for a specific file
+   */
+  function toggleWordWrap(path: string) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path ? { ...f, wordWrap: !f.wordWrap } : f
+      ),
+    }));
+  }
+
+  /**
    * Set the active file path (used when switching tabs manually)
    */
   function setActiveFile(path: string) {
@@ -840,6 +854,7 @@ function createFilesStore() {
     updateRegexFilter,
     clearRegexFilter,
     toggleInvisibleChars,
+    toggleWordWrap,
     setActiveFile,
     setHighlightedLines,
     clearHighlightedLines,
