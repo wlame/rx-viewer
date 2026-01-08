@@ -555,17 +555,7 @@
   }
 
   // Handle anomaly category button click with modifier key detection
-  function handleCategoryClick(e: MouseEvent, category: string) {
-    const isNavModifier = e.metaKey || e.altKey; // Cmd or Alt/Option
-    const isReverse = e.shiftKey;
-
-    // If category is not currently selected, or no navigation modifier pressed, just toggle
-    if (file.selectedAnomalyCategory !== category || !isNavModifier) {
-      files.toggleAnomalyCategory(file.path, category);
-      return;
-    }
-
-    // Navigation mode: find next/previous anomaly of this category
+  function navigateToAnomaly(category: string, direction: 'next' | 'previous') {
     if (!file.anomalies) return;
 
     // Get anomalies of this category, sorted by start_line
@@ -594,7 +584,7 @@
 
     let targetAnomaly;
 
-    if (isReverse) {
+    if (direction === 'previous') {
       // Find previous anomaly (start_line < currentCenterLine)
       // Use currentCenterLine - 1 to ensure we move past the current anomaly if centered on it
       const previousAnomalies = categoryAnomalies.filter(a => a.start_line < currentCenterLine - 1);
@@ -631,6 +621,20 @@
         files.jumpToLine(file.path, targetLine);
       }
     }
+  }
+
+  function handleCategoryClick(e: MouseEvent, category: string) {
+    const isNavModifier = e.metaKey || e.altKey; // Cmd or Alt/Option
+    const isReverse = e.shiftKey;
+
+    // If category is not currently selected, or no navigation modifier pressed, just toggle
+    if (file.selectedAnomalyCategory !== category || !isNavModifier) {
+      files.toggleAnomalyCategory(file.path, category);
+      return;
+    }
+
+    // Navigation mode: find next/previous anomaly of this category
+    navigateToAnomaly(category, isReverse ? 'previous' : 'next');
   }
 
   function toggleThemeDropdown() {
@@ -1071,17 +1075,42 @@
       {#if file.anomalySummary && Object.keys(file.anomalySummary).length > 0}
         {#each Object.entries(file.anomalySummary) as [category, count]}
           {@const categoryInfo = CATEGORY_ICONS[category] || { icon: '?', color: '#6b7280', label: category }}
+          {@const isActive = file.selectedAnomalyCategory === category}
           <button
             class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
-            style="{file.selectedAnomalyCategory === category
+            style="{isActive
               ? `background-color: ${categoryInfo.color}; color: white;`
               : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}"
-            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'} | Cmd/Alt+Click: next | Shift+Cmd/Alt+Click: previous"
+            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
             on:click={(e) => handleCategoryClick(e, category)}
           >
             <span class="anomaly-icon" style="font-size: 10px;">{getCategorySymbol(category)}</span>
             <span>{count}</span>
           </button>
+          {#if isActive}
+            <div class="flex flex-col gap-0 flex-shrink-0">
+              <button
+                class="px-0.5 rounded-t flex-shrink-0 transition-colors hover:opacity-80"
+                style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
+                title="Previous {categoryInfo.label.toLowerCase()}"
+                on:click={() => navigateToAnomaly(category, 'previous')}
+              >
+                <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
+                  <path d="M5 1L1 7h8L5 1z"/>
+                </svg>
+              </button>
+              <button
+                class="px-0.5 rounded-b flex-shrink-0 transition-colors hover:opacity-80"
+                style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
+                title="Next {categoryInfo.label.toLowerCase()}"
+                on:click={() => navigateToAnomaly(category, 'next')}
+              >
+                <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
+                  <path d="M5 7L1 1h8L5 7z"/>
+                </svg>
+              </button>
+            </div>
+          {/if}
         {/each}
 
         <!-- Vertical divider -->
