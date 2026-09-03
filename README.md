@@ -4,10 +4,26 @@ Web-based frontend for RX (Regex Tracer) - a high-performance file search and an
 
 ## Overview
 
-This is the unified web UI for RX, designed to work with multiple backend implementations:
+This is the unified web UI for RX, designed to work with either backend:
 
-- [rx-tool](https://github.com/wlame/rx-tool) - Python backend
-- rx-tool-go - Go backend (coming soon)
+- [rx-go](https://github.com/wlame/rx-go) — Go backend
+- [rx-python](https://github.com/wlame/rx-python) — Python backend, on PyPI as `rx-tool`
+
+Both serve this bundle and both speak the same contract, so the viewer does not
+know or care which one it is talking to.
+
+## Intended use
+
+The viewer is served by a backend that is built for **internal use on a trusted
+network. It is not intended to be exposed to the internet.**
+
+The backend has no authentication: anyone who can reach it can read any file
+under its `--search-root`. The viewer inherits that exactly — it adds no
+authentication of its own and cannot. Reach it over loopback, a VPN, an SSH
+tunnel, or an authenticating reverse proxy.
+
+What the viewer does do is stay self-contained: it fetches nothing from a third
+party, and a `Content-Security-Policy` in `index.html` keeps it that way.
 
 ## Architecture
 

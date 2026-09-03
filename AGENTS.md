@@ -102,9 +102,11 @@ Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/
 (rx-go or rx-python). Bun is the package manager; Node is not used for tooling.
 A `Dockerfile` builds without a host Bun install.
 
-**`just typecheck` is red today**: `svelte-check` reports 4 errors that
-predate the gate (a Monaco option name, a missing `prismjs` declaration, one
-`number | null`). They are tracked in `../tickets/`; do not add more.
+**`just typecheck` is green and must stay that way.** `svelte-check` reports
+0 errors and 0 warnings. The a11y suppression that used to hide warnings is
+gone from `vite.config.ts`; fix a warning rather than filtering it. A
+`svelte-ignore` takes bare rule names on one line — put the justification in a
+separate comment above, or eslint reads every word as another rule.
 
 ## Architecture notes
 
