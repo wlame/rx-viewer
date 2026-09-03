@@ -28,7 +28,7 @@ function makeResponse(overrides: Partial<TraceResponse> = {}): TraceResponse {
     skipped_files: [],
     max_results: null,
     file_chunks: { f1: 1 },
-    context_lines: null,
+    context_lines: {},
     before_context: null,
     after_context: null,
     cli_command: null,

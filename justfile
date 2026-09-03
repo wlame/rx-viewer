@@ -51,6 +51,40 @@ typecheck:
 lint:
     bun run lint
 
+# Regenerate src/lib/types.generated.ts from rx-go's OpenAPI document.
+# RX_GO_OPENAPI overrides the location (default: ../rx-go/docs/api/openapi.json).
+gen-types:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    spec="${RX_GO_OPENAPI:-../rx-go/docs/api/openapi.json}"
+    if [ ! -f "$spec" ]; then
+        echo "OpenAPI document not found at $spec — check out rx-go beside this repo" >&2
+        echo "or set RX_GO_OPENAPI to its docs/api/openapi.json" >&2
+        exit 1
+    fi
+    bun x openapi-typescript "$spec" -o src/lib/types.generated.ts
+
+# Fail when the generated types are stale (CI gate). Skips with a notice
+# when rx-go is not checked out, so the viewer stays buildable alone.
+types-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    spec="${RX_GO_OPENAPI:-../rx-go/docs/api/openapi.json}"
+    if [ ! -f "$spec" ]; then
+        echo "notice: rx-go not found at $spec — skipping the generated-types check"
+        exit 0
+    fi
+    before=$(cat src/lib/types.generated.ts)
+    just gen-types >/dev/null
+    if [ "$before" != "$(cat src/lib/types.generated.ts)" ]; then
+        echo "src/lib/types.generated.ts is stale — run \`just gen-types\` and commit the result" >&2
+        # Write the diff to a file before trimming it: piping into head
+        # under pipefail kills the recipe with SIGPIPE.
+        diff <(echo "$before") src/lib/types.generated.ts > /tmp/rx-types.diff || true
+        head -40 /tmp/rx-types.diff >&2
+        exit 1
+    fi
+
 # Report outdated and vulnerable dependencies
 audit:
     bun outdated
@@ -98,7 +132,7 @@ package: build
 # ── aggregates ───────────────────────────────────────────────────────────
 
 # Exactly what GitHub CI enforces, in the same order
-ci: fmt-check typecheck lint test build
+ci: fmt-check types-check typecheck lint test build
 
 # The full pre-push battery
 check: ci package audit

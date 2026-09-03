@@ -1,8 +1,15 @@
+import type { components } from './types.generated';
+
 // API Types matching backend models
 
 export interface HealthResponse {
   status: string;
   app_version: string;
+  /**
+   * The HTTP wire contract the backend speaks, MAJOR.MINOR. Absent on
+   * backends released before it existed — see checkContractVersion().
+   */
+  contract_version?: string;
   ripgrep_available: boolean;
   search_roots: string[] | null;
 }
@@ -47,54 +54,26 @@ export interface SamplesResponse {
 
 // Trace endpoint (GET /v1/trace)
 
+/**
+ * The trace wire types are aliases of the generated schemas, so they cannot
+ * drift from rx-go's OpenAPI document. Regenerate with `just gen-types`
+ * after a backend change; `just ci` fails when the generated file is stale.
+ *
+ * The generated shapes are nullable wherever the spec says so — a Go nil
+ * slice marshals as null — which is stricter than the hand-written types
+ * were, and is the actual contract.
+ */
+type Schemas = components['schemas'];
+
 /** One highlighted span inside a matched line. */
-export interface Submatch {
-  text: string;
-  start: number;
-  end: number;
-}
+export type Submatch = Schemas['Submatch'];
 
 /** One line of context around a match. */
-export interface ContextLine {
-  relative_line_number: number;
-  absolute_line_number: number;
-  line_text: string;
-  absolute_offset: number;
-}
+export type ContextLine = Schemas['ContextLine'];
 
-export interface TraceMatch {
-  pattern: string; // pattern ID like 'p1'
-  file: string; // file ID like 'f1'
-  offset: number; // byte offset in the file, always absolute
-  relative_line_number: number | null; // line within the chunk, see file_chunks
-  absolute_line_number: number; // -1 when the backend does not know it
-  line_text: string | null;
-  submatches: Submatch[];
-}
+export type TraceMatch = Schemas['Match'];
 
-export interface TraceResponse {
-  request_id: string;
-  path: string[];
-  time: number;
-  patterns: Record<string, string>; // pattern_id -> pattern string
-  files: Record<string, string>; // file_id -> file path
-  matches: TraceMatch[];
-  scanned_files: string[];
-  skipped_files: string[];
-  max_results: number | null;
-  /**
-   * file_id -> number of chunks the file was scanned in. A match's
-   * relative_line_number is the file line only when this is 1; 0 means the
-   * result came from the trace cache. See resolveMatchLine().
-   */
-  file_chunks: Record<string, number>;
-  /** "pattern:file:offset" -> the context window around that match. */
-  context_lines: Record<string, ContextLine[]> | null;
-  before_context: number | null;
-  after_context: number | null;
-  /** The equivalent CLI invocation, for the "copy command" affordance. */
-  cli_command: string | null;
-}
+export type TraceResponse = Schemas['TraceResponse'];
 
 export interface TaskStatus {
   task_id: string;

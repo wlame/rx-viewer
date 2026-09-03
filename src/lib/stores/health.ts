@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
 import type { HealthResponse } from '../types';
+import { checkContractVersion, type ContractCompatibility } from '../utils/contractVersion';
 import { getFullClientId } from '../utils/clientId';
 
 interface HealthState {
@@ -8,6 +9,12 @@ interface HealthState {
   loading: boolean;
   error: string | null;
   data: HealthResponse | null;
+  /**
+   * Whether this viewer can read what the backend sends. A backend on a
+   * different contract major would be misread, so the UI says so instead
+   * of showing wrong data.
+   */
+  contract: ContractCompatibility;
 }
 
 function createHealthStore() {
@@ -16,6 +23,7 @@ function createHealthStore() {
     loading: true,
     error: null,
     data: null,
+    contract: { kind: 'unknown' },
   });
 
   let checkInterval: ReturnType<typeof setInterval> | null = null;
@@ -34,13 +42,21 @@ function createHealthStore() {
     update((s) => ({ ...s, loading: true }));
     try {
       const data = await api.getHealth(clientId);
-      set({ connected: true, loading: false, error: null, data });
+      set({
+        connected: true,
+        loading: false,
+        error: null,
+        data,
+        contract: checkContractVersion(data.contract_version),
+      });
     } catch (e) {
       set({
         connected: false,
         loading: false,
         error: e instanceof Error ? e.message : 'Connection failed',
         data: null,
+        // Nothing was read, so nothing is known about the contract.
+        contract: { kind: 'unknown' },
       });
     }
   }

@@ -27,9 +27,11 @@ interchangeable backends, no vendoring.
 ## Parity rules (binding)
 
 1. **Target the contract, not a backend.** The wire contract is rx-go's
-   OpenAPI document (`rx-go/internal/webapi/testdata/openapi.golden.json`).
-   `src/lib/types.ts` mirrors it. When a field is missing in `types.ts`, add it
-   from the spec; never invent a shape.
+   OpenAPI document, published at `rx-go/docs/api/openapi.json`. The wire
+   types are **generated** from it into `src/lib/types.generated.ts` by
+   `just gen-types`, and `src/lib/types.ts` aliases them — so they cannot
+   drift. `just ci` runs `types-check` and fails when the generated file is
+   stale. Never hand-edit a wire type; regenerate.
 2. **Never call an endpoint that only one backend has** without a capability
    check. Today both backends implement `/health`, `/v1/tree`, `/v1/samples`,
    `/v1/trace`, `/v1/index` (GET and POST), `/v1/tasks/{id}` and
@@ -49,6 +51,10 @@ interchangeable backends, no vendoring.
    installed backend on its next cache refresh.
 6. **Release order:** a viewer change that needs a new backend field ships
    after both backends have released that field.
+7. **Check the contract version.** `/health` reports `contract_version`
+   (MAJOR.MINOR). `src/lib/utils/contractVersion.ts` holds the major this
+   viewer supports; a different major is refused in the status bar rather
+   than misread. Bump it together with both backends' constants.
 
 ## Quick orientation
 
@@ -56,7 +62,8 @@ interchangeable backends, no vendoring.
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `src/main.ts`, `src/App.svelte`                                   | Entry point and root layout                                                             |
 | `src/lib/api.ts`                                                  | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                   |
-| `src/lib/types.ts`                                                | TypeScript mirror of the wire schema                                                    |
+| `src/lib/types.generated.ts`                                      | Generated from rx-go's OpenAPI document — do not edit                                   |
+| `src/lib/types.ts`                                                | Aliases of the generated wire types, plus the app's own types                           |
 | `src/lib/stores/`                                                 | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
 | `src/lib/utils/regexFilter.ts`                                    | Regex filter engine (hide, show, highlight)                                             |
 | `src/lib/utils/urlState.ts`                                       | URL to app-state persistence (no router)                                                |
@@ -77,6 +84,7 @@ just build                        # production build → dist/ (+ version.json)
 just package                      # dist.tar.gz + .sha256, the way a release does
 just preview
 
+just gen-types                    # regenerate the wire types from rx-go's spec
 just fmt                          # prettier --write
 just fmt-check                    # prettier --check (CI gate)
 just typecheck                    # svelte-check
@@ -87,7 +95,7 @@ just ci                           # exactly what GitHub CI runs
 just check                        # ci + package + audit
 ```
 
-`just ci` is `fmt-check typecheck lint test build`, in that order, and
+`just ci` is `fmt-check types-check typecheck lint test build`, in that order, and
 `.github/workflows/ci.yml` runs `just ci` — the two cannot disagree.
 
 Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/log`
@@ -179,7 +187,8 @@ in this file; file a ticket.
 
 - Do not hardcode detector names, category names or ports.
 - Do not call an endpoint one backend lacks without a capability check.
-- Do not change a wire type in `types.ts` away from the spec.
+- Do not hand-edit `types.generated.ts` or write a wire type by hand — run
+  `just gen-types`.
 - Do not treat `relative_line_number` as absolute when `file_chunks` is not 1.
 - Do not load a whole file into the editor.
 - Do not add CDN scripts or styles.

@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The wire types are generated from rx-go's OpenAPI document into
+  `src/lib/types.generated.ts` (`just gen-types`), and `types.ts` aliases
+  them. `just ci` fails when the generated file is stale, so a backend field
+  can no longer be missing here by accident. Generating them immediately
+  showed that a hand-written type allowed `context_lines: null`, which the
+  contract does not.
+- The status bar shows the backend's `contract_version`, and refuses a
+  contract major this viewer was not built for instead of misreading the
+  data (`src/lib/utils/contractVersion.ts`, with tests).
+
 - `justfile` as the single dev entrypoint. `just ci` runs `fmt-check
 typecheck lint test build` in the order CI runs them, and
   `.github/workflows/ci.yml` invokes `just ci` rather than repeating the

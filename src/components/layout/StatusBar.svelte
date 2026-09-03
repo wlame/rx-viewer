@@ -40,6 +40,21 @@
   </div>
 
   <div class="flex items-center gap-4">
+    {#if $health.contract.kind === 'incompatible'}
+      <span
+        class="font-semibold text-gh-danger-fg dark:text-gh-danger-dark-fg"
+        title={$health.contract.message}
+      >
+        API contract {$health.contract.major}.{$health.contract.minor} not supported
+      </span>
+    {:else if $health.contract.kind === 'ok'}
+      <span
+        class="text-gh-fg-muted dark:text-gh-fg-dark-muted"
+        title="The HTTP wire contract this backend speaks"
+      >
+        API {$health.contract.major}.{$health.contract.minor}
+      </span>
+    {/if}
     {#if $health.data?.ripgrep_available}
       <span>ripgrep ready</span>
     {/if}

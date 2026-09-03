@@ -1,3 +1,6 @@
 bun.lock
 dist/
 node_modules/
+# Machine-generated from rx-go's OpenAPI document; prettier and the
+# generator would fight over it forever.
+src/lib/types.generated.ts
