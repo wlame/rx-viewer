@@ -66,10 +66,10 @@ Start a backend server:
 
 ```bash
 # Python backend
-rx serve --port 8080
+rx serve --port=8080
 
 # Or Go backend
-rx-go serve --port 8080
+rx-go serve --port=8080
 ```
 
 Then start the frontend dev server:
