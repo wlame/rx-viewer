@@ -1,15 +1,34 @@
 name: Release
 
-# Publish the static bundle when a vX.Y.Z tag is pushed. The asset is a
-# .tar.gz with index.html at the ARCHIVE ROOT — the shape both backends
-# expect — plus the .sha256 sidecar they verify before extracting.
+# Two ways in, one job.
+#
+#   * workflow_dispatch — cut the release here: bump, changelog, commit,
+#     tag, push, build, publish. Use this when you have no local toolchain.
+#   * push of a vX.Y.Z tag — you cut it locally with `just release`; this
+#     builds and publishes it.
+#
+# They are one workflow rather than two on purpose. A push made with the
+# default GITHUB_TOKEN does not trigger further workflows, so a separate
+# "cut" workflow that pushed a tag would never fire the build. The dispatch
+# path therefore carries the job through to the end itself.
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      part:
+        description: 'Which part of the version to bump'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
-  contents: write # create the GitHub Release and upload the assets
+  contents: write # create the GitHub Release, and push the release commit and tag
 
 jobs:
   release:
@@ -18,7 +37,12 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
         with:
+          # scripts/release.sh derives the version from `git describe`, so
+          # it needs the tags and the full history.
           fetch-depth: 0
+          # The dispatch path pushes a commit back, so check out the branch
+          # itself rather than a detached SHA.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
       - name: setup-bun
         uses: oven-sh/setup-bun@v2
@@ -31,8 +55,43 @@ jobs:
       - name: install
         run: just install
 
+      # Before the tag is created, not after: a release must never be cut
+      # from a tree that does not pass. This is the same `just ci` the
+      # local `just release` runs first.
       - name: gates
         run: just ci
+
+      # Only on the dispatch path. scripts/release.sh refuses a dirty tree
+      # or a branch other than main, promotes [Unreleased] in the
+      # changelog, commits and tags. It prints "nothing has been pushed" —
+      # true of the script; the next lines here do the pushing.
+      #
+      # If this step fails with "protected branch", either allow
+      # github-actions[bot] to push to main or cut releases locally.
+      - name: cut the release
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ./scripts/release.sh "${{ inputs.part }}"
+          tag=$(git describe --tags --abbrev=0)
+          git push origin HEAD:main
+          git push origin "refs/tags/${tag}"
+
+      # One name for both paths. On a tag push the ref is the tag; after a
+      # dispatch cut, HEAD is the commit that was just tagged.
+      - name: resolve the tag
+        id: release_tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag=$(git describe --tags --abbrev=0)
+          fi
+          echo "Releasing ${tag}"
+          echo "name=${tag}" >> "$GITHUB_OUTPUT"
 
       # `just package` builds with the tag stamped, asserts index.html is at
       # the archive root, and writes the sha256 sidecar.
@@ -44,18 +103,21 @@ jobs:
           set -euo pipefail
           version=$(python3 -c "import json;print(json.load(open('dist/version.json'))['version'])")
           echo "dist/version.json version: $version"
-          [ "$version" = "${GITHUB_REF_NAME}" ] \
-            || { echo "ERROR: version.json ($version) does not match ${GITHUB_REF_NAME}"; exit 1; }
+          [ "$version" = "${{ steps.release_tag.outputs.name }}" ] \
+            || { echo "ERROR: version.json ($version) does not match ${{ steps.release_tag.outputs.name }}"; exit 1; }
 
       - name: release notes
         run: |
           set -euo pipefail
-          just release-notes "${GITHUB_REF_NAME#v}" > release-notes.md
+          just release-notes "${TAG#v}" > release-notes.md
           cat release-notes.md
+        env:
+          TAG: ${{ steps.release_tag.outputs.name }}
 
       - name: create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_tag.outputs.name }}
           files: |
             dist.tar.gz
             dist.tar.gz.sha256

@@ -145,7 +145,21 @@ check: ci package audit
 version:
     @echo {{version}}
 
-# Cut a release (major|minor|patch): gates, changelog, commit, tag. Never pushes.
+# Cut a release on GitHub Actions — no local bun or just toolchain needed
+release-remote part='patch':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v gh >/dev/null || { echo "gh is not installed: https://cli.github.com"; exit 1; }
+    echo "Dispatching a {{part}} release to GitHub Actions..."
+    gh workflow run release.yml --field part={{part}}
+    # `gh workflow run` returns before the run is registered, so give the
+    # API a moment rather than racing it for the run id.
+    sleep 4
+    gh run list --workflow=release.yml --limit=1
+    echo
+    echo "Follow it with:  gh run watch"
+
+# Cut a release locally (major|minor|patch): gates, changelog, commit, tag. Never pushes.
 release part='patch':
     #!/usr/bin/env bash
     set -euo pipefail

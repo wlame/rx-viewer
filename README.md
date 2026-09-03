@@ -125,11 +125,51 @@ The GitHub Actions workflow automatically builds and publishes releases:
 ## Release Workflow
 
 ```
-Developer Push → GitHub Actions → Build → Create Release → Upload dist.tar.gz
-                                                                  + .sha256
-                                                                    ↓
+Cut (locally or on Actions) → Tag → Build → Create Release → dist.tar.gz
+                                                             + .sha256
+                                                                  ↓
 Backend Serve → Check Latest Release → Verify sha256 → Cache → Serve
 ```
+
+### Cutting a release
+
+Two ways, same result. Neither needs you to edit a version anywhere:
+`package.json` stays at `0.0.0` and the build stamps from `git describe`,
+so **the tag is the source of truth**.
+
+**On GitHub Actions** — nothing needed locally except `gh`:
+
+```bash
+just release-remote minor     # or: patch, major
+gh run watch
+```
+
+Or from the GitHub UI: _Actions → Release → Run workflow_, and pick the
+part to bump.
+
+**Locally** — needs bun and just installed:
+
+```bash
+just release-dry minor        # preview, changes nothing
+just release minor            # gates, changelog, commit, tag
+git push origin main && git push origin v0.3.0
+```
+
+Either way the same thing happens: `just ci` runs first so a release
+cannot be cut from a tree that does not pass, `[Unreleased]` in
+`CHANGELOG.md` is promoted to the new version heading, and the commit and
+tag are created. The build then packages `dist.tar.gz` with its sha256
+sidecar and creates the GitHub Release with that version's changelog
+section as the notes.
+
+A release is refused if you are not on `main`, if the working tree is
+dirty (untracked files included), if the tag already exists, or if
+`[Unreleased]` is empty.
+
+The dispatch and tag-push paths are one workflow rather than two because
+a push made with the default `GITHUB_TOKEN` does not trigger further
+workflows — a separate "cut" workflow that pushed a tag would never fire
+the build.
 
 ### The sidecar is not optional
 

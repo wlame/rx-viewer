@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A release can be cut on GitHub Actions rather than locally.
+  `just release-remote <part>`, or _Actions → Release → Run workflow_,
+  runs the gates, promotes the changelog, commits, tags, pushes and
+  publishes on the runner — so a machine with no bun can still ship. The
+  dispatch and tag-push paths are one workflow because a push made with
+  the default `GITHUB_TOKEN` does not trigger further workflows.
+
 - Unit tests for `regexFilter`, `urlState`, `format`, the log grammar and
   `api`: 111 tests across 8 files, up from 14 across 2. They cover the
   filter's three modes and its HTML escaping, the URL round trip for
