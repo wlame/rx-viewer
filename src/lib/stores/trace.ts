@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
+import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { TraceMatch, TraceResponse } from '../types';
 
 interface TraceState {
@@ -21,6 +22,11 @@ function createTraceStore() {
     error: null,
   });
 
+  // Only the newest search may write to the store. Typing a query and
+  // then refining it used to leave whichever response arrived last on
+  // screen, which is not necessarily the one the user asked for.
+  const latestSearch = new LatestRequest();
+
   async function search(paths: string[], patterns: string[], maxResults?: number) {
     if (patterns.length === 0) return;
 
@@ -33,7 +39,13 @@ function createTraceStore() {
     }));
 
     try {
-      const response = await api.trace(paths, patterns, maxResults);
+      const response = await latestSearch.run((signal) =>
+        api.trace(paths, patterns, maxResults, undefined, undefined, undefined, { signal }),
+      );
+
+      // A newer search is already running; leave the store to it rather
+      // than flashing this query's results on the way past.
+      if (response === SUPERSEDED) return null;
 
       update((s) => ({
         ...s,
@@ -43,6 +55,9 @@ function createTraceStore() {
 
       return response;
     } catch (e) {
+      // A cancelled search is not a failure the user should see.
+      if (isAbortError(e)) return null;
+
       update((s) => ({
         ...s,
         searching: false,

@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { LatestRequest, LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { TreeNode, TreeEntry } from '../types';
 
 interface TreeState {
@@ -57,15 +58,24 @@ function createTreeStore() {
     });
   }
 
+  // The roots load once per session but can be retried; only the newest
+  // attempt may write. Directory loads are keyed by path so expanding one
+  // folder does not cancel another.
+  const latestRoots = new LatestRequest();
+  const directoryLoads = new LatestRequestMap();
+
   async function loadRoots() {
     update((s) => ({ ...s, loading: true, error: null }));
     try {
-      const response = await api.getTree();
+      const response = await latestRoots.run((signal) => api.getTree(undefined, { signal }));
+      if (response === SUPERSEDED) return;
+
       const roots = response.entries
         .filter((e) => e.type === 'directory')
         .map((e) => entryToNode(e, 0));
       update((s) => ({ ...s, roots, loading: false }));
     } catch (e) {
+      if (isAbortError(e)) return;
       update((s) => ({
         ...s,
         loading: false,
@@ -85,7 +95,9 @@ function createTreeStore() {
     }));
 
     try {
-      const response = await api.getTree(path);
+      const response = await directoryLoads.run(path, (signal) => api.getTree(path, { signal }));
+      if (response === SUPERSEDED) return;
+
       const children = response.entries.map((e) => entryToNode(e, node.level + 1));
       update((s) => ({
         ...s,
@@ -97,6 +109,7 @@ function createTreeStore() {
         })),
       }));
     } catch (e) {
+      if (isAbortError(e)) return;
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({ ...n, loading: false })),

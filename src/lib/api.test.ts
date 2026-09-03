@@ -102,6 +102,35 @@ describe('request shape', () => {
     expect(spy.mock.calls[0][0]).toBe('/v1/detectors');
   });
 
+  it('passes a cancellation signal through to fetch', async () => {
+    const spy = stubFetch({});
+    const controller = new AbortController();
+    await api.getSamples('/a.log', ['1-10'], undefined, { signal: controller.signal });
+    expect(spy.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it.each([
+    ['getTree', (o: object) => api.getTree('/x', o)],
+    ['getSamples', (o: object) => api.getSamples('/x', ['1-2'], undefined, o)],
+    ['getSamplesByOffset', (o: object) => api.getSamplesByOffset('/x', [10], undefined, o)],
+    [
+      'trace',
+      (o: object) => api.trace(['/x'], ['e'], undefined, undefined, undefined, undefined, o),
+    ],
+    ['getIndex', (o: object) => api.getIndex('/x', o)],
+  ])('%s forwards the signal', async (_name, call) => {
+    const spy = stubFetch({});
+    const controller = new AbortController();
+    await call({ signal: controller.signal });
+    expect(spy.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it('sends no signal when none is given', async () => {
+    const spy = stubFetch({});
+    await api.getSamples('/a.log', ['1-10']);
+    expect(spy.mock.calls[0][1].signal).toBeUndefined();
+  });
+
   it('never builds an absolute URL, so the CSP connect-src self holds', async () => {
     const spy = stubFetch({});
     await api.getTree('/x');

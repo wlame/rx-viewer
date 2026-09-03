@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths with spaces, plus signs and non-ASCII, the relative-time
   boundaries, the grammar's rule order, and the request builder's path
   encoding.
+- `src/lib/utils/latestRequest.ts`: `LatestRequest` and
+  `LatestRequestMap` make the newest request the winner. They abort the
+  request they supersede and report its result as `SUPERSEDED` if it
+  answers anyway, so a caller cannot apply a stale response by
+  forgetting half of the pattern. 18 tests cover it, including the
+  out-of-order arrival that motivated it.
 - `src/lib/utils/processContent.ts` holds the line-to-editor-text
   transformation that `EditorPane.svelte` used to do inline: carriage
   return handling and the hide/show filter modes. It returns the
@@ -57,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A slow response could overwrite a newer one. The file, search and tree
+  stores keyed their updates on a path alone with no request ordering, so
+  two overlapping loads both applied in arrival order: jumping to line
+  1,000,000 and then to line 5 could leave the editor on the first
+  target, and a refined search could show the previous query's results.
+  Every load now runs through a `LatestRequest`, and `api` methods accept
+  an `AbortSignal` so a superseded request is cancelled rather than
+  merely ignored. Closing a file cancels its in-flight load. An aborted
+  request raises no error notification, and in `loadMore` it no longer
+  gets misread as the end of the file.
 - Four `svelte-check` errors the old CI could not see. Monaco's
   `bracketPairColorization` was passed as a flat
   `'bracketPairColorization.enabled'` key, which its typings reject and

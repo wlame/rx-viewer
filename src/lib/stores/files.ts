@@ -1,8 +1,20 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { OpenFile, FileLine, FileMatch } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
+
+/**
+ * At most one window load per file may write to the store.
+ *
+ * Every load below updates the file it matches by path, so two
+ * overlapping loads for the same file both applied, in arrival order.
+ * Jump to line 1,000,000 and then to line 5 on a slow link and the
+ * editor could settle on the first target. Keyed by path so a load in
+ * one tab does not cancel another tab's.
+ */
+const fileLoads = new LatestRequestMap();
 
 interface FilesState {
   openFiles: OpenFile[];
@@ -158,7 +170,10 @@ function createFilesStore() {
     try {
       // Request lines 1 to totalLines as a range
       const range = `1-${totalLines}`;
-      const response = await api.getSamples(path, [range]);
+      const response = await fileLoads.run(path, (signal) =>
+        api.getSamples(path, [range], undefined, { signal }),
+      );
+      if (response === SUPERSEDED) return;
 
       // Parse response - samples key is the range string (e.g., "1-100")
       const lines: FileLine[] = [];
@@ -204,6 +219,8 @@ function createFilesStore() {
         ),
       }));
     } catch (e) {
+      // A superseded load was cancelled on purpose; it is not a failure.
+      if (isAbortError(e)) return;
       const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
 
       // Check if it's a binary file error
@@ -269,7 +286,10 @@ function createFilesStore() {
     try {
       // Request the center line with context
       // Backend returns lines from (centerLine - context) to (centerLine + context)
-      const response = await api.getSamples(path, [centerLine.toString()], contextLines);
+      const response = await fileLoads.run(path, (signal) =>
+        api.getSamples(path, [centerLine.toString()], contextLines, { signal }),
+      );
+      if (response === SUPERSEDED) return;
 
       // Parse response - the key is the requested line number
       const lines: FileLine[] = [];
@@ -317,6 +337,8 @@ function createFilesStore() {
         ),
       }));
     } catch (e) {
+      // A superseded load was cancelled on purpose; it is not a failure.
+      if (isAbortError(e)) return;
       const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
 
       // Check if it's a binary file error
@@ -388,7 +410,10 @@ function createFilesStore() {
 
     try {
       const range = `${startLine}-${endLine}`;
-      const response = await api.getSamples(path, [range]);
+      const response = await fileLoads.run(path, (signal) =>
+        api.getSamples(path, [range], undefined, { signal }),
+      );
+      if (response === SUPERSEDED) return;
 
       // Parse response
       const newLines: FileLine[] = [];
@@ -445,6 +470,12 @@ function createFilesStore() {
         }),
       }));
     } catch (e) {
+      // A superseded load was cancelled on purpose. Return before the
+      // boundary flags below: an abort says nothing about whether the
+      // file has more lines, and the load that replaced this one owns
+      // the loading flag now.
+      if (isAbortError(e)) return;
+
       const errorMessage = e instanceof Error ? e.message : String(e);
       const isEOF = errorMessage.includes('EOF reached') || errorMessage.includes('out of bounds');
 
@@ -536,7 +567,10 @@ function createFilesStore() {
       const context = Math.floor(linesPerPage / 2);
 
       // Request line -1 with context to get the last lines
-      const response = await api.getSamples(path, ['-1'], context);
+      const response = await fileLoads.run(path, (signal) =>
+        api.getSamples(path, ['-1'], context, { signal }),
+      );
+      if (response === SUPERSEDED) return;
 
       // Parse response - the key will be the actual last line number
       const lines: FileLine[] = [];
@@ -595,6 +629,8 @@ function createFilesStore() {
         ),
       }));
     } catch (e) {
+      // A superseded load was cancelled on purpose; it is not a failure.
+      if (isAbortError(e)) return;
       const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
 
       update((s) => ({
@@ -617,6 +653,9 @@ function createFilesStore() {
    * Close a file
    */
   function closeFile(path: string) {
+    // Cancel anything still loading for this file and drop its slot.
+    fileLoads.forget(path);
+
     update((s) => ({
       ...s,
       openFiles: s.openFiles.filter((f) => f.path !== path),

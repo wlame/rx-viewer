@@ -11,6 +11,15 @@ import type {
 
 const API_BASE = '/v1';
 
+/**
+ * Per-call options. Only a cancellation signal for now — pass the one a
+ * LatestRequest hands you, so a superseded load stops instead of racing
+ * the load that replaced it.
+ */
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -53,9 +62,9 @@ export const api = {
    * Get directory tree listing
    * @param path - Directory path to list, or undefined for search roots
    */
-  async getTree(path?: string): Promise<TreeResponse> {
+  async getTree(path?: string, options?: RequestOptions): Promise<TreeResponse> {
     const url = path ? `${API_BASE}/tree?path=${encodeURIComponent(path)}` : `${API_BASE}/tree`;
-    return fetchJson<TreeResponse>(url);
+    return fetchJson<TreeResponse>(url, options);
   },
 
   /**
@@ -65,7 +74,12 @@ export const api = {
    *                 Can also include negative numbers like "-1" for end of file
    * @param context - Optional context lines (used with single line numbers like "-1")
    */
-  async getSamples(path: string, ranges: string[], context?: number): Promise<SamplesResponse> {
+  async getSamples(
+    path: string,
+    ranges: string[],
+    context?: number,
+    options?: RequestOptions,
+  ): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
       lines: ranges.join(','),
@@ -73,7 +87,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
-    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`);
+    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`, options);
   },
 
   /**
@@ -91,6 +105,7 @@ export const api = {
     path: string,
     offsets: number[],
     context?: number,
+    options?: RequestOptions,
   ): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
@@ -99,7 +114,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
-    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`);
+    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`, options);
   },
 
   /**
@@ -118,6 +133,7 @@ export const api = {
     caseSensitive?: boolean,
     contextBefore?: number,
     contextAfter?: number,
+    options?: RequestOptions,
   ): Promise<TraceResponse> {
     const params = new URLSearchParams();
     paths.forEach((p) => params.append('path', p));
@@ -134,7 +150,7 @@ export const api = {
     if (contextAfter !== undefined) {
       params.set('context_after', contextAfter.toString());
     }
-    return fetchJson<TraceResponse>(`${API_BASE}/trace?${params}`);
+    return fetchJson<TraceResponse>(`${API_BASE}/trace?${params}`, options);
   },
 
   /**
@@ -142,9 +158,9 @@ export const api = {
    * @param path - File path to get index for
    * @returns Index data if exists, or throws 404 ApiError if not found
    */
-  async getIndex(path: string): Promise<IndexData> {
+  async getIndex(path: string, options?: RequestOptions): Promise<IndexData> {
     const params = new URLSearchParams({ path });
-    return fetchJson<IndexData>(`${API_BASE}/index?${params}`);
+    return fetchJson<IndexData>(`${API_BASE}/index?${params}`, options);
   },
 
   /**
