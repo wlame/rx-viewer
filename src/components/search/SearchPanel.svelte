@@ -1,5 +1,8 @@
 <script lang="ts">
   import { trace, tree, files } from '$lib/stores';
+  import { api } from '$lib/api';
+  import { resolveMatchLine } from '$lib/utils/matchLine';
+  import type { TraceMatch } from '$lib/types';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
 
@@ -59,24 +62,134 @@
     }
   }
 
-  function openMatch(filePath: string, lineNumber: number) {
-    // Get all matches for this file and set them for highlighting
-    if ($trace.response) {
-      const fileMatches = $trace.response.matches
-        .filter((m) => getFilePath(m.file) === filePath)
-        .map((m) => ({
-          lineNumber: m.absolute_line_number !== -1
-            ? m.absolute_line_number
-            : m.relative_line_number || 0,
-          patternId: m.pattern,
-          pattern: getPattern(m.pattern),
-        }));
+  // Byte offset -> absolute line number, for matches whose line the
+  // backend could not report. Keyed by "path:offset" so one lookup serves
+  // both the result list and the jump.
+  let resolvedLines: Record<string, number> = {};
+  // Matches currently being resolved, so the row can say so.
+  let resolving: Record<string, boolean> = {};
 
-      files.setMatches(filePath, fileMatches);
+  function offsetKey(filePath: string, offset: number): string {
+    return `${filePath}:${offset}`;
+  }
+
+  /**
+   * The line to navigate to, or null when it still has to be fetched.
+   *
+   * relative_line_number counts from the start of the match's chunk, so it
+   * is only the file line when the file was scanned in one chunk. The byte
+   * offset is always absolute, which is what /v1/samples resolves.
+   */
+  function displayLine(match: TraceMatch, filePath: string): number | null {
+    if (!$trace.response) return null;
+    const resolved = resolveMatchLine(match, $trace.response);
+    if (resolved.kind === 'line') return resolved.line;
+    return resolvedLines[offsetKey(filePath, resolved.offset)] ?? null;
+  }
+
+  // Resolve unknown lines as soon as results arrive, one request per file,
+  // so the result list shows real line numbers instead of making the user
+  // click to find out. A stale response is dropped by sequence number.
+  //
+  // Both backends resolve one offset per scan of the file, so a batch of N
+  // offsets on a large file costs N scans. The cap keeps that bounded;
+  // anything beyond it resolves when the user clicks the result.
+  const EAGER_RESOLVE_LIMIT_PER_FILE = 20;
+  let resolveSequence = 0;
+  $: resolveUnknownLines($trace.response);
+
+  async function resolveUnknownLines(response: typeof $trace.response) {
+    resolvedLines = {};
+    resolving = {};
+    if (!response) return;
+
+    const sequence = ++resolveSequence;
+    const offsetsByFile = new Map<string, number[]>();
+    for (const match of response.matches) {
+      if (resolveMatchLine(match, response).kind === 'line') continue;
+      const filePath = response.files[match.file] ?? match.file;
+      const offsets = offsetsByFile.get(filePath) ?? [];
+      if (offsets.length >= EAGER_RESOLVE_LIMIT_PER_FILE) continue;
+      if (!offsets.includes(match.offset)) offsets.push(match.offset);
+      offsetsByFile.set(filePath, offsets);
     }
+    if (offsetsByFile.size === 0) return;
 
-    // Open file and jump to the matched line
-    files.jumpToLine(filePath, lineNumber);
+    const pending: Record<string, boolean> = {};
+    for (const [filePath, offsets] of offsetsByFile) {
+      for (const offset of offsets) pending[offsetKey(filePath, offset)] = true;
+    }
+    resolving = pending;
+
+    await Promise.all(
+      [...offsetsByFile].map(async ([filePath, offsets]) => {
+        try {
+          const samples = await api.getSamplesByOffset(filePath, offsets, 0);
+          if (sequence !== resolveSequence) return;
+          const found: Record<string, number> = {};
+          for (const offset of offsets) {
+            const line = samples.offsets?.[String(offset)];
+            if (typeof line === 'number' && line >= 1) {
+              found[offsetKey(filePath, offset)] = line;
+            }
+          }
+          resolvedLines = { ...resolvedLines, ...found };
+        } catch {
+          // Leave these matches showing the byte offset; clicking one
+          // still retries the lookup.
+        }
+      })
+    );
+
+    if (sequence === resolveSequence) resolving = {};
+  }
+
+  /** Ask the backend which line a byte offset falls on. */
+  async function resolveLineFromOffset(filePath: string, offset: number): Promise<number | null> {
+    const key = offsetKey(filePath, offset);
+    if (resolvedLines[key] !== undefined) return resolvedLines[key];
+
+    resolving = { ...resolving, [key]: true };
+    try {
+      const samples = await api.getSamplesByOffset(filePath, [offset], 0);
+      const line = samples.offsets?.[String(offset)];
+      if (typeof line === 'number' && line >= 1) {
+        resolvedLines = { ...resolvedLines, [key]: line };
+        return line;
+      }
+      return null;
+    } catch {
+      // The jump still works from the offset's file window; a failed
+      // lookup only costs the gutter number.
+      return null;
+    } finally {
+      const { [key]: _dropped, ...rest } = resolving;
+      resolving = rest;
+    }
+  }
+
+  async function openMatch(match: TraceMatch, filePath: string) {
+    if (!$trace.response) return;
+
+    // Highlight every match in this file whose line we already know.
+    const fileMatches = $trace.response.matches
+      .filter((m) => getFilePath(m.file) === filePath)
+      .map((m) => ({ line: displayLine(m, filePath), m }))
+      .filter((entry): entry is { line: number; m: TraceMatch } => entry.line !== null)
+      .map((entry) => ({
+        lineNumber: entry.line,
+        patternId: entry.m.pattern,
+        pattern: getPattern(entry.m.pattern),
+      }));
+    files.setMatches(filePath, fileMatches);
+
+    let line = displayLine(match, filePath);
+    if (line === null) {
+      line = await resolveLineFromOffset(filePath, match.offset);
+    }
+    if (line === null) return;
+
+    files.jumpToLine(filePath, line);
   }
 
   // Get file path from file ID
@@ -247,15 +360,14 @@
         <ul class="divide-y divide-gh-border-default dark:divide-gh-border-dark-default">
           {#each $trace.response.matches as match}
             {@const filePath = getFilePath(match.file)}
-            {@const lineNum = match.absolute_line_number !== -1
-              ? match.absolute_line_number
-              : match.relative_line_number || 0}
+            {@const lineNum = displayLine(match, filePath)}
+            {@const isResolving = resolving[offsetKey(filePath, match.offset)]}
             {@const pattern = getPattern(match.pattern)}
             {@const fileMetadata = getFileMetadata(filePath)}
             <li>
               <button
                 class="w-full text-left px-3 py-2 hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
-                on:click={() => openMatch(filePath, lineNum)}
+                on:click={() => openMatch(match, filePath)}
               >
                 <div class="flex items-center gap-2 text-sm">
                   <span class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate">
@@ -273,11 +385,17 @@
                       @{match.offset}
                     </span>
                     <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-                      (:{lineNum})
+                      {#if lineNum !== null}(:{lineNum}){:else if isResolving}(resolving line…){/if}
                     </span>
                   {:else}
                     <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
-                      :{lineNum}
+                      {#if lineNum !== null}
+                        :{lineNum}
+                      {:else if isResolving}
+                        resolving line…
+                      {:else}
+                        line unknown
+                      {/if}
                     </span>
                     <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
                       (@{match.offset})

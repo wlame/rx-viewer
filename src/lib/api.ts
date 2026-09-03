@@ -83,6 +83,32 @@ export const api = {
   },
 
   /**
+   * Resolve byte offsets to line numbers.
+   *
+   * A trace match always carries an absolute byte offset, even when the
+   * backend could not say which file line it is on (see resolveMatchLine).
+   * The response's `offsets` map answers offset -> line number.
+   *
+   * @param path - File path
+   * @param offsets - Absolute byte offsets
+   * @param context - Optional number of context lines around each offset
+   */
+  async getSamplesByOffset(
+    path: string,
+    offsets: number[],
+    context?: number
+  ): Promise<SamplesResponse> {
+    const params = new URLSearchParams({
+      path,
+      offsets: offsets.join(','),
+    });
+    if (context !== undefined) {
+      params.set('context', context.toString());
+    }
+    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`);
+  },
+
+  /**
    * Search for patterns in files using ripgrep
    * @param paths - File or directory paths to search
    * @param patterns - Regex patterns to search for

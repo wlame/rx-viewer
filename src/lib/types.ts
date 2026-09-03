@@ -46,13 +46,30 @@ export interface SamplesResponse {
 }
 
 // Trace endpoint (GET /v1/trace)
+
+/** One highlighted span inside a matched line. */
+export interface Submatch {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** One line of context around a match. */
+export interface ContextLine {
+  relative_line_number: number;
+  absolute_line_number: number;
+  line_text: string;
+  absolute_offset: number;
+}
+
 export interface TraceMatch {
   pattern: string; // pattern ID like 'p1'
   file: string; // file ID like 'f1'
-  offset: number;
-  relative_line_number: number | null;
-  absolute_line_number: number;
+  offset: number; // byte offset in the file, always absolute
+  relative_line_number: number | null; // line within the chunk, see file_chunks
+  absolute_line_number: number; // -1 when the backend does not know it
   line_text: string | null;
+  submatches: Submatch[];
 }
 
 export interface TraceResponse {
@@ -65,6 +82,18 @@ export interface TraceResponse {
   scanned_files: string[];
   skipped_files: string[];
   max_results: number | null;
+  /**
+   * file_id -> number of chunks the file was scanned in. A match's
+   * relative_line_number is the file line only when this is 1; 0 means the
+   * result came from the trace cache. See resolveMatchLine().
+   */
+  file_chunks: Record<string, number>;
+  /** "pattern:file:offset" -> the context window around that match. */
+  context_lines: Record<string, ContextLine[]> | null;
+  before_context: number | null;
+  after_context: number | null;
+  /** The equivalent CLI invocation, for the "copy command" affordance. */
+  cli_command: string | null;
 }
 
 export interface TaskStatus {
