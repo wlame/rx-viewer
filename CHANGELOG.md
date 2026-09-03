@@ -111,12 +111,12 @@ typecheck lint test build` in the order CI runs them, and
 ### Fixed
 
 - The version badge printed a doubled `v` and linked to a release that
-  does not exist. `dist/version.json` is written from `git describe
-  --tags`, so its value already starts with `v`, and the header added a
-  second one — the badge read `vv0.2.0` and "View release on GitHub"
-  pointed at `/releases/tag/vv0.2.0`, which is a 404. The backend badge
-  had the same prefix hardcoded and turned an untagged build into
-  `vdev`.
+  does not exist. `dist/version.json` is written by the build recipe
+  from `git describe --tags`, so its value already starts with `v`, and
+  the header added a second one — the badge read `vv0.2.0` and "View
+  release on GitHub" pointed at `/releases/tag/vv0.2.0`, which is a 404.
+  The backend badge had the same prefix hardcoded and turned an untagged
+  build into `vdev`.
 
 - The regex filter box scrambled a pattern typed into it. It rewrote its
   own markup to highlight the pattern, and assigning `innerHTML`
