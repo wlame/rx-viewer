@@ -104,7 +104,6 @@
       // Step 1: Try to get cached index data
       try {
         const indexData = await api.getIndex(node.path);
-        console.log('Index data (cached):', indexData);
         analyzeResult = indexData;
         notifications.success(`Analysis loaded for ${node.name}`, 3000);
         analyzeLoading = false;
@@ -115,7 +114,6 @@
           throw e;
         }
         // 404 means no index exists, proceed to create one
-        console.log('No cached index found, starting indexing task...');
       }
 
       // Step 2: Start indexing task with analyze=true
@@ -132,7 +130,6 @@
           if (taskIdMatch) {
             analyzeStatusMessage = 'Joining existing analysis task...';
             const result = await pollTaskUntilComplete(taskIdMatch[1]);
-            console.log('Index data (from existing task):', result);
             analyzeResult = result;
             notifications.success(`Analysis complete for ${node.name}`, 3000);
             analyzeLoading = false;
@@ -142,12 +139,10 @@
         throw e;
       }
 
-      console.log('Task started:', taskResponse);
       analyzeStatusMessage = 'Analyzing file...';
 
       // Step 3: Poll until task completes
       const result = await pollTaskUntilComplete(taskResponse.task_id);
-      console.log('Index data (from task):', result);
       analyzeResult = result;
       notifications.success(`Analysis complete for ${node.name}`, 3000);
     } catch (e) {
@@ -252,8 +247,7 @@
   async function handleIndex() {
     closeContextMenu();
     try {
-      const result = await api.startIndex(node.path, { force: false });
-      console.log('Index result:', result);
+      await api.startIndex(node.path, { force: false });
       notifications.success(`Indexing started for ${node.name}`, 3000);
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Indexing failed';

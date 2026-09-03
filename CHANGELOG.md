@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Six `console.log` calls in `TreeNode.svelte` shipped to users, dumping
+  index and analysis payloads into the browser console on every file
+  analysis.
 - A slow response could overwrite a newer one. The file, search and tree
   stores keyed their updates on a path alone with no request ordering, so
   two overlapping loads both applied in arrival order: jumping to line
