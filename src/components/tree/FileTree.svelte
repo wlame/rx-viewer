@@ -35,9 +35,7 @@
         </button>
       </div>
     {:else if $tree.roots.length === 0}
-      <div
-        class="px-3 py-4 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted"
-      >
+      <div class="px-3 py-4 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
         No search roots configured
       </div>
     {:else}

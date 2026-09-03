@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { settings } from '$lib/stores';
 
   let showHelp = false;
 
@@ -8,7 +7,9 @@
     // Cmd/Ctrl + K: Focus search
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
-      const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+      const searchInput = document.querySelector(
+        'input[placeholder*="Search"]',
+      ) as HTMLInputElement;
       if (searchInput) {
         searchInput.focus();
       }

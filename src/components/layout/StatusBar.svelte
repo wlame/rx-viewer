@@ -16,19 +16,22 @@
   <div class="flex items-center gap-4">
     {#if searchRoots.length > 0}
       <span>
-        {searchRoots.length} {searchRoots.length === 1 ? 'root' : 'roots'}
+        {searchRoots.length}
+        {searchRoots.length === 1 ? 'root' : 'roots'}
       </span>
     {/if}
 
     {#if openFileCount > 0}
       <span>
-        {openFileCount} {openFileCount === 1 ? 'file' : 'files'} open
+        {openFileCount}
+        {openFileCount === 1 ? 'file' : 'files'} open
       </span>
     {/if}
 
     {#if $trace.response}
       <span class="text-gh-accent-fg dark:text-gh-accent-dark-fg">
-        {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+        {matchCount}
+        {matchCount === 1 ? 'match' : 'matches'}
         {#if lastSearchTime}
           ({lastSearchTime.toFixed(2)}s)
         {/if}

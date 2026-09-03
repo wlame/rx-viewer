@@ -8,13 +8,14 @@
 
   // Derive active file index from the store's activeFilePath
   $: activeFileIndex = $files.activeFilePath
-    ? $files.openFiles.findIndex(f => f.path === $files.activeFilePath)
+    ? $files.openFiles.findIndex((f) => f.path === $files.activeFilePath)
     : 0;
 
   // Ensure valid index (fallback to last file if current is invalid)
-  $: validActiveIndex = activeFileIndex >= 0 && activeFileIndex < $files.openFiles.length
-    ? activeFileIndex
-    : Math.max(0, $files.openFiles.length - 1);
+  $: validActiveIndex =
+    activeFileIndex >= 0 && activeFileIndex < $files.openFiles.length
+      ? activeFileIndex
+      : Math.max(0, $files.openFiles.length - 1);
 
   $: activeFile = $files.openFiles[validActiveIndex];
 
@@ -31,7 +32,7 @@
 
     // If closing the active file, switch to an adjacent tab first
     if (index === validActiveIndex) {
-      const newIndex = index > 0 ? index - 1 : (index < $files.openFiles.length - 1 ? index + 1 : -1);
+      const newIndex = index > 0 ? index - 1 : index < $files.openFiles.length - 1 ? index + 1 : -1;
       if (newIndex >= 0) {
         files.setActiveFile($files.openFiles[newIndex].path);
       }
@@ -86,7 +87,9 @@
 <main class="flex-1 flex flex-col min-w-0 bg-gh-canvas-default dark:bg-gh-canvas-dark-default">
   {#if $files.openFiles.length === 0}
     <!-- Empty state -->
-    <div class="flex-1 flex items-center justify-center text-gh-fg-muted dark:text-gh-fg-dark-muted">
+    <div
+      class="flex-1 flex items-center justify-center text-gh-fg-muted dark:text-gh-fg-dark-muted"
+    >
       <div class="text-center">
         <svg
           class="w-16 h-16 mx-auto mb-4 opacity-50"
@@ -105,16 +108,20 @@
     </div>
   {:else}
     <!-- Tabs for file switching with drag-to-reorder -->
-    <div class="flex items-center gap-0.5 px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default overflow-x-auto scrollbar-hide">
+    <div
+      class="flex items-center gap-0.5 px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default overflow-x-auto scrollbar-hide"
+    >
       {#each $files.openFiles as file, index (file.path)}
         <button
           draggable="true"
           class="flex items-center gap-2 px-3 py-1.5 rounded-t
                  transition-colors text-sm whitespace-nowrap cursor-pointer
                  {index === validActiveIndex
-                   ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
-                   : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
-                 {dragOverIndex === index ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg' : ''}"
+            ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
+            : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
+                 {dragOverIndex === index
+            ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg'
+            : ''}"
           on:click={() => selectTab(index)}
           on:dragstart={(e) => handleDragStart(e, index)}
           on:dragover={(e) => handleDragOver(e, index)}
@@ -137,7 +144,13 @@
             title="Close"
             on:click={(e) => handleClose(index, e)}
           >
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg
+              class="w-3.5 h-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>

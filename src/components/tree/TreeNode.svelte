@@ -27,7 +27,14 @@
       tree.toggleExpanded(node.path);
     } else {
       tree.selectPath(node.path);
-      files.openFile(node.path, undefined, node.size, undefined, node.is_indexed ?? undefined, node.line_count ?? undefined);
+      files.openFile(
+        node.path,
+        undefined,
+        node.size,
+        undefined,
+        node.is_indexed ?? undefined,
+        node.line_count ?? undefined,
+      );
     }
   }
 
@@ -60,7 +67,11 @@
   /**
    * Poll a task until it completes or fails
    */
-  async function pollTaskUntilComplete(taskId: string, intervalMs = 2000, maxAttempts = 300): Promise<IndexData> {
+  async function pollTaskUntilComplete(
+    taskId: string,
+    intervalMs = 2000,
+    maxAttempts = 300,
+  ): Promise<IndexData> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const task = await api.getTaskStatus(taskId);
 
@@ -76,7 +87,7 @@
       analyzeStatusMessage = `Analyzing... (${task.status})`;
 
       // Still running, wait and poll again
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
 
     throw new Error('Task polling timeout');
@@ -173,12 +184,12 @@
   // Get detector display name
   function getDetectorDisplayName(detector: string): string {
     const names: Record<string, string> = {
-      'error': 'Errors',
-      'traceback': 'Tracebacks',
-      'format': 'Format Issues',
-      'warning': 'Warnings',
-      'exception': 'Exceptions',
-      'unknown': 'Other'
+      error: 'Errors',
+      traceback: 'Tracebacks',
+      format: 'Format Issues',
+      warning: 'Warnings',
+      exception: 'Exceptions',
+      unknown: 'Other',
     };
     return names[detector] || detector.charAt(0).toUpperCase() + detector.slice(1);
   }
@@ -241,9 +252,7 @@
     aria-selected={isSelected}
     class="flex items-center gap-1 px-2 py-0.5 cursor-pointer text-sm
            hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
-           {isSelected
-      ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted'
-      : ''}"
+           {isSelected ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
     style="padding-left: {indentPx + 8}px"
     on:click={handleClick}
     on:keydown={handleKeydown}
@@ -277,8 +286,8 @@
       class="truncate flex-1 {node.type === 'directory'
         ? 'font-medium'
         : node.is_text === false
-        ? 'opacity-50'
-        : ''}"
+          ? 'opacity-50'
+          : ''}"
     >
       {node.name}
     </span>
@@ -292,9 +301,7 @@
           isIndexed={node.is_indexed}
         />
         {#if node.size !== null}
-          <span
-            class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle ml-1"
-          >
+          <span class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle ml-1">
             {formatSize(node.size)}
           </span>
         {/if}
@@ -366,7 +373,9 @@
       on:click={(e) => e.stopPropagation()}
     >
       <!-- Header -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0">
+      <div
+        class="flex items-center justify-between px-6 py-4 border-b border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0"
+      >
         <h2 class="text-lg font-semibold text-gh-fg-default dark:text-gh-fg-dark-default">
           Analysis: {node.name}
         </h2>
@@ -375,7 +384,13 @@
           on:click={closeAnalyzePopup}
           aria-label="Close"
         >
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            class="w-5 h-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
@@ -386,18 +401,24 @@
         {#if analyzeLoading}
           <div class="flex flex-col items-center justify-center py-12">
             <Spinner size="lg" />
-            <p class="mt-4 text-gh-fg-muted dark:text-gh-fg-dark-muted">{analyzeStatusMessage || 'Analyzing...'}</p>
+            <p class="mt-4 text-gh-fg-muted dark:text-gh-fg-dark-muted">
+              {analyzeStatusMessage || 'Analyzing...'}
+            </p>
           </div>
         {:else if analyzeResult}
           <div class="space-y-6">
             <!-- General Information -->
             <div>
-              <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+              <h3
+                class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+              >
                 General Information
               </h3>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">File Size</div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                    File Size
+                  </div>
                   <div class="text-sm font-medium">{formatBytes(analyzeResult.size_bytes)}</div>
                 </div>
                 <div>
@@ -405,12 +426,20 @@
                   <div class="text-sm font-medium">{analyzeResult.file_type}</div>
                 </div>
                 <div>
-                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Indexed At</div>
-                  <div class="text-sm font-medium">{new Date(analyzeResult.created_at).toLocaleString()}</div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                    Indexed At
+                  </div>
+                  <div class="text-sm font-medium">
+                    {new Date(analyzeResult.created_at).toLocaleString()}
+                  </div>
                 </div>
                 <div>
-                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Build Time</div>
-                  <div class="text-sm font-medium">{formatBuildTime(analyzeResult.build_time_seconds)}</div>
+                  <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                    Build Time
+                  </div>
+                  <div class="text-sm font-medium">
+                    {formatBuildTime(analyzeResult.build_time_seconds)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -418,19 +447,25 @@
             <!-- Line Statistics -->
             {#if analyzeResult.line_count}
               <div>
-                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                <h3
+                  class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+                >
                   Line Statistics
                 </h3>
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Total Lines</div>
+                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                      Total Lines
+                    </div>
                     <div class="text-lg font-bold text-gh-accent-fg dark:text-gh-accent-dark-fg">
                       {analyzeResult.line_count.toLocaleString()}
                     </div>
                   </div>
                   {#if analyzeResult.empty_line_count !== null && analyzeResult.empty_line_count !== undefined}
                     <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Empty Lines</div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                        Empty Lines
+                      </div>
                       <div class="text-lg font-bold">
                         {analyzeResult.empty_line_count.toLocaleString()}
                       </div>
@@ -438,14 +473,20 @@
                   {/if}
                   {#if analyzeResult.line_ending}
                     <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Line Ending</div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                        Line Ending
+                      </div>
                       <div class="text-sm font-medium font-mono">{analyzeResult.line_ending}</div>
                     </div>
                   {/if}
                   {#if analyzeResult.index_entries}
                     <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Index Entries</div>
-                      <div class="text-sm font-medium">{analyzeResult.index_entries.toLocaleString()}</div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                        Index Entries
+                      </div>
+                      <div class="text-sm font-medium">
+                        {analyzeResult.index_entries.toLocaleString()}
+                      </div>
                     </div>
                   {/if}
                 </div>
@@ -453,34 +494,54 @@
                 <!-- Line Length Statistics -->
                 {#if analyzeResult.line_length}
                   <div class="mt-4">
-                    <div class="text-xs font-semibold text-gh-fg-muted dark:text-gh-fg-dark-muted mb-2">Line Length</div>
+                    <div
+                      class="text-xs font-semibold text-gh-fg-muted dark:text-gh-fg-dark-muted mb-2"
+                    >
+                      Line Length
+                    </div>
                     <div class="grid grid-cols-3 gap-3 text-sm">
                       <div>
                         <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Max</div>
                         <div class="font-semibold">{analyzeResult.line_length.max}</div>
                         {#if analyzeResult.longest_line}
-                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Line {analyzeResult.longest_line.line_number.toLocaleString()}</div>
+                          <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                            Line {analyzeResult.longest_line.line_number.toLocaleString()}
+                          </div>
                         {/if}
                       </div>
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Average</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                          Average
+                        </div>
                         <div class="font-semibold">{analyzeResult.line_length.avg.toFixed(1)}</div>
                       </div>
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Median</div>
-                        <div class="font-semibold">{analyzeResult.line_length.median.toFixed(1)}</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                          Median
+                        </div>
+                        <div class="font-semibold">
+                          {analyzeResult.line_length.median.toFixed(1)}
+                        </div>
                       </div>
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">95th %ile</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                          95th %ile
+                        </div>
                         <div class="font-semibold">{analyzeResult.line_length.p95.toFixed(1)}</div>
                       </div>
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">99th %ile</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                          99th %ile
+                        </div>
                         <div class="font-semibold">{analyzeResult.line_length.p99.toFixed(1)}</div>
                       </div>
                       <div>
-                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Std Dev</div>
-                        <div class="font-semibold">{analyzeResult.line_length.stddev.toFixed(1)}</div>
+                        <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                          Std Dev
+                        </div>
+                        <div class="font-semibold">
+                          {analyzeResult.line_length.stddev.toFixed(1)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -491,24 +552,38 @@
             <!-- Compression Information -->
             {#if analyzeResult.compression_format}
               <div>
-                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                <h3
+                  class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+                >
                   Compression
                 </h3>
                 <div class="grid grid-cols-2 gap-4">
                   <div>
-                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Format</div>
-                    <div class="text-sm font-medium uppercase">{analyzeResult.compression_format}</div>
+                    <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                      Format
+                    </div>
+                    <div class="text-sm font-medium uppercase">
+                      {analyzeResult.compression_format}
+                    </div>
                   </div>
                   {#if analyzeResult.compression_ratio !== null}
                     <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Ratio</div>
-                      <div class="text-sm font-medium">{analyzeResult.compression_ratio.toFixed(2)}x</div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                        Ratio
+                      </div>
+                      <div class="text-sm font-medium">
+                        {analyzeResult.compression_ratio.toFixed(2)}x
+                      </div>
                     </div>
                   {/if}
                   {#if analyzeResult.decompressed_size_bytes !== null}
                     <div>
-                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Decompressed Size</div>
-                      <div class="text-sm font-medium">{formatBytes(analyzeResult.decompressed_size_bytes)}</div>
+                      <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">
+                        Decompressed Size
+                      </div>
+                      <div class="text-sm font-medium">
+                        {formatBytes(analyzeResult.decompressed_size_bytes)}
+                      </div>
                     </div>
                   {/if}
                 </div>
@@ -521,7 +596,9 @@
               {@const detectors = Object.keys(anomaliesByDetector)}
               {@const activeDetector = selectedAnomalyDetector || detectors[0]}
               <div>
-                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                <h3
+                  class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+                >
                   Anomalies Detection
                 </h3>
 
@@ -530,23 +607,32 @@
                   <div class="mb-3 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
                     Found:
                     {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
-                      <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span> {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1 ? ', ' : ''}
+                      <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
+                        >{count}</span
+                      >
+                      {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1
+                        ? ', '
+                        : ''}
                     {/each}
                   </div>
                 {/if}
 
                 <!-- Detector tabs -->
-                <div class="flex flex-wrap border-b border-gh-border-default dark:border-gh-border-dark-default mb-3">
+                <div
+                  class="flex flex-wrap border-b border-gh-border-default dark:border-gh-border-dark-default mb-3"
+                >
                   {#each detectors as detector}
                     <button
                       class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors
                              {activeDetector === detector
-                               ? 'border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis text-gh-accent-fg dark:text-gh-accent-dark-fg'
-                               : 'border-transparent text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
-                      on:click={() => selectedAnomalyDetector = detector}
+                        ? 'border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis text-gh-accent-fg dark:text-gh-accent-dark-fg'
+                        : 'border-transparent text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
+                      on:click={() => (selectedAnomalyDetector = detector)}
                     >
                       {getDetectorDisplayName(detector)}
-                      <span class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle">
+                      <span
+                        class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle"
+                      >
                         {anomaliesByDetector[detector].length}
                       </span>
                     </button>
@@ -554,14 +640,25 @@
                 </div>
 
                 <!-- Anomaly list for selected detector -->
-                <div class="border border-gh-border-default dark:border-gh-border-dark-default rounded overflow-hidden">
+                <div
+                  class="border border-gh-border-default dark:border-gh-border-dark-default rounded overflow-hidden"
+                >
                   <div class="max-h-[300px] overflow-y-auto">
                     <table class="w-full text-sm">
                       <thead class="bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle sticky top-0">
                         <tr>
-                          <th class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Line</th>
-                          <th class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Description</th>
-                          <th class="text-right px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">Severity</th>
+                          <th
+                            class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted"
+                            >Line</th
+                          >
+                          <th
+                            class="text-left px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted"
+                            >Description</th
+                          >
+                          <th
+                            class="text-right px-3 py-2 font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted"
+                            >Severity</th
+                          >
                         </tr>
                       </thead>
                       <tbody>
@@ -570,16 +667,27 @@
                             class="border-t border-gh-border-default dark:border-gh-border-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle cursor-pointer"
                             on:click={() => handleAnomalyClick(anomaly)}
                           >
-                            <td class="px-3 py-2 font-mono text-gh-accent-fg dark:text-gh-accent-dark-fg whitespace-nowrap">
+                            <td
+                              class="px-3 py-2 font-mono text-gh-accent-fg dark:text-gh-accent-dark-fg whitespace-nowrap"
+                            >
                               {anomaly.start_line.toLocaleString()}
                               {#if anomaly.end_line && anomaly.end_line !== anomaly.start_line}
-                                <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">-{anomaly.end_line.toLocaleString()}</span>
+                                <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted"
+                                  >-{anomaly.end_line.toLocaleString()}</span
+                                >
                               {/if}
                             </td>
-                            <td class="px-3 py-2 truncate max-w-[300px]" title={anomaly.description}>
+                            <td
+                              class="px-3 py-2 truncate max-w-[300px]"
+                              title={anomaly.description}
+                            >
                               {anomaly.description}
                             </td>
-                            <td class="px-3 py-2 text-right font-medium whitespace-nowrap {getSeverityColor(anomaly.severity)}">
+                            <td
+                              class="px-3 py-2 text-right font-medium whitespace-nowrap {getSeverityColor(
+                                anomaly.severity,
+                              )}"
+                            >
                               {(anomaly.severity * 100).toFixed(0)}%
                             </td>
                           </tr>
@@ -592,13 +700,20 @@
             {:else if analyzeResult.anomaly_summary}
               <!-- Show summary even if no detailed anomalies -->
               <div>
-                <h3 class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide">
+                <h3
+                  class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+                >
                   Anomalies Summary
                 </h3>
                 <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
                   Found:
                   {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
-                    <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span> {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1 ? ', ' : ''}
+                    <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
+                      >{count}</span
+                    >
+                    {category}{i < Object.entries(analyzeResult.anomaly_summary).length - 1
+                      ? ', '
+                      : ''}
                   {/each}
                 </div>
               </div>
@@ -608,7 +723,9 @@
       </div>
 
       <!-- Footer -->
-      <div class="flex items-center justify-end px-6 py-4 border-t border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0">
+      <div
+        class="flex items-center justify-end px-6 py-4 border-t border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0"
+      >
         <button
           class="px-4 py-2 text-sm font-medium rounded bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg"
           on:click={closeAnalyzePopup}

@@ -44,7 +44,6 @@
 
   // Track scroll state for content loading
   let isScrollingToTarget = false;
-  let lastScrollTop = 0;
   let lastContentLoadTime = 0; // Timestamp of last content load to prevent immediate loadMore
 
   // Settings
@@ -67,7 +66,11 @@
   // Note: We need to reference file.lines directly to trigger reactivity
   $: content = getProcessedContent(file.lines, file.regexFilter, file.showInvisibleChars);
 
-  function getProcessedContent(lines: typeof file.lines, regexFilter: typeof file.regexFilter, showInvisibleChars: boolean): string {
+  function getProcessedContent(
+    lines: typeof file.lines,
+    regexFilter: typeof file.regexFilter,
+    showInvisibleChars: boolean,
+  ): string {
     // Clear hidden content map when reprocessing
     hiddenContentMap = new Map();
 
@@ -76,8 +79,8 @@
     // Otherwise: strip \r completely to prevent Monaco from treating them as line breaks
     const CR_SYMBOL = '\u240D'; // ␍ - Symbol for Carriage Return
     const processedLines = showInvisibleChars
-      ? lines.map(l => l.content.replace(/\r/g, CR_SYMBOL))
-      : lines.map(l => l.content.replace(/\r/g, ''));
+      ? lines.map((l) => l.content.replace(/\r/g, CR_SYMBOL))
+      : lines.map((l) => l.content.replace(/\r/g, ''));
 
     const rawContent = processedLines.join('\n');
 
@@ -100,7 +103,7 @@
             let match;
 
             // Collect all group matches with their positions
-            const replacements: Array<{start: number, end: number, text: string}> = [];
+            const replacements: Array<{ start: number; end: number; text: string }> = [];
 
             while ((match = lineRegex.exec(lineContent)) !== null) {
               if (hasGroups && match.length > 1) {
@@ -114,7 +117,7 @@
                       replacements.push({
                         start: groupStart,
                         end: groupStart + groupText.length,
-                        text: groupText
+                        text: groupText,
                       });
                       matchOffset = groupStart + groupText.length;
                     }
@@ -125,7 +128,7 @@
                 replacements.push({
                   start: match.index,
                   end: match.index + match[0].length,
-                  text: match[0]
+                  text: match[0],
                 });
               }
             }
@@ -166,7 +169,7 @@
             let match;
 
             // Collect all "show" ranges (captured groups or entire matches)
-            const showRanges: Array<{start: number, end: number, text: string}> = [];
+            const showRanges: Array<{ start: number; end: number; text: string }> = [];
 
             while ((match = lineRegex.exec(lineContent)) !== null) {
               if (hasGroups && match.length > 1) {
@@ -180,7 +183,7 @@
                       showRanges.push({
                         start: groupStart,
                         end: groupStart + groupText.length,
-                        text: groupText
+                        text: groupText,
                       });
                       searchStart = groupStart + groupText.length;
                     }
@@ -191,13 +194,13 @@
                 showRanges.push({
                   start: match.index,
                   end: match.index + match[0].length,
-                  text: match[0]
+                  text: match[0],
                 });
               }
             }
 
             // Build segments: alternating between hidden and shown parts
-            const segments: Array<{isMatch: boolean, text: string}> = [];
+            const segments: Array<{ isMatch: boolean; text: string }> = [];
             let lastEnd = 0;
 
             // Sort showRanges by start position
@@ -208,13 +211,13 @@
               if (range.start > lastEnd) {
                 segments.push({
                   isMatch: false,
-                  text: lineContent.substring(lastEnd, range.start)
+                  text: lineContent.substring(lastEnd, range.start),
                 });
               }
               // Add the shown segment
               segments.push({
                 isMatch: true,
-                text: range.text
+                text: range.text,
               });
               lastEnd = range.end;
             }
@@ -223,7 +226,7 @@
             if (lastEnd < lineContent.length) {
               segments.push({
                 isMatch: false,
-                text: lineContent.substring(lastEnd)
+                text: lineContent.substring(lastEnd),
               });
             }
 
@@ -357,7 +360,7 @@
       const categoryColor = CATEGORY_ICONS[selectedCategory]?.color || '#6b7280';
 
       // Filter anomalies by selected category
-      const categoryAnomalies = file.anomalies.filter(a => a.category === selectedCategory);
+      const categoryAnomalies = file.anomalies.filter((a) => a.category === selectedCategory);
 
       for (const anomaly of categoryAnomalies) {
         // Build hover message with anomaly details
@@ -400,7 +403,11 @@
     }
 
     // Add decorations for regex filter in highlight mode
-    if (file.regexFilter?.enabled && file.regexFilter?.compiledRegex && file.regexFilter.mode === 'highlight') {
+    if (
+      file.regexFilter?.enabled &&
+      file.regexFilter?.compiledRegex &&
+      file.regexFilter.mode === 'highlight'
+    ) {
       const model = monacoEditor.getModel();
       if (model) {
         try {
@@ -472,13 +479,17 @@
     }
 
     // Add decorations for hidden content markers (hide/show modes)
-    if (file.regexFilter?.enabled && file.regexFilter?.compiledRegex &&
-        (file.regexFilter.mode === 'hide' || file.regexFilter.mode === 'show')) {
+    if (
+      file.regexFilter?.enabled &&
+      file.regexFilter?.compiledRegex &&
+      (file.regexFilter.mode === 'hide' || file.regexFilter.mode === 'show')
+    ) {
       const model = monacoEditor.getModel();
       if (model) {
-        const markerClass = file.regexFilter.mode === 'hide'
-          ? 'monaco-hidden-marker-red'
-          : 'monaco-hidden-marker-blue';
+        const markerClass =
+          file.regexFilter.mode === 'hide'
+            ? 'monaco-hidden-marker-red'
+            : 'monaco-hidden-marker-blue';
 
         const lineCount = model.getLineCount();
         for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
@@ -543,13 +554,13 @@
   // Get unique symbol for each anomaly category
   function getCategorySymbol(category: string): string {
     const symbols: Record<string, string> = {
-      error: '\u2716',      // ✖ Heavy multiplication X
-      warning: '\u26A0',    // ⚠ Warning sign
-      traceback: '\u2261',  // ≡ Identical to (stack symbol)
-      format: '\u00B6',     // ¶ Pilcrow sign
-      security: '\u2622',   // ☢ Radioactive (or use 🔒)
-      timing: '\u23F1',     // ⏱ Stopwatch
-      multiline: '\u2630',  // ☰ Trigram for heaven (hamburger menu)
+      error: '\u2716', // ✖ Heavy multiplication X
+      warning: '\u26A0', // ⚠ Warning sign
+      traceback: '\u2261', // ≡ Identical to (stack symbol)
+      format: '\u00B6', // ¶ Pilcrow sign
+      security: '\u2622', // ☢ Radioactive (or use 🔒)
+      timing: '\u23F1', // ⏱ Stopwatch
+      multiline: '\u2630', // ☰ Trigram for heaven (hamburger menu)
     };
     return symbols[category] || '\u2022'; // • Bullet as fallback
   }
@@ -560,7 +571,7 @@
 
     // Get anomalies of this category, sorted by start_line
     const categoryAnomalies = file.anomalies
-      .filter(a => a.category === category)
+      .filter((a) => a.category === category)
       .sort((a, b) => a.start_line - b.start_line);
 
     if (categoryAnomalies.length === 0) return;
@@ -587,7 +598,9 @@
     if (direction === 'previous') {
       // Find previous anomaly (start_line < currentCenterLine)
       // Use currentCenterLine - 1 to ensure we move past the current anomaly if centered on it
-      const previousAnomalies = categoryAnomalies.filter(a => a.start_line < currentCenterLine - 1);
+      const previousAnomalies = categoryAnomalies.filter(
+        (a) => a.start_line < currentCenterLine - 1,
+      );
       if (previousAnomalies.length > 0) {
         targetAnomaly = previousAnomalies[previousAnomalies.length - 1];
       } else {
@@ -597,7 +610,7 @@
     } else {
       // Find next anomaly (start_line > currentCenterLine)
       // Use currentCenterLine + 1 to ensure we move past the current anomaly if centered on it
-      const nextAnomalies = categoryAnomalies.filter(a => a.start_line > currentCenterLine + 1);
+      const nextAnomalies = categoryAnomalies.filter((a) => a.start_line > currentCenterLine + 1);
       if (nextAnomalies.length > 0) {
         targetAnomaly = nextAnomalies[0];
       } else {
@@ -610,7 +623,8 @@
       const targetLine = targetAnomaly.start_line;
 
       // Check if target line is already loaded
-      const isLoaded = targetLine >= file.startLine && targetLine <= file.startLine + file.lines.length - 1;
+      const isLoaded =
+        targetLine >= file.startLine && targetLine <= file.startLine + file.lines.length - 1;
 
       if (isLoaded && monacoEditor) {
         // Scroll to the line within the editor
@@ -642,7 +656,7 @@
   }
 
   function selectTheme(themeId: MonacoTheme) {
-    settings.update(s => ({ ...s, monacoTheme: themeId }));
+    settings.update((s) => ({ ...s, monacoTheme: themeId }));
     themeDropdownVisible = false;
   }
 
@@ -767,7 +781,12 @@
 
   // Scroll to target line when requested
   // Use a longer delay to ensure Monaco has fully rendered the content
-  $: if (file.scrollToLine !== undefined && monacoComponent && file.lines.length > 0 && !file.loading) {
+  $: if (
+    file.scrollToLine !== undefined &&
+    monacoComponent &&
+    file.lines.length > 0 &&
+    !file.loading
+  ) {
     isScrollingToTarget = true;
     // Delay scroll to ensure content is rendered in Monaco
     setTimeout(() => {
@@ -787,28 +806,6 @@
 
     // Convert Monaco line to file line number
     return file.startLine + centerMonacoLine - 1;
-  }
-
-  /**
-   * Check if we need to load more content based on current scroll position
-   */
-  function checkAndLoadMore() {
-    if (!monacoEditor || file.loading) return;
-
-    const scrollTop = monacoEditor.getScrollTop();
-    const scrollHeight = monacoEditor.getScrollHeight();
-    const clientHeight = monacoEditor.getDomNode()?.clientHeight ?? 0;
-
-    // Load more when near top
-    if (scrollTop < 200 && file.startLine > 1 && !file.reachedStart) {
-      files.loadMore(file.path, 'before');
-    }
-
-    // Load more when near bottom
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    if (distanceFromBottom < 200 && !file.reachedEnd) {
-      files.loadMore(file.path, 'after');
-    }
   }
 
   function scrollToLine(targetLine: number) {
@@ -893,26 +890,25 @@
     }
   }, 500);
 
-  function handleMonacoScroll(e: CustomEvent<{ scrollTop: number; scrollHeight: number; clientHeight: number }>) {
+  function handleMonacoScroll(
+    e: CustomEvent<{ scrollTop: number; scrollHeight: number; clientHeight: number }>,
+  ) {
     const { scrollTop, scrollHeight, clientHeight } = e.detail;
 
     updateUrlOnScroll();
 
     // Don't trigger loadMore during programmatic scrolling or right after content load
     if (file.scrollToLine !== undefined || isScrollingToTarget) {
-      lastScrollTop = scrollTop;
       return;
     }
 
     // Skip loadMore for 1 second after content was loaded (prevents extra calls after jumpToLine)
     const timeSinceLoad = Date.now() - lastContentLoadTime;
     if (timeSinceLoad < 1000) {
-      lastScrollTop = scrollTop;
       return;
     }
 
     if (file.loading) {
-      lastScrollTop = scrollTop;
       return;
     }
 
@@ -926,8 +922,6 @@
     if (distanceFromBottom < 200 && !file.reachedEnd) {
       files.loadMore(file.path, 'after');
     }
-
-    lastScrollTop = scrollTop;
   }
 
   function handleMonacoReady(e: CustomEvent<{ editor: Monaco.editor.IStandaloneCodeEditor }>) {
@@ -956,10 +950,11 @@
 
   function handleKeyDown(e: KeyboardEvent) {
     const target = e.target as HTMLElement;
-    const isInputFocused = target.tagName === 'INPUT' ||
-                          target.tagName === 'TEXTAREA' ||
-                          target.contentEditable === 'true' ||
-                          target.contentEditable === 'plaintext-only';
+    const isInputFocused =
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.contentEditable === 'true' ||
+      target.contentEditable === 'plaintext-only';
 
     // : - open goto line (vim style)
     if (e.key === ':' && !dashGotoVisible && !isInputFocused) {
@@ -999,241 +994,316 @@
 >
   <!-- File header -->
   {#if !hideHeader}
-  <div
-    class="flex items-center justify-between px-3 py-2 gap-3
+    <div
+      class="flex items-center justify-between px-3 py-2 gap-3
            bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
            border-b border-gh-border-default dark:border-gh-border-dark-default"
-  >
-    <div class="flex items-center gap-3 min-w-0">
-      <span class="text-base font-medium truncate" title={file.path}>
-        {file.name}
-      </span>
-      <FileBadges
-        isCompressed={file.isCompressed}
-        compressionFormat={file.compressionFormat}
-        isIndexed={null}
-      />
-      {#if file.lines.length > 0}
-        <span class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1.5">
-          <span>lines</span>
-          <button
-            class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-            on:click={() => jumpToLineNumber(file.startLine)}
-            title="Jump to line {file.startLine}"
-          >
-            {file.startLine.toLocaleString()}
-          </button>
-          {#if dashGotoVisible}
-            <input
-              bind:this={dashGotoInputEl}
-              bind:value={dashGotoLineNumber}
-              on:keydown={handleDashGotoKeyDown}
-              on:blur={closeDashGoto}
-              type="number"
-              class="text-sm bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-2 py-0.5 outline-none w-32 text-center font-bold"
-            />
-          {:else}
-            <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline px-1"
-              on:click={openDashGoto}
-              title="Jump to line..."
-            >
-              —
-            </button>
-          {/if}
-          <button
-            class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-            on:click={() => jumpToLineNumber(file.endLine)}
-            title="Jump to line {file.endLine}"
-          >
-            {file.endLine.toLocaleString()}
-          </button>
-          <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">/</span>
-          {#if file.totalLines !== null}
-            <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-              on:click={() => jumpToLineNumber(file.totalLines)}
-              title="Jump to last line ({file.totalLines.toLocaleString()})"
-            >
-              {file.totalLines.toLocaleString()}
-            </button>
-          {:else}
-            <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-              on:click={() => files.jumpToEnd(file.path)}
-              title="Jump to end of file"
-            >
-              ⋯
-            </button>
-          {/if}
+    >
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-base font-medium truncate" title={file.path}>
+          {file.name}
         </span>
-      {/if}
-    </div>
-
-    <div class="flex items-center gap-2">
-      <!-- Anomaly category toggles (only shown if file has anomalies) -->
-      {#if file.anomalySummary && Object.keys(file.anomalySummary).length > 0}
-        {#each Object.entries(file.anomalySummary) as [category, count]}
-          {@const categoryInfo = CATEGORY_ICONS[category] || { icon: '?', color: '#6b7280', label: category }}
-          {@const isActive = file.selectedAnomalyCategory === category}
-          <button
-            class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
-            style="{isActive
-              ? `background-color: ${categoryInfo.color}; color: white;`
-              : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}"
-            title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
-            on:click={(e) => handleCategoryClick(e, category)}
+        <FileBadges
+          isCompressed={file.isCompressed}
+          compressionFormat={file.compressionFormat}
+          isIndexed={null}
+        />
+        {#if file.lines.length > 0}
+          <span
+            class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1.5"
           >
-            <span class="anomaly-icon" style="font-size: 10px;">{getCategorySymbol(category)}</span>
-            <span>{count}</span>
-          </button>
-          {#if isActive}
-            <div class="flex flex-col gap-0 flex-shrink-0">
+            <span>lines</span>
+            <button
+              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+              on:click={() => jumpToLineNumber(file.startLine)}
+              title="Jump to line {file.startLine}"
+            >
+              {file.startLine.toLocaleString()}
+            </button>
+            {#if dashGotoVisible}
+              <input
+                bind:this={dashGotoInputEl}
+                bind:value={dashGotoLineNumber}
+                on:keydown={handleDashGotoKeyDown}
+                on:blur={closeDashGoto}
+                type="number"
+                class="text-sm bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-2 py-0.5 outline-none w-32 text-center font-bold"
+              />
+            {:else}
               <button
-                class="px-0.5 rounded-t flex-shrink-0 transition-colors hover:opacity-80"
-                style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-                title="Previous {categoryInfo.label.toLowerCase()}"
-                on:click={() => navigateToAnomaly(category, 'previous')}
+                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline px-1"
+                on:click={openDashGoto}
+                title="Jump to line..."
               >
-                <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
-                  <path d="M5 1L1 7h8L5 1z"/>
-                </svg>
+                —
               </button>
+            {/if}
+            <button
+              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+              on:click={() => jumpToLineNumber(file.endLine)}
+              title="Jump to line {file.endLine}"
+            >
+              {file.endLine.toLocaleString()}
+            </button>
+            <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">/</span>
+            {#if file.totalLines !== null}
               <button
-                class="px-0.5 rounded-b flex-shrink-0 transition-colors hover:opacity-80"
-                style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-                title="Next {categoryInfo.label.toLowerCase()}"
-                on:click={() => navigateToAnomaly(category, 'next')}
+                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+                on:click={() => jumpToLineNumber(file.totalLines)}
+                title="Jump to last line ({file.totalLines.toLocaleString()})"
               >
-                <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
-                  <path d="M5 7L1 1h8L5 7z"/>
-                </svg>
+                {file.totalLines.toLocaleString()}
               </button>
-            </div>
-          {/if}
-        {/each}
-
-        <!-- Vertical divider -->
-        <div class="w-px h-5 bg-gh-border-default dark:bg-gh-border-dark-default mx-1"></div>
-      {/if}
-
-      <!-- Syntax highlighting toggle -->
-      <button
-        class="p-1 rounded flex-shrink-0 transition-colors
-               {file.syntaxHighlighting
-                 ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
-                 : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-        title="{file.syntaxHighlighting ? 'Disable' : 'Enable'} syntax highlighting"
-        on:click={toggleSyntaxHighlighting}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M16 18L22 12L16 6M8 6L2 12L8 18" />
-        </svg>
-      </button>
-
-      <!-- Word wrap toggle -->
-      <button
-        class="p-1 rounded flex-shrink-0 transition-colors
-               {file.wordWrap
-                 ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
-                 : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-        title="{file.wordWrap ? 'Disable' : 'Enable'} word wrap"
-        on:click={() => files.toggleWordWrap(file.path)}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 6h18M3 12h15a3 3 0 110 6h-4m0 0l2-2m-2 2l2 2M3 18h7" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
-
-      <!-- Invisible characters toggle -->
-      <button
-        class="p-1 rounded flex-shrink-0 transition-colors
-               {file.showInvisibleChars
-                 ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
-                 : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-        title="{file.showInvisibleChars ? 'Hide' : 'Show'} invisible characters"
-        on:click={toggleInvisibleChars}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01M6 6h.01M12 6h.01M18 6h.01" stroke-linecap="round" />
-        </svg>
-      </button>
-
-      <!-- Regex filter toggle -->
-      <button
-        class="p-1 rounded flex-shrink-0 transition-colors
-               {file.regexFilter?.enabled
-                 ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
-                 : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-        title="Regex filter"
-        on:click={toggleFilterPanel}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2.586a1 1 0 01-.293.707l-4.414 4.414a1 1 0 00-.293.707V17l-4 2v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-        </svg>
-      </button>
-
-      <!-- Theme selector dropdown -->
-      <div class="relative theme-dropdown-container">
-        <button
-          class="p-1 rounded flex-shrink-0 transition-colors
-                 {themeDropdownVisible
-                   ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white'
-                   : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
-          title="Editor theme: {MONACO_THEMES.find(t => t.id === monacoTheme)?.name || 'Default'}"
-          on:click={toggleThemeDropdown}
-        >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-          </svg>
-        </button>
-
-        {#if themeDropdownVisible}
-          <div class="absolute right-0 top-full mt-1 z-50
-                      bg-gh-canvas-default dark:bg-gh-canvas-dark-default
-                      border border-gh-border-default dark:border-gh-border-dark-default
-                      rounded-md shadow-lg py-1 min-w-[160px]">
-            {#each MONACO_THEMES as themeOption}
+            {:else}
               <button
-                class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-                       hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
-                       {monacoTheme === themeOption.id ? 'text-gh-accent-fg dark:text-gh-accent-dark-fg font-medium' : 'text-gh-fg-default dark:text-gh-fg-dark-default'}"
-                on:click={() => selectTheme(themeOption.id)}
+                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
+                on:click={() => files.jumpToEnd(file.path)}
+                title="Jump to end of file"
               >
-                <span class="w-3 h-3 rounded-full border
-                             {themeOption.base === 'vs' ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-600'}"></span>
-                {themeOption.name}
-                {#if monacoTheme === themeOption.id}
-                  <svg class="w-4 h-4 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 13l4 4L19 7" />
-                  </svg>
-                {/if}
+                ⋯
               </button>
-            {/each}
-          </div>
+            {/if}
+          </span>
         {/if}
       </div>
 
-      <button
-        class="p-1 rounded hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
+      <div class="flex items-center gap-2">
+        <!-- Anomaly category toggles (only shown if file has anomalies) -->
+        {#if file.anomalySummary && Object.keys(file.anomalySummary).length > 0}
+          {#each Object.entries(file.anomalySummary) as [category, count]}
+            {@const categoryInfo = CATEGORY_ICONS[category] || {
+              icon: '?',
+              color: '#6b7280',
+              label: category,
+            }}
+            {@const isActive = file.selectedAnomalyCategory === category}
+            <button
+              class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
+              style={isActive
+                ? `background-color: ${categoryInfo.color}; color: white;`
+                : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}
+              title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
+              on:click={(e) => handleCategoryClick(e, category)}
+            >
+              <span class="anomaly-icon" style="font-size: 10px;"
+                >{getCategorySymbol(category)}</span
+              >
+              <span>{count}</span>
+            </button>
+            {#if isActive}
+              <div class="flex flex-col gap-0 flex-shrink-0">
+                <button
+                  class="px-0.5 rounded-t flex-shrink-0 transition-colors hover:opacity-80"
+                  style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
+                  title="Previous {categoryInfo.label.toLowerCase()}"
+                  on:click={() => navigateToAnomaly(category, 'previous')}
+                >
+                  <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
+                    <path d="M5 1L1 7h8L5 1z" />
+                  </svg>
+                </button>
+                <button
+                  class="px-0.5 rounded-b flex-shrink-0 transition-colors hover:opacity-80"
+                  style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
+                  title="Next {categoryInfo.label.toLowerCase()}"
+                  on:click={() => navigateToAnomaly(category, 'next')}
+                >
+                  <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
+                    <path d="M5 7L1 1h8L5 7z" />
+                  </svg>
+                </button>
+              </div>
+            {/if}
+          {/each}
+
+          <!-- Vertical divider -->
+          <div class="w-px h-5 bg-gh-border-default dark:bg-gh-border-dark-default mx-1"></div>
+        {/if}
+
+        <!-- Syntax highlighting toggle -->
+        <button
+          class="p-1 rounded flex-shrink-0 transition-colors
+               {file.syntaxHighlighting
+            ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
+            : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+          title="{file.syntaxHighlighting ? 'Disable' : 'Enable'} syntax highlighting"
+          on:click={toggleSyntaxHighlighting}
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M16 18L22 12L16 6M8 6L2 12L8 18" />
+          </svg>
+        </button>
+
+        <!-- Word wrap toggle -->
+        <button
+          class="p-1 rounded flex-shrink-0 transition-colors
+               {file.wordWrap
+            ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
+            : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+          title="{file.wordWrap ? 'Disable' : 'Enable'} word wrap"
+          on:click={() => files.toggleWordWrap(file.path)}
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M3 6h18M3 12h15a3 3 0 110 6h-4m0 0l2-2m-2 2l2 2M3 18h7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
+        <!-- Invisible characters toggle -->
+        <button
+          class="p-1 rounded flex-shrink-0 transition-colors
+               {file.showInvisibleChars
+            ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
+            : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+          title="{file.showInvisibleChars ? 'Hide' : 'Show'} invisible characters"
+          on:click={toggleInvisibleChars}
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01M6 6h.01M12 6h.01M18 6h.01"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+
+        <!-- Regex filter toggle -->
+        <button
+          class="p-1 rounded flex-shrink-0 transition-colors
+               {file.regexFilter?.enabled
+            ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white hover:bg-gh-accent-fg dark:hover:bg-gh-accent-dark-fg'
+            : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+          title="Regex filter"
+          on:click={toggleFilterPanel}
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2.586a1 1 0 01-.293.707l-4.414 4.414a1 1 0 00-.293.707V17l-4 2v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+            />
+          </svg>
+        </button>
+
+        <!-- Theme selector dropdown -->
+        <div class="relative theme-dropdown-container">
+          <button
+            class="p-1 rounded flex-shrink-0 transition-colors
+                 {themeDropdownVisible
+              ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis text-white'
+              : 'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle'}"
+            title="Editor theme: {MONACO_THEMES.find((t) => t.id === monacoTheme)?.name ||
+              'Default'}"
+            on:click={toggleThemeDropdown}
+          >
+            <svg
+              class="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+              />
+            </svg>
+          </button>
+
+          {#if themeDropdownVisible}
+            <div
+              class="absolute right-0 top-full mt-1 z-50
+                      bg-gh-canvas-default dark:bg-gh-canvas-dark-default
+                      border border-gh-border-default dark:border-gh-border-dark-default
+                      rounded-md shadow-lg py-1 min-w-[160px]"
+            >
+              {#each MONACO_THEMES as themeOption}
+                <button
+                  class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
+                       hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
+                       {monacoTheme === themeOption.id
+                    ? 'text-gh-accent-fg dark:text-gh-accent-dark-fg font-medium'
+                    : 'text-gh-fg-default dark:text-gh-fg-dark-default'}"
+                  on:click={() => selectTheme(themeOption.id)}
+                >
+                  <span
+                    class="w-3 h-3 rounded-full border
+                             {themeOption.base === 'vs'
+                      ? 'bg-white border-gray-300'
+                      : 'bg-gray-800 border-gray-600'}"
+                  ></span>
+                  {themeOption.name}
+                  {#if monacoTheme === themeOption.id}
+                    <svg
+                      class="w-4 h-4 ml-auto"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
+        <button
+          class="p-1 rounded hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
                text-gh-fg-muted dark:text-gh-fg-dark-muted flex-shrink-0"
-        title="Close"
-        on:click={handleClose}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-      </button>
+          title="Close"
+          on:click={handleClose}
+        >
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
-  </div>
   {/if}
 
   <!-- Regex filter panel (expandable) -->
   {#if filterPanelVisible}
-    <div class="px-3 py-3 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default">
+    <div
+      class="px-3 py-3 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default"
+    >
       <div class="flex items-center gap-3 mb-3">
-        <label for="regex-filter-input" class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
+        <label
+          for="regex-filter-input"
+          class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted"
+        >
           Regex:
         </label>
         <div
@@ -1271,9 +1341,7 @@
       </div>
 
       <div class="flex items-center gap-4">
-        <span class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted">
-          Mode:
-        </span>
+        <span class="text-sm font-medium text-gh-fg-muted dark:text-gh-fg-dark-muted"> Mode: </span>
         <label class="flex items-center gap-1.5 text-sm cursor-pointer">
           <input
             type="radio"
@@ -1321,20 +1389,26 @@
         <Spinner size="lg" />
       </div>
     {:else if file.error}
-      <div class="flex items-center justify-center h-full text-gh-danger-fg dark:text-gh-danger-dark-fg">
+      <div
+        class="flex items-center justify-center h-full text-gh-danger-fg dark:text-gh-danger-dark-fg"
+      >
         <div class="text-center p-4">
           <p class="font-medium">Failed to load file</p>
           <p class="text-sm mt-1 opacity-75">{file.error}</p>
         </div>
       </div>
     {:else if file.lines.length === 0}
-      <div class="flex items-center justify-center h-full text-gh-fg-muted dark:text-gh-fg-dark-muted">
+      <div
+        class="flex items-center justify-center h-full text-gh-fg-muted dark:text-gh-fg-dark-muted"
+      >
         <p>Empty file</p>
       </div>
     {:else}
       <!-- Loading indicator overlay -->
       {#if file.loading}
-        <div class="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle rounded-full px-3 py-1 shadow-md flex items-center gap-2">
+        <div
+          class="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle rounded-full px-3 py-1 shadow-md flex items-center gap-2"
+        >
           <Spinner size="sm" />
           <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Loading...</span>
         </div>

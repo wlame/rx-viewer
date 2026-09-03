@@ -80,9 +80,7 @@
     aria-label="Resize sidebar"
     class="absolute top-0 right-0 w-1 h-full cursor-col-resize border-0 p-0 bg-transparent
            hover:bg-gh-accent-emphasis dark:hover:bg-gh-accent-dark-emphasis
-           {isResizing
-      ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis'
-      : ''}"
+           {isResizing ? 'bg-gh-accent-emphasis dark:bg-gh-accent-dark-emphasis' : ''}"
     on:mousedown={handleMouseDown}
   />
 </aside>

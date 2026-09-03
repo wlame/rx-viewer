@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      # This repo's commits are one imperative sentence with no prefix.
+      prefix: 'Update'
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'Update'
+    groups:
+      # One PR for the routine churn; majors stay separate so they get read.
+      npm-minor-and-patch:
+        update-types: [minor, patch]

@@ -30,7 +30,9 @@
       </a>
     {/if}
     {#if $health.data}
-      <span class="badge bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted">
+      <span
+        class="badge bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted"
+      >
         backend v{$health.data.app_version}
       </span>
       {#if !$health.data.ripgrep_available}
@@ -48,22 +50,13 @@
         <span
           class="w-2 h-2 rounded-full bg-gh-attention-fg dark:bg-gh-attention-dark-fg animate-pulse"
         />
-        <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted"
-          >Connecting...</span
-        >
+        <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Connecting...</span>
       {:else if $health.connected}
-        <span
-          class="w-2 h-2 rounded-full bg-gh-success-fg dark:bg-gh-success-dark-fg"
-        />
-        <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Connected</span
-        >
+        <span class="w-2 h-2 rounded-full bg-gh-success-fg dark:bg-gh-success-dark-fg" />
+        <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Connected</span>
       {:else}
-        <span
-          class="w-2 h-2 rounded-full bg-gh-danger-fg dark:bg-gh-danger-dark-fg"
-        />
-        <span class="text-gh-danger-fg dark:text-gh-danger-dark-fg"
-          >Disconnected</span
-        >
+        <span class="w-2 h-2 rounded-full bg-gh-danger-fg dark:bg-gh-danger-dark-fg" />
+        <span class="text-gh-danger-fg dark:text-gh-danger-dark-fg">Disconnected</span>
       {/if}
     </div>
 
@@ -81,13 +74,7 @@
           />
         </svg>
       {:else}
-        <svg
-          class="w-5 h-5"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="5" />
           <path
             d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"

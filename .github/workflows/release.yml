@@ -1,0 +1,63 @@
+name: Release
+
+# Publish the static bundle when a vX.Y.Z tag is pushed. The asset is a
+# .tar.gz with index.html at the ARCHIVE ROOT — the shape both backends
+# expect — plus the .sha256 sidecar they verify before extracting.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write # create the GitHub Release and upload the assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: setup-bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: setup-just
+        uses: extractions/setup-just@v4
+
+      - name: install
+        run: just install
+
+      - name: gates
+        run: just ci
+
+      # `just package` builds with the tag stamped, asserts index.html is at
+      # the archive root, and writes the sha256 sidecar.
+      - name: package
+        run: just package
+
+      - name: verify the bundle carries the tag
+        run: |
+          set -euo pipefail
+          version=$(python3 -c "import json;print(json.load(open('dist/version.json'))['version'])")
+          echo "dist/version.json version: $version"
+          [ "$version" = "${GITHUB_REF_NAME}" ] \
+            || { echo "ERROR: version.json ($version) does not match ${GITHUB_REF_NAME}"; exit 1; }
+
+      - name: release notes
+        run: |
+          set -euo pipefail
+          just release-notes "${GITHUB_REF_NAME#v}" > release-notes.md
+          cat release-notes.md
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist.tar.gz
+            dist.tar.gz.sha256
+          body_path: release-notes.md
+          fail_on_unmatched_files: true

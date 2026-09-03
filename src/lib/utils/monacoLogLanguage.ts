@@ -19,7 +19,7 @@ export const LOG_LANGUAGE_ID = 'logfile';
 export function registerLogLanguage() {
   // Check if already registered
   const languages = monaco.languages.getLanguages();
-  if (languages.some(lang => lang.id === LOG_LANGUAGE_ID)) {
+  if (languages.some((lang) => lang.id === LOG_LANGUAGE_ID)) {
     return;
   }
 
@@ -85,7 +85,7 @@ export function registerLogLanguage() {
         [/\b1[4-9]\d{8,11}\b/, 'timestamp'],
 
         // URLs - must come before other patterns to capture full URLs
-        [/https?:\/\/[^\s<>\[\]{}()'"]+/, 'url'],
+        [/https?:\/\/[^\s<>[\]{}()'"]+/, 'url'],
 
         // Email addresses
         [/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, 'email'],
@@ -158,43 +158,43 @@ function defineLogThemeRules() {
 export function getLogLanguageThemeRules(): monaco.editor.ITokenThemeRule[] {
   return [
     // Log levels
-    { token: 'log-level-fatal', foreground: 'dc2626', fontStyle: 'bold' },  // red-600
-    { token: 'log-level-error', foreground: 'ef4444', fontStyle: 'bold' },  // red-500
-    { token: 'log-level-warn', foreground: 'f59e0b', fontStyle: 'bold' },   // amber-500
-    { token: 'log-level-info', foreground: '3b82f6' },                       // blue-500
-    { token: 'log-level-debug', foreground: '6b7280' },                      // gray-500
+    { token: 'log-level-fatal', foreground: 'dc2626', fontStyle: 'bold' }, // red-600
+    { token: 'log-level-error', foreground: 'ef4444', fontStyle: 'bold' }, // red-500
+    { token: 'log-level-warn', foreground: 'f59e0b', fontStyle: 'bold' }, // amber-500
+    { token: 'log-level-info', foreground: '3b82f6' }, // blue-500
+    { token: 'log-level-debug', foreground: '6b7280' }, // gray-500
 
     // Datetime and timestamps
-    { token: 'datetime', foreground: '059669' },      // emerald-600
-    { token: 'timestamp', foreground: '059669' },     // emerald-600
+    { token: 'datetime', foreground: '059669' }, // emerald-600
+    { token: 'timestamp', foreground: '059669' }, // emerald-600
 
     // Network-related
-    { token: 'url', foreground: '2563eb', fontStyle: 'underline' },  // blue-600
-    { token: 'email', foreground: '7c3aed' },         // violet-600
-    { token: 'ip-address', foreground: '0891b2' },    // cyan-600
+    { token: 'url', foreground: '2563eb', fontStyle: 'underline' }, // blue-600
+    { token: 'email', foreground: '7c3aed' }, // violet-600
+    { token: 'ip-address', foreground: '0891b2' }, // cyan-600
 
     // Identifiers
-    { token: 'uuid', foreground: '9333ea' },          // purple-600
-    { token: 'path', foreground: '0d9488' },          // teal-600
+    { token: 'uuid', foreground: '9333ea' }, // purple-600
+    { token: 'path', foreground: '0d9488' }, // teal-600
 
     // Numbers
-    { token: 'number', foreground: 'd97706' },        // amber-600
-    { token: 'number-hex', foreground: 'ea580c' },    // orange-600
+    { token: 'number', foreground: 'd97706' }, // amber-600
+    { token: 'number-hex', foreground: 'ea580c' }, // orange-600
 
     // Strings and structures
-    { token: 'string', foreground: '16a34a' },        // green-600
+    { token: 'string', foreground: '16a34a' }, // green-600
     { token: 'json-structure', foreground: '4f46e5' }, // indigo-600
 
     // Key-value
-    { token: 'key', foreground: '0891b2' },           // cyan-600
-    { token: 'value', foreground: '65a30d' },         // lime-600
+    { token: 'key', foreground: '0891b2' }, // cyan-600
+    { token: 'value', foreground: '65a30d' }, // lime-600
 
     // HTTP
-    { token: 'http-method', foreground: '9333ea', fontStyle: 'bold' },  // purple-600
-    { token: 'http-status', foreground: 'd97706' },   // amber-600
+    { token: 'http-method', foreground: '9333ea', fontStyle: 'bold' }, // purple-600
+    { token: 'http-status', foreground: 'd97706' }, // amber-600
 
     // Keywords
-    { token: 'keyword', foreground: '6366f1' },        // indigo-500
+    { token: 'keyword', foreground: '6366f1' }, // indigo-500
     { token: 'keyword-success', foreground: '22c55e' }, // green-500
     { token: 'keyword-pending', foreground: 'eab308' }, // yellow-500
   ];
@@ -204,43 +204,43 @@ export function getLogLanguageThemeRules(): monaco.editor.ITokenThemeRule[] {
 export function getLogLanguageThemeRulesDark(): monaco.editor.ITokenThemeRule[] {
   return [
     // Log levels
-    { token: 'log-level-fatal', foreground: 'fca5a5', fontStyle: 'bold' },  // red-300
-    { token: 'log-level-error', foreground: 'f87171', fontStyle: 'bold' },  // red-400
-    { token: 'log-level-warn', foreground: 'fbbf24', fontStyle: 'bold' },   // amber-400
-    { token: 'log-level-info', foreground: '60a5fa' },                       // blue-400
-    { token: 'log-level-debug', foreground: '9ca3af' },                      // gray-400
+    { token: 'log-level-fatal', foreground: 'fca5a5', fontStyle: 'bold' }, // red-300
+    { token: 'log-level-error', foreground: 'f87171', fontStyle: 'bold' }, // red-400
+    { token: 'log-level-warn', foreground: 'fbbf24', fontStyle: 'bold' }, // amber-400
+    { token: 'log-level-info', foreground: '60a5fa' }, // blue-400
+    { token: 'log-level-debug', foreground: '9ca3af' }, // gray-400
 
     // Datetime and timestamps
-    { token: 'datetime', foreground: '34d399' },      // emerald-400
-    { token: 'timestamp', foreground: '34d399' },     // emerald-400
+    { token: 'datetime', foreground: '34d399' }, // emerald-400
+    { token: 'timestamp', foreground: '34d399' }, // emerald-400
 
     // Network-related
-    { token: 'url', foreground: '60a5fa', fontStyle: 'underline' },  // blue-400
-    { token: 'email', foreground: 'a78bfa' },         // violet-400
-    { token: 'ip-address', foreground: '22d3ee' },    // cyan-400
+    { token: 'url', foreground: '60a5fa', fontStyle: 'underline' }, // blue-400
+    { token: 'email', foreground: 'a78bfa' }, // violet-400
+    { token: 'ip-address', foreground: '22d3ee' }, // cyan-400
 
     // Identifiers
-    { token: 'uuid', foreground: 'c084fc' },          // purple-400
-    { token: 'path', foreground: '2dd4bf' },          // teal-400
+    { token: 'uuid', foreground: 'c084fc' }, // purple-400
+    { token: 'path', foreground: '2dd4bf' }, // teal-400
 
     // Numbers
-    { token: 'number', foreground: 'fbbf24' },        // amber-400
-    { token: 'number-hex', foreground: 'fb923c' },    // orange-400
+    { token: 'number', foreground: 'fbbf24' }, // amber-400
+    { token: 'number-hex', foreground: 'fb923c' }, // orange-400
 
     // Strings and structures
-    { token: 'string', foreground: '4ade80' },        // green-400
+    { token: 'string', foreground: '4ade80' }, // green-400
     { token: 'json-structure', foreground: '818cf8' }, // indigo-400
 
     // Key-value
-    { token: 'key', foreground: '22d3ee' },           // cyan-400
-    { token: 'value', foreground: 'a3e635' },         // lime-400
+    { token: 'key', foreground: '22d3ee' }, // cyan-400
+    { token: 'value', foreground: 'a3e635' }, // lime-400
 
     // HTTP
-    { token: 'http-method', foreground: 'c084fc', fontStyle: 'bold' },  // purple-400
-    { token: 'http-status', foreground: 'fbbf24' },   // amber-400
+    { token: 'http-method', foreground: 'c084fc', fontStyle: 'bold' }, // purple-400
+    { token: 'http-status', foreground: 'fbbf24' }, // amber-400
 
     // Keywords
-    { token: 'keyword', foreground: 'a5b4fc' },        // indigo-300
+    { token: 'keyword', foreground: 'a5b4fc' }, // indigo-300
     { token: 'keyword-success', foreground: '4ade80' }, // green-400
     { token: 'keyword-pending', foreground: 'facc15' }, // yellow-400
   ];

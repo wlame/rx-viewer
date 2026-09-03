@@ -7,7 +7,11 @@
   import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
   import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
   import type { MonacoTheme } from '$lib/types';
-  import { registerLogLanguage, getLogLanguageThemeRules, getLogLanguageThemeRulesDark } from '$lib/utils/monacoLogLanguage';
+  import {
+    registerLogLanguage,
+    getLogLanguageThemeRules,
+    getLogLanguageThemeRulesDark,
+  } from '$lib/utils/monacoLogLanguage';
 
   // Props
   export let content: string = '';
@@ -390,7 +394,10 @@
     return editor;
   }
 
-  export function revealLine(lineNumber: number, scrollType: monaco.editor.ScrollType = monaco.editor.ScrollType.Smooth) {
+  export function revealLine(
+    lineNumber: number,
+    scrollType: monaco.editor.ScrollType = monaco.editor.ScrollType.Smooth,
+  ) {
     if (editor) {
       // Adjust for our line number offset
       const monacoLine = lineNumber - lineNumbersStart + 1;
@@ -413,7 +420,7 @@
   }
 
   export function setDecorations(
-    decorations: monaco.editor.IModelDeltaDecoration[]
+    decorations: monaco.editor.IModelDeltaDecoration[],
   ): monaco.editor.IEditorDecorationsCollection | null {
     if (editor) {
       return editor.createDecorationsCollection(decorations);

@@ -37,7 +37,7 @@
     let pathsToSearch: string[];
     if (onlyOpenedFiles) {
       // Search only in currently opened files
-      pathsToSearch = $files.openFiles.map(f => f.path);
+      pathsToSearch = $files.openFiles.map((f) => f.path);
       if (pathsToSearch.length === 0) {
         return; // No files open, nothing to search
       }
@@ -48,14 +48,10 @@
     }
 
     // Search with all patterns
-    await trace.search(
-      pathsToSearch,
-      validPatterns,
-      maxResults
-    );
+    await trace.search(pathsToSearch, validPatterns, maxResults);
   }
 
-  function handleKeydown(event: KeyboardEvent, index: number) {
+  function handleKeydown(event: KeyboardEvent, _index: number) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSearch();
@@ -138,7 +134,7 @@
           // Leave these matches showing the byte offset; clicking one
           // still retries the lookup.
         }
-      })
+      }),
     );
 
     if (sequence === resolveSequence) resolving = {};
@@ -262,7 +258,10 @@
       <button
         class="btn btn-primary flex-1"
         on:click={handleSearch}
-        disabled={$trace.searching || searchPatterns.every((p) => !p.trim()) || (!hasRoots && !onlyOpenedFiles) || (onlyOpenedFiles && $files.openFiles.length === 0)}
+        disabled={$trace.searching ||
+          searchPatterns.every((p) => !p.trim()) ||
+          (!hasRoots && !onlyOpenedFiles) ||
+          (onlyOpenedFiles && $files.openFiles.length === 0)}
       >
         {#if $trace.searching}
           <Spinner size="sm" />
@@ -305,7 +304,10 @@
             bind:checked={onlyOpenedFiles}
             class="rounded border-gh-border-default dark:border-gh-border-dark-default"
           />
-          <label for="only-opened-files" class="text-gh-fg-muted dark:text-gh-fg-dark-muted cursor-pointer">
+          <label
+            for="only-opened-files"
+            class="text-gh-fg-muted dark:text-gh-fg-dark-muted cursor-pointer"
+          >
             Only opened files
             {#if onlyOpenedFiles && $files.openFiles.length > 0}
               <span class="text-xs">({$files.openFiles.length})</span>
@@ -337,9 +339,8 @@
       <div class="p-3 border-b border-gh-border-default dark:border-gh-border-dark-default">
         <div class="flex items-center justify-between">
           <p class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
-            Found {$trace.response.matches.length.toLocaleString()} matches
-            in {$trace.response.scanned_files.length.toLocaleString()} files
-            ({$trace.response.time.toFixed(2)}s)
+            Found {$trace.response.matches.length.toLocaleString()} matches in {$trace.response.scanned_files.length.toLocaleString()}
+            files ({$trace.response.time.toFixed(2)}s)
             {#if $trace.response.max_results && $trace.response.matches.length >= $trace.response.max_results}
               <span class="text-gh-attention-fg dark:text-gh-attention-dark-fg">
                 (limited to {$trace.response.max_results})
@@ -362,7 +363,6 @@
             {@const filePath = getFilePath(match.file)}
             {@const lineNum = displayLine(match, filePath)}
             {@const isResolving = resolving[offsetKey(filePath, match.offset)]}
-            {@const pattern = getPattern(match.pattern)}
             {@const fileMetadata = getFileMetadata(filePath)}
             <li>
               <button
@@ -412,9 +412,7 @@
           {/each}
         </ul>
       {:else}
-        <div class="p-3 text-gh-fg-muted dark:text-gh-fg-dark-muted">
-          No matches found
-        </div>
+        <div class="p-3 text-gh-fg-muted dark:text-gh-fg-dark-muted">No matches found</div>
       {/if}
     {:else if !$trace.searching}
       <div class="p-3 text-gh-fg-muted dark:text-gh-fg-dark-muted text-sm">

@@ -15,7 +15,7 @@ class ApiError extends Error {
   constructor(
     public status: number,
     public statusText: string,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -54,9 +54,7 @@ export const api = {
    * @param path - Directory path to list, or undefined for search roots
    */
   async getTree(path?: string): Promise<TreeResponse> {
-    const url = path
-      ? `${API_BASE}/tree?path=${encodeURIComponent(path)}`
-      : `${API_BASE}/tree`;
+    const url = path ? `${API_BASE}/tree?path=${encodeURIComponent(path)}` : `${API_BASE}/tree`;
     return fetchJson<TreeResponse>(url);
   },
 
@@ -67,11 +65,7 @@ export const api = {
    *                 Can also include negative numbers like "-1" for end of file
    * @param context - Optional context lines (used with single line numbers like "-1")
    */
-  async getSamples(
-    path: string,
-    ranges: string[],
-    context?: number
-  ): Promise<SamplesResponse> {
+  async getSamples(path: string, ranges: string[], context?: number): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
       lines: ranges.join(','),
@@ -96,7 +90,7 @@ export const api = {
   async getSamplesByOffset(
     path: string,
     offsets: number[],
-    context?: number
+    context?: number,
   ): Promise<SamplesResponse> {
     const params = new URLSearchParams({
       path,
@@ -123,7 +117,7 @@ export const api = {
     maxResults?: number,
     caseSensitive?: boolean,
     contextBefore?: number,
-    contextAfter?: number
+    contextAfter?: number,
   ): Promise<TraceResponse> {
     const params = new URLSearchParams();
     paths.forEach((p) => params.append('path', p));
@@ -163,7 +157,7 @@ export const api = {
    */
   async startIndex(
     path: string,
-    options: { force?: boolean; analyze?: boolean; threshold?: number } = {}
+    options: { force?: boolean; analyze?: boolean; threshold?: number } = {},
   ): Promise<IndexTaskResponse> {
     const { force = false, analyze = false, threshold } = options;
     const body: Record<string, unknown> = { path, force, analyze };

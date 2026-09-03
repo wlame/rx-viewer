@@ -20,17 +20,14 @@ function entryToNode(entry: TreeEntry, level: number): TreeNode {
 }
 
 function createTreeStore() {
-  const { subscribe, set, update } = writable<TreeState>({
+  const { subscribe, update } = writable<TreeState>({
     roots: [],
     loading: false,
     error: null,
     selectedPath: null,
   });
 
-  function findNode(
-    nodes: TreeNode[],
-    path: string
-  ): TreeNode | null {
+  function findNode(nodes: TreeNode[], path: string): TreeNode | null {
     for (const node of nodes) {
       if (node.path === path) return node;
       if (node.children.length > 0) {
@@ -44,7 +41,7 @@ function createTreeStore() {
   function updateNode(
     nodes: TreeNode[],
     path: string,
-    updater: (node: TreeNode) => TreeNode
+    updater: (node: TreeNode) => TreeNode,
   ): TreeNode[] {
     return nodes.map((node) => {
       if (node.path === path) {
@@ -89,9 +86,7 @@ function createTreeStore() {
 
     try {
       const response = await api.getTree(path);
-      const children = response.entries.map((e) =>
-        entryToNode(e, node.level + 1)
-      );
+      const children = response.entries.map((e) => entryToNode(e, node.level + 1));
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({
@@ -165,7 +160,7 @@ function createTreeStore() {
     }
 
     // Get all parent directory paths
-    const parts = filePath.split('/').filter(p => p);
+    const parts = filePath.split('/').filter((p) => p);
     const parentPaths: string[] = [];
 
     for (let i = 1; i < parts.length; i++) {

@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
-import type { OpenFile, FileLine, FileMatch, Anomaly } from '../types';
+import type { OpenFile, FileLine, FileMatch } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -11,7 +11,7 @@ interface FilesState {
 }
 
 function createFilesStore() {
-  const { subscribe, set, update } = writable<FilesState>({
+  const { subscribe, update } = writable<FilesState>({
     openFiles: [],
     matches: new Map(),
     activeFilePath: null,
@@ -27,7 +27,8 @@ function createFilesStore() {
       return;
     }
 
-    api.getIndex(path)
+    api
+      .getIndex(path)
       .then((indexData) => {
         update((s) => ({
           ...s,
@@ -48,9 +49,7 @@ function createFilesStore() {
         // 404 means no index exists, which is fine
         update((s) => ({
           ...s,
-          openFiles: s.openFiles.map((f) =>
-            f.path === path ? { ...f, isIndexed: false } : f
-          ),
+          openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, isIndexed: false } : f)),
         }));
         console.debug('File index fetch failed (non-critical):', path, e);
       });
@@ -65,7 +64,7 @@ function createFilesStore() {
     fileSize?: number | null,
     syntaxHighlightingOverride?: boolean,
     isIndexed?: boolean,
-    lineCount?: number | null
+    lineCount?: number | null,
   ) {
     const state = get({ subscribe });
 
@@ -76,11 +75,10 @@ function createFilesStore() {
       update((s) => ({
         ...s,
         activeFilePath: path,
-        openFiles: scrollToLine !== undefined
-          ? s.openFiles.map((f, i) =>
-              i === existingIndex ? { ...f, scrollToLine } : f
-            )
-          : s.openFiles,
+        openFiles:
+          scrollToLine !== undefined
+            ? s.openFiles.map((f, i) => (i === existingIndex ? { ...f, scrollToLine } : f))
+            : s.openFiles,
       }));
       return;
     }
@@ -91,10 +89,12 @@ function createFilesStore() {
     // Default syntax highlighting: enabled for files < 1MB, disabled for larger files
     // Can be overridden by syntaxHighlightingOverride parameter (from URL state)
     const ONE_MB = 1024 * 1024;
-    const defaultSyntaxHighlighting = fileSize === null || fileSize === undefined || fileSize < ONE_MB;
-    const syntaxHighlighting = syntaxHighlightingOverride !== undefined
-      ? syntaxHighlightingOverride
-      : defaultSyntaxHighlighting;
+    const defaultSyntaxHighlighting =
+      fileSize === null || fileSize === undefined || fileSize < ONE_MB;
+    const syntaxHighlighting =
+      syntaxHighlightingOverride !== undefined
+        ? syntaxHighlightingOverride
+        : defaultSyntaxHighlighting;
 
     const newFile: OpenFile = {
       path,
@@ -151,7 +151,7 @@ function createFilesStore() {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, loading: true, error: null } : f
+        f.path === path ? { ...f, loading: true, error: null } : f,
       ),
     }));
 
@@ -167,7 +167,8 @@ function createFilesStore() {
         // Parse the range key to get the start line
         // Range format: "start-end" (e.g., "1-100")
         const dashIndex = rangeKey.indexOf('-');
-        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
+        const startLineNum =
+          dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
 
         for (let i = 0; i < contentArr.length; i++) {
           const actualLineNum = startLineNum + i;
@@ -183,9 +184,7 @@ function createFilesStore() {
       for (const line of lines) {
         lineMap.set(line.lineNumber, line);
       }
-      const sortedLines = Array.from(lineMap.values()).sort(
-        (a, b) => a.lineNumber - b.lineNumber
-      );
+      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
 
       update((s) => ({
         ...s,
@@ -195,12 +194,13 @@ function createFilesStore() {
                 ...f, // Preserve all existing fields including scrollToLine
                 lines: sortedLines,
                 startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
-                endLine: sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
+                endLine:
+                  sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
                 loading: false,
                 isCompressed: response.is_compressed,
                 compressionFormat: response.compression_format,
               }
-            : f
+            : f,
         ),
       }));
     } catch (e) {
@@ -227,7 +227,7 @@ function createFilesStore() {
                   loading: false,
                   error: errorMessage,
                 }
-              : f
+              : f,
           ),
         }));
       } else {
@@ -241,7 +241,7 @@ function createFilesStore() {
                   loading: false,
                   error: errorMessage,
                 }
-              : f
+              : f,
           ),
         }));
       }
@@ -254,11 +254,15 @@ function createFilesStore() {
    * Uses /v1/samples?path=...&lines=<centerLine>&context=<contextLines>
    * This returns lines from (centerLine - context) to (centerLine + context)
    */
-  async function loadLinesAroundCenter(path: string, centerLine: number, contextLines: number = 500) {
+  async function loadLinesAroundCenter(
+    path: string,
+    centerLine: number,
+    contextLines: number = 500,
+  ) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, loading: true, error: null } : f
+        f.path === path ? { ...f, loading: true, error: null } : f,
       ),
     }));
 
@@ -293,9 +297,7 @@ function createFilesStore() {
       for (const line of lines) {
         lineMap.set(line.lineNumber, line);
       }
-      const sortedLines = Array.from(lineMap.values()).sort(
-        (a, b) => a.lineNumber - b.lineNumber
-      );
+      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
 
       update((s) => ({
         ...s,
@@ -305,12 +307,13 @@ function createFilesStore() {
                 ...f, // Preserve all existing fields including scrollToLine
                 lines: sortedLines,
                 startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
-                endLine: sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
+                endLine:
+                  sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
                 loading: false,
                 isCompressed: response.is_compressed,
                 compressionFormat: response.compression_format,
               }
-            : f
+            : f,
         ),
       }));
     } catch (e) {
@@ -342,7 +345,7 @@ function createFilesStore() {
                   loading: false,
                   error: errorMessage,
                 }
-              : f
+              : f,
           ),
         }));
       }
@@ -380,9 +383,7 @@ function createFilesStore() {
 
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, loading: true } : f
-      ),
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, loading: true } : f)),
     }));
 
     try {
@@ -395,7 +396,8 @@ function createFilesStore() {
       for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
         // Parse the range key to get the start line
         const dashIndex = rangeKey.indexOf('-');
-        const startLineNum = dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
+        const startLineNum =
+          dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
 
         for (let i = 0; i < contentArr.length; i++) {
           const actualLineNum = startLineNum + i;
@@ -425,11 +427,12 @@ function createFilesStore() {
           }
 
           const mergedLines = Array.from(lineMap.values()).sort(
-            (a, b) => a.lineNumber - b.lineNumber
+            (a, b) => a.lineNumber - b.lineNumber,
           );
 
           const newStartLine = mergedLines.length > 0 ? mergedLines[0].lineNumber : 1;
-          const newEndLine = mergedLines.length > 0 ? mergedLines[mergedLines.length - 1].lineNumber : 0;
+          const newEndLine =
+            mergedLines.length > 0 ? mergedLines[mergedLines.length - 1].lineNumber : 0;
 
           return {
             ...f,
@@ -487,7 +490,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber } : f
+          f.path === path ? { ...f, scrollToLine: lineNumber } : f,
         ),
       }));
     } else {
@@ -496,7 +499,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber } : f
+          f.path === path ? { ...f, scrollToLine: lineNumber } : f,
         ),
       }));
 
@@ -524,7 +527,7 @@ function createFilesStore() {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, loading: true, error: null } : f
+        f.path === path ? { ...f, loading: true, error: null } : f,
       ),
     }));
 
@@ -567,11 +570,10 @@ function createFilesStore() {
       for (const line of lines) {
         lineMap.set(line.lineNumber, line);
       }
-      const sortedLines = Array.from(lineMap.values()).sort(
-        (a, b) => a.lineNumber - b.lineNumber
-      );
+      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
 
-      const newEndLine = sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0;
+      const newEndLine =
+        sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0;
 
       update((s) => ({
         ...s,
@@ -589,7 +591,7 @@ function createFilesStore() {
                 totalLines: discoveredTotalLines, // Update total lines
                 reachedEnd: true, // We're at the end
               }
-            : f
+            : f,
         ),
       }));
     } catch (e) {
@@ -604,7 +606,7 @@ function createFilesStore() {
                 loading: false,
                 error: errorMessage,
               }
-            : f
+            : f,
         ),
       }));
       console.error('Failed to jump to end:', e);
@@ -643,9 +645,7 @@ function createFilesStore() {
   function clearScrollPosition(path: string) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, scrollToLine: undefined } : f
-      ),
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, scrollToLine: undefined } : f)),
     }));
   }
 
@@ -668,7 +668,7 @@ function createFilesStore() {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, syntaxHighlighting: !f.syntaxHighlighting } : f
+        f.path === path ? { ...f, syntaxHighlighting: !f.syntaxHighlighting } : f,
       ),
     }));
   }
@@ -751,9 +751,7 @@ function createFilesStore() {
   function clearRegexFilter(path: string) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, regexFilter: null } : f
-      ),
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, regexFilter: null } : f)),
     }));
   }
 
@@ -764,7 +762,7 @@ function createFilesStore() {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, showInvisibleChars: !f.showInvisibleChars } : f
+        f.path === path ? { ...f, showInvisibleChars: !f.showInvisibleChars } : f,
       ),
     }));
   }
@@ -775,9 +773,7 @@ function createFilesStore() {
   function toggleWordWrap(path: string) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, wordWrap: !f.wordWrap } : f
-      ),
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, wordWrap: !f.wordWrap } : f)),
     }));
   }
 
@@ -797,9 +793,7 @@ function createFilesStore() {
   function setHighlightedLines(path: string, lines: { start: number; end: number } | null) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, highlightedLines: lines } : f
-      ),
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, highlightedLines: lines } : f)),
     }));
   }
 
@@ -819,9 +813,7 @@ function createFilesStore() {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path
-          ? { ...f, selectedAnomalyCategory: category, highlightedLines: null }
-          : f
+        f.path === path ? { ...f, selectedAnomalyCategory: category, highlightedLines: null } : f,
       ),
     }));
   }

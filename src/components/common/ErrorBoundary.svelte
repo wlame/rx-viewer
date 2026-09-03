@@ -56,9 +56,7 @@
         {errorMessage}
       </p>
 
-      <button class="btn btn-primary" on:click={reset}>
-        Try Again
-      </button>
+      <button class="btn btn-primary" on:click={reset}> Try Again </button>
     </div>
   </div>
 {:else}

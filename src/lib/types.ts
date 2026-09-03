@@ -281,7 +281,14 @@ export interface AppSettings {
 
 export type Theme = 'light' | 'dark';
 
-export type MonacoTheme = 'vs' | 'vs-dark' | 'github-light' | 'github-dark' | 'monokai' | 'solarized-light' | 'solarized-dark';
+export type MonacoTheme =
+  | 'vs'
+  | 'vs-dark'
+  | 'github-light'
+  | 'github-dark'
+  | 'monokai'
+  | 'solarized-light'
+  | 'solarized-dark';
 
 export const MONACO_THEMES: { id: MonacoTheme; name: string; base: 'vs' | 'vs-dark' }[] = [
   { id: 'vs', name: 'Light (VS)', base: 'vs' },

@@ -23,7 +23,7 @@
         urlState.path,
         urlState.line,
         undefined, // fileSize will be determined by backend
-        urlState.syntaxHighlighting
+        urlState.syntaxHighlighting,
       );
 
       // Expand tree to show the file

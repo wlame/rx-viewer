@@ -13,13 +13,13 @@ interface DetectorsState {
 
 // Category icons/symbols - unique visual identifiers for each category
 export const CATEGORY_ICONS: Record<string, { icon: string; color: string; label: string }> = {
-  error: { icon: '!', color: '#ef4444', label: 'Errors' },           // red-500
-  warning: { icon: '!', color: '#f59e0b', label: 'Warnings' },      // amber-500
+  error: { icon: '!', color: '#ef4444', label: 'Errors' }, // red-500
+  warning: { icon: '!', color: '#f59e0b', label: 'Warnings' }, // amber-500
   traceback: { icon: '!', color: '#dc2626', label: 'Tracebacks' }, // red-600
-  format: { icon: '!', color: '#8b5cf6', label: 'Format' },         // violet-500
-  security: { icon: '!', color: '#ec4899', label: 'Security' },     // pink-500
-  timing: { icon: '!', color: '#06b6d4', label: 'Timing' },         // cyan-500
-  multiline: { icon: '!', color: '#6366f1', label: 'Multiline' },   // indigo-500
+  format: { icon: '!', color: '#8b5cf6', label: 'Format' }, // violet-500
+  security: { icon: '!', color: '#ec4899', label: 'Security' }, // pink-500
+  timing: { icon: '!', color: '#06b6d4', label: 'Timing' }, // cyan-500
+  multiline: { icon: '!', color: '#6366f1', label: 'Multiline' }, // indigo-500
 };
 
 // Default fallback for unknown categories
@@ -97,5 +97,5 @@ export const detectors = createDetectorsStore();
 
 // Derived store for category names
 export const categoryNames = derived(detectors, ($detectors) =>
-  $detectors.categories.map((c) => c.name)
+  $detectors.categories.map((c) => c.name),
 );

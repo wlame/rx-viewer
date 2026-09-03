@@ -16,11 +16,11 @@ It is a standalone artifact. It builds to a static `dist/`, is published as
 caches it under `~/.cache/rx/frontend/` and serves it. One frontend, two
 interchangeable backends, no vendoring.
 
-| Repo | Role |
-|---|---|
-| `rx-go` | Flagship backend. Reference for the HTTP wire contract. Default port 7777. |
-| `rx-python` | Second backend, drop-in replacement for rx-go. Default port 8000. |
-| `rx-viewer` (this repo) | Must work against both backends with no code change. |
+| Repo                    | Role                                                                       |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `rx-go`                 | Flagship backend. Reference for the HTTP wire contract. Default port 7777. |
+| `rx-python`             | Second backend, drop-in replacement for rx-go. Default port 8000.          |
+| `rx-viewer` (this repo) | Must work against both backends with no code change.                       |
 
 `rx-rust` also exists beside them. It is frozen. Do not target it.
 
@@ -52,38 +52,51 @@ interchangeable backends, no vendoring.
 
 ## Quick orientation
 
-| Where | What |
-|---|---|
-| `src/main.ts`, `src/App.svelte` | Entry point and root layout |
-| `src/lib/api.ts` | The entire backend surface: one `api` object, `fetchJson`, `ApiError` |
-| `src/lib/types.ts` | TypeScript mirror of the wire schema |
-| `src/lib/stores/` | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
-| `src/lib/utils/regexFilter.ts` | Regex filter engine (hide, show, highlight) |
-| `src/lib/utils/urlState.ts` | URL to app-state persistence (no router) |
-| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar |
-| `src/components/editor/` | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing) |
-| `src/components/tree/`, `search/`, `trace/`, `layout/`, `common/` | Tree, search panel, results, chrome, shared widgets |
-| `vite.config.ts` | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk |
-| `.github/workflows/` | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release) |
+| Where                                                             | What                                                                                    |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/main.ts`, `src/App.svelte`                                   | Entry point and root layout                                                             |
+| `src/lib/api.ts`                                                  | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                   |
+| `src/lib/types.ts`                                                | TypeScript mirror of the wire schema                                                    |
+| `src/lib/stores/`                                                 | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
+| `src/lib/utils/regexFilter.ts`                                    | Regex filter engine (hide, show, highlight)                                             |
+| `src/lib/utils/urlState.ts`                                       | URL to app-state persistence (no router)                                                |
+| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts`         | Monaco language registration and the log grammar                                        |
+| `src/components/editor/`                                          | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                   |
+| `src/components/tree/`, `search/`, `trace/`, `layout/`, `common/` | Tree, search panel, results, chrome, shared widgets                                     |
+| `vite.config.ts`                                                  | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                 |
+| `.github/workflows/`                                              | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                  |
 
 ## Build, run, test
 
+`just` is the entrypoint. `just --list` shows every recipe.
+
 ```bash
-bun install --frozen-lockfile     # install from the committed bun.lock
-bun run dev                       # dev server :5173, proxies /v1 to localhost:8080
-bun run check                     # svelte-check type check
-bun run build                     # production build → dist/
-bun run preview
+just install                      # bun install --frozen-lockfile
+just dev                          # dev server :5173, proxies /v1 to localhost:8080
+just build                        # production build → dist/ (+ version.json)
+just package                      # dist.tar.gz + .sha256, the way a release does
+just preview
+
+just fmt                          # prettier --write
+just fmt-check                    # prettier --check (CI gate)
+just typecheck                    # svelte-check
+just lint                         # eslint
+just test                         # vitest run
+
+just ci                           # exactly what GitHub CI runs
+just check                        # ci + package + audit
 ```
+
+`just ci` is `fmt-check typecheck lint test build`, in that order, and
+`.github/workflows/ci.yml` runs `just ci` — the two cannot disagree.
 
 Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/log`
 (rx-go or rx-python). Bun is the package manager; Node is not used for tooling.
 A `Dockerfile` builds without a host Bun install.
 
-The `justfile`, lint (`prettier` + `eslint`), `vitest` suite, and the release
-recipe with a sha256 sidecar described in `../release-toolchain-reference.md`
-are tracked in `../tickets/08-ci-release-toolchain.md`. When they exist,
-prefer `just ci`.
+**`just typecheck` is red today**: `svelte-check` reports 4 errors that
+predate the gate (a Monaco option name, a missing `prismjs` declaration, one
+`number | null`). They are tracked in `../tickets/`; do not add more.
 
 ## Architecture notes
 
@@ -121,19 +134,24 @@ prefer `just ci`.
 - The completion gate before you say "done":
 
 ```bash
-bun run check && bun run build
+just ci
 ```
 
-(plus `bun run lint` and `bun run test` once they exist). Paste the output.
+Paste the output.
 
 ## Git, changelog, release
 
 - Commit: one imperative sentence, capital, full stop, no prefix, no body.
-- Version comes from the git tag. `package.json` stays at `0.0.0`; the release
-  workflow stamps the tag into `dist/version.json`. Do not commit a real version.
-- Release: tag `vX.Y.Z` on `main` from a clean tree. The workflow builds with a
-  frozen lockfile, packages `dist/` with `index.html` at the archive root,
-  publishes `dist.tar.gz` and its `.sha256` sidecar. Backends verify the sidecar.
+- Version comes from the git tag. `package.json` stays at `0.0.0`; the build
+  stamps `git describe` into `dist/version.json` and into the
+  `__RX_VIEWER_VERSION__` define. Do not commit a real version.
+- Release: `just release-dry patch` previews, `just release patch` runs the
+  gates, promotes the changelog, commits and tags, then prints the push
+  commands rather than running them. Pushing the tag runs `release.yml`,
+  which builds with a frozen lockfile, packages `dist/` with `index.html` at
+  the archive root, and publishes `dist.tar.gz` with its `.sha256` sidecar.
+  Backends verify that sidecar and only install a version inside their
+  supported range, so a minor bump needs a matching backend release.
 - rx-go keeps a real bundle as a test fixture
   (`rx-go/internal/webapi/testdata/rx-viewer-v0.2.0-dist.tar.gz`). If the bundle
   layout changes, refresh that fixture in rx-go.

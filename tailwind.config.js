@@ -93,10 +93,10 @@ export default {
           'scrollbar-width': 'none',
           /* Safari and Chrome */
           '&::-webkit-scrollbar': {
-            display: 'none'
-          }
-        }
-      })
-    }
+            display: 'none',
+          },
+        },
+      });
+    },
   ],
 };

@@ -54,9 +54,7 @@ export const settings = createSettingsStore();
 export const resolvedTheme = derived(settings, ($settings): Theme => {
   if ($settings.theme === 'system') {
     if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
   return $settings.theme;
 });
@@ -68,9 +66,7 @@ if (typeof window !== 'undefined') {
   });
 
   // Listen for system theme changes
-  window
-    .matchMedia('(prefers-color-scheme: dark)')
-    .addEventListener('change', () => {
-      settings.update((s) => ({ ...s })); // Trigger re-evaluation
-    });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    settings.update((s) => ({ ...s })); // Trigger re-evaluation
+  });
 }

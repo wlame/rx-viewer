@@ -2,7 +2,13 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'path';
 
+// The release stamps the tag through this env var; a local build says "dev".
+const viewerVersion = process.env.RX_VIEWER_VERSION || 'dev';
+
 export default defineConfig({
+  define: {
+    __RX_VIEWER_VERSION__: JSON.stringify(viewerVersion),
+  },
   plugins: [
     svelte({
       onwarn: (warning, handler) => {

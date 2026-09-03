@@ -8,9 +8,7 @@ import type { TraceMatch, TraceResponse } from '../types';
  * on; the byte offset is always absolute, so the caller resolves the line
  * through `/v1/samples`.
  */
-export type MatchLine =
-  | { kind: 'line'; line: number }
-  | { kind: 'unknown'; offset: number };
+export type MatchLine = { kind: 'line'; line: number } | { kind: 'unknown'; offset: number };
 
 /** The backend did not know the absolute line number. */
 const UNKNOWN_ABSOLUTE_LINE = -1;

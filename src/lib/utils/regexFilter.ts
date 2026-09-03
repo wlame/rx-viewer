@@ -5,10 +5,7 @@
 import type { RegexFilter } from '../types';
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeAttribute(text: string): string {
@@ -55,7 +52,7 @@ function hideGroups(content: string, matches: RegExpMatchArray[]): string {
 
         // Add red bar for hidden group (space with bright red background)
         segments.push(
-          `<span class="hidden-bar red" title="${escapeAttribute(group)}">&nbsp;</span>`
+          `<span class="hidden-bar red" title="${escapeAttribute(group)}">&nbsp;</span>`,
         );
 
         groupStart = absoluteGroupStart + group.length;
@@ -99,7 +96,7 @@ function showOnlyGroups(content: string, matches: RegExpMatchArray[]): string {
     if (matchStart > lastShownEnd) {
       const hiddenText = content.slice(lastShownEnd, matchStart);
       segments.push(
-        `<span class="hidden-bar blue" title="${escapeAttribute(hiddenText)}">&nbsp;</span>`
+        `<span class="hidden-bar blue" title="${escapeAttribute(hiddenText)}">&nbsp;</span>`,
       );
     }
 
@@ -118,7 +115,7 @@ function showOnlyGroups(content: string, matches: RegExpMatchArray[]): string {
   if (lastShownEnd < content.length) {
     const hiddenText = content.slice(lastShownEnd);
     segments.push(
-      `<span class="hidden-bar blue" title="${escapeAttribute(hiddenText)}">&nbsp;</span>`
+      `<span class="hidden-bar blue" title="${escapeAttribute(hiddenText)}">&nbsp;</span>`,
     );
   }
 
@@ -159,9 +156,7 @@ function highlightGroups(content: string, matches: RegExpMatchArray[]): string {
         }
 
         // Add highlighted group
-        segments.push(
-          `<span class="regex-highlight">${escapeHtml(group)}</span>`
-        );
+        segments.push(`<span class="regex-highlight">${escapeHtml(group)}</span>`);
 
         groupStart = absoluteGroupStart + group.length;
       }

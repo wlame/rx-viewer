@@ -5,12 +5,14 @@ Web-based frontend for RX (Regex Tracer) - a high-performance file search and an
 ## Overview
 
 This is the unified web UI for RX, designed to work with multiple backend implementations:
+
 - [rx-tool](https://github.com/wlame/rx-tool) - Python backend
 - rx-tool-go - Go backend (coming soon)
 
 ## Architecture
 
 The RX Viewer is a **standalone frontend** that:
+
 1. Gets built and published as GitHub Release artifacts
 2. Is automatically downloaded by backend servers on first run
 3. Cached locally at `~/.cache/rx/frontend/`
@@ -61,6 +63,7 @@ bun run build
 The dev server runs on `http://localhost:5173` and proxies API requests to `http://localhost:8080`.
 
 Start a backend server:
+
 ```bash
 # Python backend
 rx serve --port 8080
@@ -70,6 +73,7 @@ rx-go serve --port 8080
 ```
 
 Then start the frontend dev server:
+
 ```bash
 bun run dev
 ```
@@ -83,6 +87,7 @@ bun run build
 ```
 
 Output: `dist/` directory with:
+
 - `index.html` - Entry point
 - `assets/*.js` - Bundled JavaScript
 - `assets/*.css` - Compiled CSS
@@ -128,6 +133,7 @@ backend release; see the parity rules in `AGENTS.md`.
 ## Version Format
 
 Version is stored in `package.json`:
+
 ```json
 {
   "version": "1.0.0"
@@ -135,6 +141,7 @@ Version is stored in `package.json`:
 ```
 
 Build also creates `dist/version.json`:
+
 ```json
 {
   "version": "1.0.0",

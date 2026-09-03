@@ -21,11 +21,7 @@ function createTraceStore() {
     error: null,
   });
 
-  async function search(
-    paths: string[],
-    patterns: string[],
-    maxResults?: number
-  ) {
+  async function search(paths: string[], patterns: string[], maxResults?: number) {
     if (patterns.length === 0) return;
 
     update((s) => ({
@@ -37,11 +33,7 @@ function createTraceStore() {
     }));
 
     try {
-      const response = await api.trace(
-        paths,
-        patterns,
-        maxResults
-      );
+      const response = await api.trace(paths, patterns, maxResults);
 
       update((s) => ({
         ...s,
@@ -87,15 +79,13 @@ function createTraceStore() {
    * Get matches for a specific file path from the last search
    */
   function getMatchesForFile(filePath: string): TraceMatch[] {
-    let matches: TraceMatch[] = [];
+    const matches: TraceMatch[] = [];
 
     const state = getState();
     if (!state.response) return matches;
 
     // Find the file ID for this path
-    const fileId = Object.entries(state.response.files).find(
-      ([, path]) => path === filePath
-    )?.[0];
+    const fileId = Object.entries(state.response.files).find(([, path]) => path === filePath)?.[0];
 
     if (!fileId) return matches;
 
