@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Unit tests for `regexFilter`, `urlState`, `format`, the log grammar and
+  `api`: 111 tests across 8 files, up from 14 across 2. They cover the
+  filter's three modes and its HTML escaping, the URL round trip for
+  paths with spaces, plus signs and non-ASCII, the relative-time
+  boundaries, the grammar's rule order, and the request builder's path
+  encoding.
+- `src/lib/utils/logGrammar.ts` holds the log-file Monarch grammar and
+  its theme rules as data, importing Monaco for types only. Registering
+  it stays in `monacoLogLanguage.ts`, which re-exports the grammar so
+  callers keep one import. The split is what makes the grammar testable
+  without booting an editor.
 - A `Content-Security-Policy` meta tag in `index.html` restricting the
   page to same-origin resources, so a remote dependency cannot come back
   unnoticed. `src/lib/utils/externalResources.test.ts` fails if either
@@ -26,8 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The type check is a real gate. CI ran `bun run check || echo "..."`, which
-  could not fail; it now runs through `just ci`. Four `svelte-check` errors
-  it had been hiding are still open and are tracked separately.
+  could not fail; it now runs through `just ci`, and the four errors it had
+  been hiding are fixed, so `just ci` passes end to end for the first time.
+- `vite.config.ts` no longer drops every `a11y-*` and `unused-export-let`
+  warning at build time. The build reports what it finds; there were four
+  a11y warnings and no unused exports, and the four are fixed rather than
+  filtered.
 - The release version is stamped through a vite `define` from
   `RX_VIEWER_VERSION` instead of rewriting `package.json` with `jq`, and
   `dist/version.json` is written by the build rather than by the workflow,
@@ -35,6 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bun-version` is pinned in CI; it was `latest`.
 
 ### Fixed
+
+- Four `svelte-check` errors the old CI could not see. Monaco's
+  `bracketPairColorization` was passed as a flat
+  `'bracketPairColorization.enabled'` key, which its typings reject and
+  which Monaco silently ignored — bracket colouring had never actually
+  been switched by language. `prismjs` had no type declarations
+  (`@types/prismjs` added), and a `number | null` reached a `number`
+  parameter in `EditorPane.svelte`.
+- The analysis dialog was unreachable by keyboard: it could only be
+  closed by clicking, and the backdrop and panel were `div`s with click
+  handlers and no roles. Escape now closes it, the panel is a labelled
+  `role="dialog"`, and the backdrop closes only when it is itself the
+  click target — which replaces the panel's `stopPropagation` handler
+  rather than suppressing a warning about it.
 
 - Dead code removed: an unused `checkAndLoadMore` in `EditorPane.svelte`,
   a `lastScrollTop` that was written in four places and never read, an

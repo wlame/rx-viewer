@@ -261,8 +261,10 @@
       // Cursor settings for readonly
       cursorStyle: 'line',
       cursorBlinking: 'solid',
-      // Enable bracket colorization only when syntax highlighting is on
-      'bracketPairColorization.enabled': language !== 'plaintext',
+      // Enable bracket colorization only when syntax highlighting is on.
+      // Monaco's typings take this nested; the flat
+      // 'bracketPairColorization.enabled' key is silently ignored.
+      bracketPairColorization: { enabled: language !== 'plaintext' },
       // Match brackets only when syntax highlighting is on
       matchBrackets: language !== 'plaintext' ? 'always' : 'never',
       // Disable unicode highlighting (prevents orange border on our marker characters)
@@ -384,7 +386,7 @@
     monaco.editor.setModelLanguage(model, language);
     // Update bracket colorization and matching based on language
     editor.updateOptions({
-      'bracketPairColorization.enabled': language !== 'plaintext',
+      bracketPairColorization: { enabled: language !== 'plaintext' },
       matchBrackets: language !== 'plaintext' ? 'always' : 'never',
     });
   }

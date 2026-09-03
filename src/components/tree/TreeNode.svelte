@@ -160,6 +160,24 @@
     }
   }
 
+  /** Escape closes the dialog. Without it the only way out is a click,
+   *  which leaves a keyboard user trapped behind the overlay. */
+  function handleAnalyzePopupKeydown(event: KeyboardEvent) {
+    if (showAnalyzePopup && event.key === 'Escape') {
+      closeAnalyzePopup();
+    }
+  }
+
+  /** Close only when the backdrop itself was clicked, not the dialog on
+   *  top of it. Comparing target to currentTarget does what a
+   *  stopPropagation handler on the dialog used to do, without giving a
+   *  non-interactive element a click handler of its own. */
+  function handleAnalyzeBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeAnalyzePopup();
+    }
+  }
+
   function closeAnalyzePopup() {
     showAnalyzePopup = false;
     analyzeResult = null;
@@ -363,20 +381,33 @@
 {/if}
 
 <!-- Analyze Results Popup -->
+<!-- Top level, as svelte:window must be. The handler is a no-op while
+     the dialog is closed. -->
+<svelte:window on:keydown={handleAnalyzePopupKeydown} />
+
 {#if showAnalyzePopup}
+  <!-- role="presentation" marks the backdrop as decorative: Escape
+       closes the dialog (handleAnalyzePopupKeydown), so the backdrop
+       click is a mouse convenience, not the only way out. -->
   <div
     class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-    on:click={closeAnalyzePopup}
+    role="presentation"
+    on:click={handleAnalyzeBackdropClick}
   >
     <div
       class="bg-gh-canvas-default dark:bg-gh-canvas-dark-default rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col overflow-hidden"
-      on:click={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="analyze-dialog-title"
     >
       <!-- Header -->
       <div
         class="flex items-center justify-between px-6 py-4 border-b border-gh-border-default dark:border-gh-border-dark-default flex-shrink-0"
       >
-        <h2 class="text-lg font-semibold text-gh-fg-default dark:text-gh-fg-dark-default">
+        <h2
+          id="analyze-dialog-title"
+          class="text-lg font-semibold text-gh-fg-default dark:text-gh-fg-dark-default"
+        >
           Analysis: {node.name}
         </h2>
         <button

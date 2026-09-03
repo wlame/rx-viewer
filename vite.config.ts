@@ -9,17 +9,7 @@ export default defineConfig({
   define: {
     __RX_VIEWER_VERSION__: JSON.stringify(viewerVersion),
   },
-  plugins: [
-    svelte({
-      onwarn: (warning, handler) => {
-        // Suppress accessibility warnings during build
-        if (warning.code.startsWith('a11y-')) return;
-        // Suppress unused export warnings
-        if (warning.code === 'unused-export-let') return;
-        handler(warning);
-      },
-    }),
-  ],
+  plugins: [svelte()],
   resolve: {
     alias: {
       $lib: resolve(__dirname, 'src/lib'),
