@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The highlight.js script and two stylesheets loaded from
+  `cdnjs.cloudflare.com` on every page load. Nothing imported the module
+  that used them — Monaco does the highlighting — so they were three
+  requests telling a third party the user's IP and that they run rx,
+  with no `integrity` attribute and no benefit. `src/lib/utils/highlighter.ts`,
+  which nothing imported, went with them.
+
+### Added
+
+- A `Content-Security-Policy` meta tag in `index.html` restricting the
+  page to same-origin resources, so a remote dependency cannot come back
+  unnoticed. `src/lib/utils/externalResources.test.ts` fails if either
+  the policy or the same-origin rule is broken.
+
 ### Changed
 
 - The type check is a real gate. CI ran `bun run check || echo "..."`, which

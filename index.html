@@ -3,20 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      rx is pointed at private logs, so the page must fetch nothing from a
+      third party: a remote host would learn the user's IP and the fact
+      that they run rx, and a compromised response would execute inside
+      this origin. Everything the app needs is in the bundle.
+
+      'unsafe-inline' on style-src and 'unsafe-eval' on script-src are
+      Monaco's requirements, not ours — it injects stylesheets and builds
+      its tokenizer at runtime. blob: covers the web workers it spawns.
+
+      frame-ancestors is deliberately absent: a browser ignores it in a
+      meta tag, so it has to come from the server as a response header.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' 'unsafe-eval' blob:;
+               style-src 'self' 'unsafe-inline';
+               font-src 'self' data:;
+               img-src 'self' data:;
+               worker-src 'self' blob:;
+               connect-src 'self';
+               object-src 'none';
+               base-uri 'self'"
+    />
     <title>rx-trace</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Highlight.js for syntax highlighting -->
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
-      media="(prefers-color-scheme: light)"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
-      media="(prefers-color-scheme: dark)"
-    />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   </head>
   <body class="bg-gh-canvas-default dark:bg-gh-canvas-dark-default">
     <div id="app"></div>
