@@ -25,10 +25,37 @@ class ApiError extends Error {
     public status: number,
     public statusText: string,
     message: string,
+    /** The unparsed response body, kept for logging and debugging. */
+    public body: string = message,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/**
+ * Pull the human-readable reason out of an error response body.
+ *
+ * Both backends answer with an envelope that carries the sentence in
+ * `detail` alongside a `$schema` link. Surfacing the raw body puts that
+ * JSON in front of the user instead of the reason, so prefer `detail`,
+ * then `message`, then the body itself, and fall back to the status text
+ * when the body is empty.
+ */
+function errorMessageFrom(body: string, statusText: string): string {
+  const text = body.trim();
+  if (!text) return statusText;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') {
+      const { detail, message } = parsed as { detail?: unknown; message?: unknown };
+      if (typeof detail === 'string' && detail) return detail;
+      if (typeof message === 'string' && message) return message;
+    }
+  } catch {
+    // Not JSON — an upstream proxy or a plain-text error. Use it as it is.
+  }
+  return text;
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -42,7 +69,12 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new ApiError(response.status, response.statusText, text);
+    throw new ApiError(
+      response.status,
+      response.statusText,
+      errorMessageFrom(text, response.statusText),
+      text,
+    );
   }
 
   return response.json();

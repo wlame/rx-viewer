@@ -129,6 +129,12 @@ typecheck lint test build` in the order CI runs them, and
   longer runs while the box has focus. Verified from an empty box up to
   instant input and a paste.
 
+- An API error reached the user as the raw JSON envelope — braces,
+  `$schema` and all — because the whole response body became the error
+  message. `ApiError.message` is now the `detail` sentence both backends
+  send, falling back to `message`, then the body, then the status text;
+  the unparsed body stays available as `ApiError.body`.
+
 - Six `console.log` calls in `TreeNode.svelte` shipped to users, dumping
   index and analysis payloads into the browser console on every file
   analysis.

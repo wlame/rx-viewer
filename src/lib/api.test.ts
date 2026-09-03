@@ -36,8 +36,41 @@ describe('error mapping', () => {
     await expect(api.getHealth()).rejects.toMatchObject({
       status: 403,
       statusText: 'Forbidden',
-      message: '{"detail":"Path outside search roots"}',
+      message: 'Path outside search roots',
+      body: '{"detail":"Path outside search roots"}',
     });
+  });
+
+  // Both backends put the human-readable sentence in `detail` and wrap it
+  // in an envelope that also carries `$schema`. Showing the envelope in a
+  // toast puts JSON in front of the user instead of the reason.
+  it('uses the detail field as the message, not the whole envelope', async () => {
+    stubFetch({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: async () =>
+        '{"$schema":"http://127.0.0.1:7788/schemas/ApiError.json","detail":"File size 510783 bytes is below threshold 52428800 bytes"}',
+    });
+
+    await expect(api.getHealth()).rejects.toMatchObject({
+      message: 'File size 510783 bytes is below threshold 52428800 bytes',
+    });
+  });
+
+  it('falls back to message when detail is absent', async () => {
+    stubFetch({ ok: false, status: 500, statusText: 'x', text: async () => '{"message":"boom"}' });
+    await expect(api.getHealth()).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it('keeps a non-JSON body verbatim', async () => {
+    stubFetch({ ok: false, status: 502, statusText: 'x', text: async () => 'upstream is down' });
+    await expect(api.getHealth()).rejects.toMatchObject({ message: 'upstream is down' });
+  });
+
+  it('falls back to the status text when the body carries no reason', async () => {
+    stubFetch({ ok: false, status: 503, statusText: 'Service Unavailable', text: async () => '' });
+    await expect(api.getHealth()).rejects.toMatchObject({ message: 'Service Unavailable' });
   });
 
   it.each([400, 404, 409, 500, 503])('treats %i as an error', async (status) => {
