@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `src/lib/utils/versionTag.ts` renders a version the way a git tag is
+  written, adding the `v` only when it is missing and leaving a
+  non-numeric version such as `dev` alone. 9 tests cover it.
+
 - A release can be cut on GitHub Actions rather than locally.
   `just release-remote <part>`, or _Actions → Release → Run workflow_,
   runs the gates, promotes the changelog, commits, tags, pushes and
@@ -105,6 +109,14 @@ typecheck lint test build` in the order CI runs them, and
   which nothing imported, went with them.
 
 ### Fixed
+
+- The version badge printed a doubled `v` and linked to a release that
+  does not exist. `dist/version.json` is written from `git describe
+  --tags`, so its value already starts with `v`, and the header added a
+  second one — the badge read `vv0.2.0` and "View release on GitHub"
+  pointed at `/releases/tag/vv0.2.0`, which is a 404. The backend badge
+  had the same prefix hardcoded and turned an untagged build into
+  `vdev`.
 
 - Six `console.log` calls in `TreeNode.svelte` shipped to users, dumping
   index and analysis payloads into the browser console on every file
