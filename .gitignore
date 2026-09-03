@@ -43,4 +43,9 @@ coverage
 *.temp
 .cache
 
-.claude
+# Agent and development-process artifacts — never committed
+.claude/
+.serena/
+superpowers/
+docs/superpowers/
+CLAUDE.local.md
