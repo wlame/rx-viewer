@@ -74,13 +74,15 @@ types-check:
         echo "notice: rx-go not found at $spec — skipping the generated-types check"
         exit 0
     fi
-    before=$(cat src/lib/types.generated.ts)
-    just gen-types >/dev/null
-    if [ "$before" != "$(cat src/lib/types.generated.ts)" ]; then
+    # Generate to a temp file: a check must not modify what it checks.
+    fresh=$(mktemp)
+    trap 'rm -f "$fresh"' EXIT
+    bun x openapi-typescript "$spec" -o "$fresh" >/dev/null
+    if ! diff -q src/lib/types.generated.ts "$fresh" >/dev/null; then
         echo "src/lib/types.generated.ts is stale — run \`just gen-types\` and commit the result" >&2
         # Write the diff to a file before trimming it: piping into head
         # under pipefail kills the recipe with SIGPIPE.
-        diff <(echo "$before") src/lib/types.generated.ts > /tmp/rx-types.diff || true
+        diff src/lib/types.generated.ts "$fresh" > /tmp/rx-types.diff || true
         head -40 /tmp/rx-types.diff >&2
         exit 1
     fi
