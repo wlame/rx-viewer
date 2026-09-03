@@ -9,6 +9,7 @@
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { updateUrlState, debounce } from '$lib/utils/urlState';
   import Prism from 'prismjs';
+  import { processContent, HIDDEN_MARKER } from '$lib/utils/processContent';
   import 'prismjs/components/prism-regex';
   import type * as Monaco from 'monaco-editor';
 
@@ -21,11 +22,9 @@
   let monacoEditor: Monaco.editor.IStandaloneCodeEditor | null = null;
   let decorationsCollection: Monaco.editor.IEditorDecorationsCollection | null = null;
 
-  // Store hidden content for hover tooltips: Map<"lineNum:markerIndex", hiddenText>
+  // Hidden-content map for hover tooltips, keyed "lineNum:markerIndex".
+  // Assigned together with `content` by processContent below.
   let hiddenContentMap: Map<string, string> = new Map();
-
-  // Marker character for hidden content (using a single space that we style)
-  const HIDDEN_MARKER = '\u200A'; // Hair space (very thin)
 
   // Goto line state
   let dashGotoVisible = false;
@@ -61,214 +60,13 @@
   // Theme - use resolved theme from settings store (reacts to dark/light mode changes)
   $: theme = $resolvedTheme;
 
-  // Convert file lines to content string for Monaco
-  // Apply regex filter pre-processing for hide/show modes
-  // Note: We need to reference file.lines directly to trigger reactivity
-  $: content = getProcessedContent(file.lines, file.regexFilter, file.showInvisibleChars);
-
-  function getProcessedContent(
-    lines: typeof file.lines,
-    regexFilter: typeof file.regexFilter,
-    showInvisibleChars: boolean,
-  ): string {
-    // Clear hidden content map when reprocessing
-    hiddenContentMap = new Map();
-
-    // Process line content - handle \r characters
-    // When showing invisible chars: replace \r with visible symbol (␍ - U+240D SYMBOL FOR CARRIAGE RETURN)
-    // Otherwise: strip \r completely to prevent Monaco from treating them as line breaks
-    const CR_SYMBOL = '\u240D'; // ␍ - Symbol for Carriage Return
-    const processedLines = showInvisibleChars
-      ? lines.map((l) => l.content.replace(/\r/g, CR_SYMBOL))
-      : lines.map((l) => l.content.replace(/\r/g, ''));
-
-    const rawContent = processedLines.join('\n');
-
-    // Apply regex filter for hide/show modes (not highlight - that uses decorations)
-    if (regexFilter?.enabled && regexFilter?.compiledRegex) {
-      const mode = regexFilter.mode;
-      const pattern = regexFilter.pattern;
-
-      // Check if regex has capturing groups
-      const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
-
-      if (mode === 'hide') {
-        // Hide matching groups (or entire match if no groups) - replace with marker
-        try {
-          const resultLines: string[] = [];
-
-          processedLines.forEach((lineContent, lineIdx) => {
-            const monacoLine = lineIdx + 1;
-            const lineRegex = new RegExp(pattern, 'g');
-            let match;
-
-            // Collect all group matches with their positions
-            const replacements: Array<{ start: number; end: number; text: string }> = [];
-
-            while ((match = lineRegex.exec(lineContent)) !== null) {
-              if (hasGroups && match.length > 1) {
-                // Find and replace each captured group
-                let matchOffset = match.index;
-                for (let i = 1; i < match.length; i++) {
-                  if (match[i] !== undefined) {
-                    const groupText = match[i];
-                    const groupStart = lineContent.indexOf(groupText, matchOffset);
-                    if (groupStart !== -1) {
-                      replacements.push({
-                        start: groupStart,
-                        end: groupStart + groupText.length,
-                        text: groupText,
-                      });
-                      matchOffset = groupStart + groupText.length;
-                    }
-                  }
-                }
-              } else {
-                // No groups - hide entire match
-                replacements.push({
-                  start: match.index,
-                  end: match.index + match[0].length,
-                  text: match[0],
-                });
-              }
-            }
-
-            // Sort by position and apply replacements from end to start
-            replacements.sort((a, b) => b.start - a.start);
-
-            let result = lineContent;
-            // Store in reverse order but with forward marker indices
-            const reversedReplacements = [...replacements];
-            for (let i = reversedReplacements.length - 1; i >= 0; i--) {
-              const rep = reversedReplacements[i];
-              // Key is line:markerIndex (0-based index of marker on this line)
-              const key = `${monacoLine}:${reversedReplacements.length - 1 - i}`;
-              hiddenContentMap.set(key, rep.text);
-            }
-
-            // Apply replacements from end to start
-            for (const rep of replacements) {
-              result = result.substring(0, rep.start) + HIDDEN_MARKER + result.substring(rep.end);
-            }
-
-            resultLines.push(result);
-          });
-
-          return resultLines.join('\n');
-        } catch (e) {
-          return rawContent;
-        }
-      } else if (mode === 'show') {
-        // Show only matching groups (or entire match if no groups) - replace non-matching parts with marker
-        try {
-          const resultLines: string[] = [];
-
-          processedLines.forEach((lineContent, lineIdx) => {
-            const monacoLine = lineIdx + 1;
-            const lineRegex = new RegExp(pattern, 'g');
-            let match;
-
-            // Collect all "show" ranges (captured groups or entire matches)
-            const showRanges: Array<{ start: number; end: number; text: string }> = [];
-
-            while ((match = lineRegex.exec(lineContent)) !== null) {
-              if (hasGroups && match.length > 1) {
-                // Find actual positions of each captured group within the line
-                let searchStart = match.index;
-                for (let i = 1; i < match.length; i++) {
-                  if (match[i] !== undefined) {
-                    const groupText = match[i];
-                    const groupStart = lineContent.indexOf(groupText, searchStart);
-                    if (groupStart !== -1) {
-                      showRanges.push({
-                        start: groupStart,
-                        end: groupStart + groupText.length,
-                        text: groupText,
-                      });
-                      searchStart = groupStart + groupText.length;
-                    }
-                  }
-                }
-              } else {
-                // No groups - show entire match
-                showRanges.push({
-                  start: match.index,
-                  end: match.index + match[0].length,
-                  text: match[0],
-                });
-              }
-            }
-
-            // Build segments: alternating between hidden and shown parts
-            const segments: Array<{ isMatch: boolean; text: string }> = [];
-            let lastEnd = 0;
-
-            // Sort showRanges by start position
-            showRanges.sort((a, b) => a.start - b.start);
-
-            for (const range of showRanges) {
-              // Add hidden segment before this show range
-              if (range.start > lastEnd) {
-                segments.push({
-                  isMatch: false,
-                  text: lineContent.substring(lastEnd, range.start),
-                });
-              }
-              // Add the shown segment
-              segments.push({
-                isMatch: true,
-                text: range.text,
-              });
-              lastEnd = range.end;
-            }
-
-            // Add remaining hidden segment after last show range
-            if (lastEnd < lineContent.length) {
-              segments.push({
-                isMatch: false,
-                text: lineContent.substring(lastEnd),
-              });
-            }
-
-            // Build result line
-            if (segments.length === 0) {
-              // No matches - entire line is hidden
-              if (lineContent.length > 0) {
-                const key = `${monacoLine}:0`;
-                hiddenContentMap.set(key, lineContent);
-                resultLines.push(HIDDEN_MARKER);
-              } else {
-                resultLines.push('');
-              }
-            } else {
-              let resultLine = '';
-              let markerIndex = 0;
-
-              for (const seg of segments) {
-                if (seg.isMatch) {
-                  resultLine += seg.text;
-                } else if (seg.text.length > 0) {
-                  // Hidden segment (including whitespace-only)
-                  const key = `${monacoLine}:${markerIndex}`;
-                  hiddenContentMap.set(key, seg.text);
-                  resultLine += HIDDEN_MARKER;
-                  markerIndex++;
-                }
-              }
-
-              resultLines.push(resultLine || HIDDEN_MARKER);
-            }
-          });
-
-          return resultLines.join('\n');
-        } catch (e) {
-          return rawContent;
-        }
-      }
-    }
-
-    return rawContent;
-  }
+  // The text Monaco renders, plus what the hide/show filter replaced.
+  // file.lines is referenced directly so Svelte tracks it.
+  $: ({ content, hiddenContent: hiddenContentMap } = processContent(
+    file.lines,
+    file.regexFilter,
+    file.showInvisibleChars,
+  ));
 
   // Apply decorations when matches change or content changes
   $: if (monacoEditor && file.lines.length > 0) {

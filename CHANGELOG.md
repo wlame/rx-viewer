@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths with spaces, plus signs and non-ASCII, the relative-time
   boundaries, the grammar's rule order, and the request builder's path
   encoding.
+- `src/lib/utils/processContent.ts` holds the line-to-editor-text
+  transformation that `EditorPane.svelte` used to do inline: carriage
+  return handling and the hide/show filter modes. It returns the
+  hidden-content map instead of writing to a component variable, which
+  removes an ordering trap and makes the logic testable — 20 tests now
+  cover it. `EditorPane.svelte` drops from 1,596 to 1,394 lines.
 - `src/lib/utils/logGrammar.ts` holds the log-file Monarch grammar and
   its theme rules as data, importing Monaco for types only. Registering
   it stays in `monacoLogLanguage.ts`, which re-exports the grammar so
