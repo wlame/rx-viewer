@@ -118,6 +118,17 @@ typecheck lint test build` in the order CI runs them, and
   had the same prefix hardcoded and turned an untagged build into
   `vdev`.
 
+- The regex filter box scrambled a pattern typed into it. It rewrote its
+  own markup to highlight the pattern, and assigning `innerHTML`
+  collapses the caret to the start of the element; the rewrite and the
+  caret restore were spread over two animation frames, so a keystroke
+  arriving in between landed at the front. Typing `step (\d+)` produced
+  `)+d\( pets` and then a syntax error. The rewrite and the restore are
+  now one synchronous step, and a second writer that rewrote the same
+  element on every keystroke without restoring the caret at all no
+  longer runs while the box has focus. Verified from an empty box up to
+  instant input and a paste.
+
 - Six `console.log` calls in `TreeNode.svelte` shipped to users, dumping
   index and analysis payloads into the browser console on every file
   analysis.

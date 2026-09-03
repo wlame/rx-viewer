@@ -36,7 +36,6 @@
   let filterPattern = '';
   let filterMode: 'hide' | 'show' | 'highlight' = 'highlight';
   let regexInputEl: HTMLDivElement;
-  let highlightTimeout: number | null = null;
 
   // Theme dropdown state
   let themeDropdownVisible = false;
@@ -537,24 +536,33 @@
     const text = target.textContent || '';
     if (text === 'e.g. (\\w+)@(\\w+)\\.com') return;
     filterPattern = text;
-    if (highlightTimeout !== null) {
-      cancelAnimationFrame(highlightTimeout);
-    }
+
+    // Read the caret, rewrite the markup and put the caret back in one
+    // synchronous step. Deferring any part of this to an animation frame
+    // leaves the caret collapsed at the start of the element until the
+    // frame runs, and a keystroke arriving in that window is inserted at
+    // the front — which reverses the pattern as it is typed. Highlighting
+    // a pattern this short costs far less than a frame, so there is
+    // nothing to gain by spreading it over two.
     const cursorPos = getCursorPosition(target);
-    highlightTimeout = requestAnimationFrame(() => {
-      if (!regexInputEl) return;
-      const highlighted = highlightRegexPattern(text);
-      if (highlighted) {
-        regexInputEl.innerHTML = highlighted;
-        requestAnimationFrame(() => {
-          setCursorPosition(regexInputEl, cursorPos);
-        });
-      }
-      highlightTimeout = null;
-    });
+    const highlighted = highlightRegexPattern(text);
+    if (highlighted) {
+      target.innerHTML = highlighted;
+      setCursorPosition(target, cursorPos);
+    }
   }
 
-  $: if (filterPanelVisible && regexInputEl) {
+  // The highlighted box has two writers: handleRegexInput while the user
+  // types, which restores the caret after rewriting the markup, and this
+  // block when the pattern changes from anywhere else — the panel opening
+  // with a stored filter, a selection sent to the filter, or a clear.
+  //
+  // Assigning innerHTML collapses the selection to the start of the
+  // element. Doing that while the box has focus drops the caret in front
+  // of the text, so the next character typed lands at the front and the
+  // pattern comes out reversed. Sync only when the box is not focused and
+  // let the input handler own it while it is.
+  $: if (filterPanelVisible && regexInputEl && document.activeElement !== regexInputEl) {
     if (filterPattern) {
       regexInputEl.innerHTML = highlightRegexPattern(filterPattern);
     } else {
