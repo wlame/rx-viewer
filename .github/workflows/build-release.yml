@@ -68,21 +68,39 @@ jobs:
 
       - name: Create distribution archive
         run: |
+          set -euo pipefail
           tar -czf dist.tar.gz -C dist .
           ls -lh dist.tar.gz
+          # List the archive ONCE into a file. Piping tar into head or
+          # grep kills the job under pipefail: the reader exits early, tar
+          # takes EPIPE and exits 2.
+          tar -tzf dist.tar.gz > archive-list.txt
+          echo "Top-level entries:"
+          head archive-list.txt
+          # Every consumer expects index.html at the archive root.
+          grep -qx './index.html' archive-list.txt \
+            || { echo "ERROR: index.html is not at the archive root"; exit 1; }
+          # Publish a sha256 sidecar beside the bundle. Both backends
+          # verify a downloaded bundle against it before extracting.
+          sha256sum dist.tar.gz > dist.tar.gz.sha256
+          cat dist.tar.gz.sha256
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: rx-viewer-${{ steps.version.outputs.version }}
-          path: dist.tar.gz
+          path: |
+            dist.tar.gz
+            dist.tar.gz.sha256
           retention-days: 90
 
       - name: Create Release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist.tar.gz
+          files: |
+            dist.tar.gz
+            dist.tar.gz.sha256
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -110,7 +128,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          files: dist.tar.gz
+          files: |
+            dist.tar.gz
+            dist.tar.gz.sha256
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -142,6 +162,12 @@ jobs:
 
       - name: Extract and verify
         run: |
+          set -euo pipefail
+
+          # The sidecar is what both backends check before extracting, so
+          # the release must not ship one that does not match.
+          sha256sum -c dist.tar.gz.sha256
+
           mkdir -p extracted
           tar -xzf dist.tar.gz -C extracted
 

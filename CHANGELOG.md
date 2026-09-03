@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The release workflow publishes a `dist.tar.gz.sha256` sidecar beside the
+  bundle and asserts that `index.html` sits at the archive root before
+  uploading. Both backends verify the sidecar before unpacking a download.
+
 - `resolveMatchLine()` (`src/lib/utils/matchLine.ts`), which decides whether
   a match's line number is trustworthy, with unit tests.
 - `api.getSamplesByOffset()` for resolving byte offsets to line numbers.

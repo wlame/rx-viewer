@@ -97,16 +97,33 @@ The GitHub Actions workflow automatically builds and publishes releases:
 3. Create a git tag: `git tag v1.0.0 && git push --tags`
 4. GitHub Actions will:
    - Build the frontend
-   - Create a release
-   - Upload `dist.tar.gz` as release asset
+   - Assert `index.html` sits at the archive root
+   - Upload `dist.tar.gz` and its `dist.tar.gz.sha256` sidecar as release
+     assets
 
 ## Release Workflow
 
 ```
 Developer Push → GitHub Actions → Build → Create Release → Upload dist.tar.gz
+                                                                  + .sha256
                                                                     ↓
-Backend Serve → Check Latest Release → Download if newer → Cache → Serve
+Backend Serve → Check Latest Release → Verify sha256 → Cache → Serve
 ```
+
+### The sidecar is not optional
+
+Both backends fetch `<asset>.sha256` and verify the bundle before
+unpacking it. A digest that does not match is refused and the previously
+cached bundle is kept. A release that ships without the sidecar still
+installs, with a warning, so older releases stay usable — do not rely on
+that for new ones.
+
+### Backends only install a compatible viewer
+
+Each backend is built against a range of viewer versions
+(`0.2.0 <= v < 0.3.0` today) and will not install a release outside it
+from "latest". Bumping the minor version therefore needs a matching
+backend release; see the parity rules in `AGENTS.md`.
 
 ## Version Format
 
