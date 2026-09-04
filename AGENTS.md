@@ -162,6 +162,16 @@ Paste the output.
   the archive root, and publishes `dist.tar.gz` with its `.sha256` sidecar.
   Backends verify that sidecar and only install a version inside their
   supported range, so a minor bump needs a matching backend release.
+- **A minor bump is not released until both backends accept it.** Each
+  backend hardcodes the window it was checked against —
+  `MaxViewerVersionExclusive` in `rx-go/internal/frontend/compat.go` and
+  `MAX_VIEWER_VERSION_EXCLUSIVE` in
+  `rx-python/src/rx/frontend_manager.py`. Publish a viewer past the
+  window and every backend refuses to install it: `rx serve` comes up
+  with no interface and redirects to its API docs, which is how v0.3.0
+  shipped on 2026-09-03 against backends that stopped at 0.2.x. Widen
+  both constants, with their tests, in the same change that cuts the
+  viewer release.
 - rx-go keeps a real bundle as a test fixture
   (`rx-go/internal/webapi/testdata/rx-viewer-v0.2.0-dist.tar.gz`). If the bundle
   layout changes, refresh that fixture in rx-go.
