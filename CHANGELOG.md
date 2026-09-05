@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A path outside the server's search roots is reported as a sentence
+  naming the path and listing the roots that would have been accepted,
+  instead of the machine code the backends now put in `detail`.
+  `src/lib/utils/sandboxError.ts` reads the `SandboxError` body both
+  backends return and builds the message; the other 403s — a hidden
+  entry, an unreadable directory — keep the ordinary error path, because
+  the fix for them is different. 9 tests cover it.
+
 - `src/lib/utils/versionTag.ts` renders a version the way a git tag is
   written, adding the `v` only when it is missing and leaving a
   non-numeric version such as `dev` alone. 9 tests cover it.

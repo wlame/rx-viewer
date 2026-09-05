@@ -58,6 +58,33 @@ describe('error mapping', () => {
     });
   });
 
+  // A sandbox refusal puts a machine code in `detail` so clients can
+  // branch on it. Showing that code to a person says nothing; the
+  // structured fields say which path was refused and what would have
+  // been accepted.
+  it('turns a sandbox refusal into a sentence naming the path and the roots', async () => {
+    stubFetch({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: async () =>
+        JSON.stringify({
+          detail: 'path_outside_search_root',
+          error: 'path_outside_search_root',
+          message: 'path "/outside/x.log" is not within any configured --search-root',
+          path: '/outside/x.log',
+          roots: ['/srv/data', '/var/log'],
+        }),
+    });
+
+    await expect(api.getHealth()).rejects.toMatchObject({
+      status: 403,
+      message:
+        '/outside/x.log is outside the search roots this server was started with. ' +
+        'Allowed: /srv/data, /var/log',
+    });
+  });
+
   it('falls back to message when detail is absent', async () => {
     stubFetch({ ok: false, status: 500, statusText: 'x', text: async () => '{"message":"boom"}' });
     await expect(api.getHealth()).rejects.toMatchObject({ message: 'boom' });

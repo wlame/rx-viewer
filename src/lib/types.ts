@@ -65,6 +65,22 @@ export interface SamplesResponse {
  */
 type Schemas = components['schemas'];
 
+/**
+ * The body both backends return with 403 for a path outside every
+ * configured `--search-root`. `error` is the stable machine code to
+ * branch on; `roots` is sorted, so the two backends' bodies match.
+ */
+export type SandboxError = Schemas['SandboxError'];
+
+/**
+ * A sandbox body that has been through `parseSandboxError`, which
+ * rejects anything whose `roots` is not a list of strings. The generated
+ * type allows null there because a Go nil slice marshals as one; a body
+ * that arrived that way is not one this app can render, so the parser
+ * refuses it rather than making every reader check.
+ */
+export type ParsedSandboxError = Omit<SandboxError, 'roots'> & { roots: string[] };
+
 /** One highlighted span inside a matched line. */
 export type Submatch = Schemas['Submatch'];
 

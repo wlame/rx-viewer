@@ -8,6 +8,7 @@ import type {
   IndexTaskResponse,
   DetectorsResponse,
 } from './types';
+import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
 
 const API_BASE = '/v1';
 
@@ -41,10 +42,16 @@ class ApiError extends Error {
  * JSON in front of the user instead of the reason, so prefer `detail`,
  * then `message`, then the body itself, and fall back to the status text
  * when the body is empty.
+ *
+ * A sandbox refusal is the exception: its `detail` holds a machine code
+ * for clients to branch on, so the sentence is built from the structured
+ * fields instead.
  */
 function errorMessageFrom(body: string, statusText: string): string {
   const text = body.trim();
   if (!text) return statusText;
+  const sandbox = parseSandboxError(text);
+  if (sandbox) return describeSandboxError(sandbox);
   try {
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === 'object') {

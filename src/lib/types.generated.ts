@@ -327,6 +327,24 @@ export interface components {
                 [key: string]: string[] | null;
             };
         };
+        SandboxError: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SandboxError.json
+             */
+            readonly $schema?: string;
+            /** @description Machine code, repeated from error for single-key clients. */
+            detail: string;
+            /** @description Stable machine code: always path_outside_search_root. */
+            error: string;
+            /** @description Human-readable explanation naming the refused path. */
+            message: string;
+            /** @description The path that was refused, as the caller supplied it. */
+            path: string;
+            /** @description The configured search roots, sorted. */
+            roots: string[] | null;
+        };
         SeverityRange: {
             /**
              * Format: double
@@ -521,13 +539,13 @@ export interface operations {
                     "application/json": components["schemas"]["TaskResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
@@ -584,13 +602,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
@@ -617,13 +635,13 @@ export interface operations {
                     "application/json": components["schemas"]["TaskResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
@@ -659,13 +677,13 @@ export interface operations {
                     "application/json": components["schemas"]["SamplesResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
@@ -735,13 +753,13 @@ export interface operations {
                     "application/json": components["schemas"]["TraceResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
@@ -767,13 +785,13 @@ export interface operations {
                     "application/json": components["schemas"]["TreeResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Path outside every configured --search-root */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["SandboxError"];
                 };
             };
         };
