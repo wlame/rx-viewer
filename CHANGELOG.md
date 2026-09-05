@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The search panel resolves up to 200 unknown line numbers per file
+  eagerly, up from 20. The cap existed because each offset cost the
+  backend a separate scan of the file; both backends now answer a whole
+  batch from one pass, so what the number bounds is the response payload,
+  not the work.
+
 ### Added
 
 - A path outside the server's search roots is reported as a sentence

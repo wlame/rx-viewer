@@ -87,10 +87,15 @@
   // so the result list shows real line numbers instead of making the user
   // click to find out. A stale response is dropped by sequence number.
   //
-  // Both backends resolve one offset per scan of the file, so a batch of N
-  // offsets on a large file costs N scans. The cap keeps that bounded;
-  // anything beyond it resolves when the user clicks the result.
-  const EAGER_RESOLVE_LIMIT_PER_FILE = 20;
+  // Both backends answer a whole batch of offsets from one pass over the
+  // file, so the cap no longer bounds scans — it bounds the response,
+  // which carries a context window per offset. Anything beyond it
+  // resolves when the user clicks the result.
+  //
+  // A backend released before the batch resolver still answers correctly,
+  // just more slowly, so the number is a payload budget rather than a
+  // compatibility floor.
+  const EAGER_RESOLVE_LIMIT_PER_FILE = 200;
   let resolveSequence = 0;
   $: resolveUnknownLines($trace.response);
 
