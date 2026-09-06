@@ -394,6 +394,7 @@ export interface components {
             is_text: boolean | null;
             /** Format: int64 */
             line_count: number | null;
+            /** Format: date-time */
             modified_at: string | null;
             name: string;
             path: string;

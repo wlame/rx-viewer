@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The generated types mark `modified_at` as `date-time`. Both backends
+  now render it as RFC 3339 in UTC; the viewer does not format the field
+  today, so nothing else changed.
+
 - The generated types no longer declare `$schema`. rx-go stopped
   putting the field in its response bodies, so it is gone from the
   OpenAPI document the types are generated from. Nothing in the viewer
