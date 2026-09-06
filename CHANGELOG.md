@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The generated types no longer declare `$schema`. rx-go stopped
+  putting the field in its response bodies, so it is gone from the
+  OpenAPI document the types are generated from. Nothing in the viewer
+  read it.
+
 - The search panel resolves up to 200 unknown line numbers per file
   eagerly, up from 20. The cap existed because each offset cost the
   backend a separate scan of the file; both backends now answer a whole

@@ -173,12 +173,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ApiError: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/ApiError.json
-             */
-            readonly $schema?: string;
             detail: string;
         };
         CategoryInfo: {
@@ -190,12 +184,6 @@ export interface components {
             name: string;
         };
         CompressRequest: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/CompressRequest.json
-             */
-            readonly $schema?: string;
             build_index: boolean;
             /** Format: int64 */
             compression_level: number;
@@ -228,12 +216,6 @@ export interface components {
             severity_range: components["schemas"]["SeverityRange"];
         };
         DetectorsResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/DetectorsResponse.json
-             */
-            readonly $schema?: string;
             /** @description The categories the registered detectors report under. */
             categories: components["schemas"]["CategoryInfo"][] | null;
             /** @description Every detector this backend has registered. The two backends ship different sets, so a client must render whatever it is given. */
@@ -242,12 +224,6 @@ export interface components {
             severity_scale: components["schemas"]["SeverityScaleLevel"][] | null;
         };
         HealthResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/HealthResponse.json
-             */
-            readonly $schema?: string;
             app_version: string;
             constants: {
                 [key: string]: unknown;
@@ -276,12 +252,6 @@ export interface components {
             };
         };
         IndexRequest: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/IndexRequest.json
-             */
-            readonly $schema?: string;
             analyze?: boolean;
             /** Format: int64 */
             analyze_window_lines?: number;
@@ -303,12 +273,6 @@ export interface components {
             submatches: components["schemas"]["Submatch"][] | null;
         };
         SamplesResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/SamplesResponse.json
-             */
-            readonly $schema?: string;
             /** Format: int64 */
             after_context: number;
             /** Format: int64 */
@@ -328,12 +292,6 @@ export interface components {
             };
         };
         SandboxError: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/SandboxError.json
-             */
-            readonly $schema?: string;
             /** @description Machine code, repeated from error for single-key clients. */
             detail: string;
             /** @description Stable machine code: always path_outside_search_root. */
@@ -381,12 +339,6 @@ export interface components {
             text: string;
         };
         TaskResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TaskResponse.json
-             */
-            readonly $schema?: string;
             message: string;
             path: string;
             started_at: string | null;
@@ -394,12 +346,6 @@ export interface components {
             task_id: string;
         };
         TaskStatusResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TaskStatusResponse.json
-             */
-            readonly $schema?: string;
             completed_at: string | null;
             error: string | null;
             operation: string;
@@ -412,12 +358,6 @@ export interface components {
             task_id: string;
         };
         TraceResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TraceResponse.json
-             */
-            readonly $schema?: string;
             /** Format: int64 */
             after_context: number | null;
             /** Format: int64 */
@@ -463,12 +403,6 @@ export interface components {
             type: string;
         };
         TreeResponse: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/TreeResponse.json
-             */
-            readonly $schema?: string;
             entries: components["schemas"]["TreeEntry"][] | null;
             is_search_root: boolean;
             parent: string | null;
