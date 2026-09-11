@@ -175,6 +175,13 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The `:` go-to-line shortcut did nothing while the file's text had
+  focus — which is most of the time, since a click in the text puts it
+  there. The pane skipped any focused text area, and the read-only
+  editor's own is one. It now opens the go-to box from the editor text
+  too, and still leaves typing alone in real fields such as the editor's
+  find box (`src/lib/utils/keyTargets.ts`, 4 tests).
+
 - The anomaly chips in the editor did nothing against rx-go. Their
   counts came from the index's `anomaly_summary`, which rx-go keys by
   detector name and rx-python by category, while selecting a chip

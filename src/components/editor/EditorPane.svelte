@@ -21,6 +21,7 @@
     toMonacoLine,
   } from '$lib/utils/editorDecorations';
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
+  import { acceptsTyping } from '$lib/utils/keyTargets';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
 
@@ -346,16 +347,10 @@
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    const target = e.target as HTMLElement;
-    const isInputFocused =
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.contentEditable === 'true' ||
-      target.contentEditable === 'plaintext-only';
-
-    // : - open goto line (vim style). The go-to box closes itself on
-    // Escape and when it loses focus.
-    if (e.key === ':' && !isInputFocused) {
+    // : - open goto line (vim style), also while the read-only editor
+    // text has focus. The go-to box closes itself on Escape and when it
+    // loses focus.
+    if (e.key === ':' && !acceptsTyping(e.target as HTMLElement)) {
       e.preventDefault();
       lineRangeNav?.openGoto();
     }
