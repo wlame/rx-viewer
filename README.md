@@ -59,19 +59,18 @@ The RX Viewer is a **standalone frontend** that:
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) >= 1.0
+- [just](https://github.com/casey/just), the single entrypoint.
+- [Bun](https://bun.sh/) >= 1.0, **or** Docker. Every recipe runs bun from
+  the `PATH` when it is installed and from the `oven/bun` image when it is
+  not, so a machine that keeps no JavaScript runtime needs only Docker.
 
 ### Setup
 
 ```bash
-# Install dependencies
-bun install
-
-# Start dev server
-bun run dev
-
-# Build for production
-bun run build
+just install    # install dependencies from the lockfile
+just dev        # dev server on :5173 (just dev 5174 for another port)
+just ci         # the gates CI runs: format, types, lint, tests, build
+just shell      # a shell in the oven/bun image, with this repo mounted
 ```
 
 ### Dev Server
@@ -81,25 +80,25 @@ The dev server runs on `http://localhost:5173` and proxies API requests to `http
 Start a backend server:
 
 ```bash
-# Python backend
 rx serve --port=8080
-
-# Or Go backend
-rx-go serve --port=8080
 ```
 
 Then start the frontend dev server:
 
 ```bash
-bun run dev
+just dev
 ```
+
+When the dev server runs in Docker, it reaches the backend on the host
+through `host.docker.internal`; `RX_DEV_PROXY_TARGET` overrides the
+target either way.
 
 ## Building
 
 ### Production Build
 
 ```bash
-bun run build
+just build
 ```
 
 Output: `dist/` directory with:
@@ -147,7 +146,7 @@ gh run watch
 Or from the GitHub UI: _Actions → Release → Run workflow_, and pick the
 part to bump.
 
-**Locally** — needs bun and just installed:
+**Locally** — needs just, and bun or Docker:
 
 ```bash
 just release-dry minor        # preview, changes nothing

@@ -1,9 +1,16 @@
 # rx-viewer — the single dev entrypoint. CI runs these same recipes.
 #
-# Bun is used directly rather than through Docker: the repo already ships a
-# Dockerfile for a hermetic build, and the CI runner installs Bun itself.
+# Bun runs from the PATH where it is installed (the CI runner, a dev
+# container) and from the oven/bun image where it is not, so a host that
+# keeps no JavaScript runtime runs every recipe the same way. The image
+# mounts the directory that holds this repo, so ../rx-go resolves for the
+# generated types exactly as it does without Docker.
 
 set shell := ["bash", "-uc"]
+
+bun_image := "oven/bun:1"
+docker_bun := 'docker run --rm -i -e RX_VIEWER_VERSION -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" ' + bun_image + ' bun'
+bun := if `command -v bun >/dev/null 2>&1 && echo found || echo missing` == "found" { "bun" } else { docker_bun }
 
 # The version a release stamps. Tags are the source of truth; package.json
 # stays at 0.0.0.
@@ -17,7 +24,7 @@ default:
 
 # Install dependencies exactly as the lockfile pins them
 install:
-    bun install --frozen-lockfile
+    {{bun}} install --frozen-lockfile
 
 # Remove build output and dependencies
 clean:
@@ -25,31 +32,49 @@ clean:
 
 # ── develop ──────────────────────────────────────────────────────────────
 
-# Dev server on :5173, proxying /v1 to a backend on :8080
-dev:
-    bun run dev
+# Dev server on the given port, proxying /v1 to a backend on :8080
+dev port='5173':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v bun >/dev/null 2>&1; then
+        exec bun run dev --port={{port}}
+    fi
+    # In the container the backend on the host is host.docker.internal,
+    # and the server has to listen beyond the container's own loopback.
+    exec docker run --rm -it -p "{{port}}:{{port}}" \
+        -e RX_DEV_PROXY_TARGET=http://host.docker.internal:8080 \
+        -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" \
+        {{bun_image}} bun run dev --host=0.0.0.0 --port={{port}}
 
 # Serve the production build locally
 preview:
-    bun run preview
+    {{bun}} run preview
+
+# Run any bun command the way the other recipes run bun (e.g. just bun outdated)
+bun *args:
+    {{bun}} {{args}}
+
+# Open a shell in the bun image with this repo mounted
+shell:
+    docker run --rm -it -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" {{bun_image}} bash
 
 # ── quality gates ────────────────────────────────────────────────────────
 
 # Format every source file
 fmt:
-    bun run format
+    {{bun}} run format
 
 # Fail when a file is not prettier-clean (CI gate)
 fmt-check:
-    bun run format-check
+    {{bun}} run format-check
 
 # svelte-check: TypeScript and Svelte diagnostics
 typecheck:
-    bun run check
+    {{bun}} run check
 
 # ESLint
 lint:
-    bun run lint
+    {{bun}} run lint
 
 # Regenerate src/lib/types.generated.ts from rx-go's OpenAPI document.
 # RX_GO_OPENAPI overrides the location (default: ../rx-go/docs/api/openapi.json).
@@ -62,7 +87,7 @@ gen-types:
         echo "or set RX_GO_OPENAPI to its docs/api/openapi.json" >&2
         exit 1
     fi
-    bun x openapi-typescript "$spec" -o src/lib/types.generated.ts
+    {{bun}} x openapi-typescript "$spec" -o src/lib/types.generated.ts
 
 # Fail when the generated types are stale (CI gate). Skips with a notice
 # when rx-go is not checked out, so the viewer stays buildable alone.
@@ -74,10 +99,12 @@ types-check:
         echo "notice: rx-go not found at $spec — skipping the generated-types check"
         exit 0
     fi
-    # Generate to a temp file: a check must not modify what it checks.
-    fresh=$(mktemp)
+    # Generate to a scratch file: a check must not modify what it checks.
+    # It lives in the repo (and *.tmp is ignored) so that bun running in
+    # Docker can write it.
+    fresh=.types-check.tmp
     trap 'rm -f "$fresh"' EXIT
-    bun x openapi-typescript "$spec" -o "$fresh" >/dev/null
+    {{bun}} x openapi-typescript "$spec" -o "$fresh" >/dev/null
     if ! diff -q src/lib/types.generated.ts "$fresh" >/dev/null; then
         echo "src/lib/types.generated.ts is stale — run \`just gen-types\` and commit the result" >&2
         # Write the diff to a file before trimming it: piping into head
@@ -89,17 +116,17 @@ types-check:
 
 # Report outdated and vulnerable dependencies
 audit:
-    bun outdated
+    {{bun}} outdated
 
 # ── tests ────────────────────────────────────────────────────────────────
 
 # Run the unit tests
 test *args:
-    bun run test {{args}}
+    {{bun}} run test {{args}}
 
 # Re-run the tests on change
 test-watch:
-    bun run test-watch
+    {{bun}} run test-watch
 
 # ── build ────────────────────────────────────────────────────────────────
 
@@ -107,7 +134,7 @@ test-watch:
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    RX_VIEWER_VERSION={{version}} bun run build
+    RX_VIEWER_VERSION={{version}} {{bun}} run build
     # Backends read dist/version.json to name the cached bundle, so it is
     # part of the build rather than of the release workflow.
     printf '{\n  "version": "%s",\n  "buildDate": "%s",\n  "commit": "%s"\n}\n' \

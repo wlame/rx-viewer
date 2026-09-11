@@ -103,7 +103,10 @@ just check                        # ci + package + audit
 
 Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/log`
 (rx-go). Bun is the package manager; Node is not used for tooling.
-A `Dockerfile` builds without a host Bun install.
+Every recipe runs bun from the `PATH` when it is installed and from the
+`oven/bun` image when it is not, so the gates run on a host that keeps no
+JavaScript runtime. `just bun <args>` runs any other bun command the same
+way, and `just shell` opens the image.
 
 **`just typecheck` is green and must stay that way.** `svelte-check` reports
 0 errors and 0 warnings. The a11y suppression that used to hide warnings is

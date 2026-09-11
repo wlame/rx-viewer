@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `just` recipes run bun from the `oven/bun` image when bun is not
+  on the `PATH`, mounting the directory that holds this repo so
+  `../rx-go` still resolves for the generated types. A host that keeps no
+  JavaScript runtime now runs `just ci` with Docker alone. `just dev`
+  takes a port, `just bun` runs any other bun command and `just shell`
+  opens the image; in Docker the dev server reaches the backend through
+  `host.docker.internal`, and `RX_DEV_PROXY_TARGET` overrides the target.
+
 - The generated types mark `modified_at` as `date-time`. Both backends
   now render it as RFC 3339 in UTC; the viewer does not format the field
   today, so nothing else changed.
