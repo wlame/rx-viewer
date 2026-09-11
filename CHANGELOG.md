@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forgetting half of the pattern. 18 tests cover it, including the
   out-of-order arrival that motivated it.
 - `EditorPane.svelte` is split by responsibility, from 1,402 lines to
-  582, each part checked in a browser against rx-go:
+  498, each part checked in a browser against rx-go:
   - `src/lib/utils/editorDecorations.ts` builds the editor's Monaco
     decorations — trace matches, a highlighted range, an anomaly
     category, the regex filter's highlights and hidden-text markers — as
@@ -85,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `pickAnomalyTarget` in `src/lib/utils/anomalyCategories.ts`, with 5
     tests for stepping off the centered anomaly and wrapping at either
     end.
+  - `LineRangeNav.svelte` is the header's position readout: the loaded
+    window's first and last lines and the file's length as jump
+    buttons, and the go-to-line box the `:` shortcut opens.
 - `src/lib/utils/processContent.ts` holds the line-to-editor-text
   transformation that `EditorPane.svelte` used to do inline: carriage
   return handling and the hide/show filter modes. It returns the

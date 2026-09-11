@@ -8,6 +8,7 @@
   import RegexFilterPanel from './RegexFilterPanel.svelte';
   import EditorToolbar from './EditorToolbar.svelte';
   import AnomalyCategoryNav from './AnomalyCategoryNav.svelte';
+  import LineRangeNav from './LineRangeNav.svelte';
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { updateUrlState, debounce } from '$lib/utils/urlState';
   import { processContent } from '$lib/utils/processContent';
@@ -36,10 +37,8 @@
   // Assigned together with `content` by processContent below.
   let hiddenContentMap: Map<string, string> = new Map();
 
-  // Goto line state
-  let dashGotoVisible = false;
-  let dashGotoLineNumber = '';
-  let dashGotoInputEl: HTMLInputElement;
+  // The header's line readout, whose go-to box the `:` shortcut opens.
+  let lineRangeNav: LineRangeNav | undefined;
 
   // Regex filter state
   let filterPanelVisible = false;
@@ -276,35 +275,6 @@
     }
   }
 
-  function openDashGoto() {
-    const centerLine = Math.round((file.startLine + file.endLine) / 2);
-    dashGotoLineNumber = centerLine.toString();
-    dashGotoVisible = true;
-    setTimeout(() => {
-      dashGotoInputEl?.focus();
-      dashGotoInputEl?.select();
-    }, 0);
-  }
-
-  function closeDashGoto() {
-    dashGotoVisible = false;
-    dashGotoLineNumber = '';
-  }
-
-  function handleDashGotoKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const lineNum = parseInt(dashGotoLineNumber, 10);
-      if (!isNaN(lineNum) && lineNum > 0) {
-        files.jumpToLine(file.path, lineNum);
-        closeDashGoto();
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeDashGoto();
-    }
-  }
-
   // Debounced URL update on scroll
   const updateUrlOnScroll = debounce(() => {
     if (isActive && file.lines.length > 0) {
@@ -383,18 +353,11 @@
       target.contentEditable === 'true' ||
       target.contentEditable === 'plaintext-only';
 
-    // : - open goto line (vim style)
-    if (e.key === ':' && !dashGotoVisible && !isInputFocused) {
+    // : - open goto line (vim style). The go-to box closes itself on
+    // Escape and when it loses focus.
+    if (e.key === ':' && !isInputFocused) {
       e.preventDefault();
-      openDashGoto();
-      return;
-    }
-
-    if (e.key === 'Escape') {
-      if (dashGotoVisible) {
-        closeDashGoto();
-      }
-      return;
+      lineRangeNav?.openGoto();
     }
   }
 
@@ -434,62 +397,15 @@
           isIndexed={null}
         />
         {#if file.lines.length > 0}
-          <span
-            class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted flex items-center gap-1.5"
-          >
-            <span>lines</span>
-            <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-              on:click={() => jumpToLineNumber(file.startLine)}
-              title="Jump to line {file.startLine}"
-            >
-              {file.startLine.toLocaleString()}
-            </button>
-            {#if dashGotoVisible}
-              <input
-                bind:this={dashGotoInputEl}
-                bind:value={dashGotoLineNumber}
-                on:keydown={handleDashGotoKeyDown}
-                on:blur={closeDashGoto}
-                type="number"
-                class="text-sm bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default rounded px-2 py-0.5 outline-none w-32 text-center font-bold"
-              />
-            {:else}
-              <button
-                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline px-1"
-                on:click={openDashGoto}
-                title="Jump to line..."
-              >
-                —
-              </button>
-            {/if}
-            <button
-              class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-              on:click={() => jumpToLineNumber(file.endLine)}
-              title="Jump to line {file.endLine}"
-            >
-              {file.endLine.toLocaleString()}
-            </button>
-            <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">/</span>
-            {#if file.totalLines !== null}
-              {@const lastLine = file.totalLines}
-              <button
-                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-                on:click={() => jumpToLineNumber(lastLine)}
-                title="Jump to last line ({lastLine.toLocaleString()})"
-              >
-                {lastLine.toLocaleString()}
-              </button>
-            {:else}
-              <button
-                class="font-bold hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg hover:underline"
-                on:click={() => files.jumpToEnd(file.path)}
-                title="Jump to end of file"
-              >
-                ⋯
-              </button>
-            {/if}
-          </span>
+          <LineRangeNav
+            bind:this={lineRangeNav}
+            startLine={file.startLine}
+            endLine={file.endLine}
+            totalLines={file.totalLines}
+            on:jump={(e) => jumpToLineNumber(e.detail.line)}
+            on:goto={(e) => files.jumpToLine(file.path, e.detail.line)}
+            on:jumpToEnd={() => files.jumpToEnd(file.path)}
+          />
         {/if}
       </div>
 
