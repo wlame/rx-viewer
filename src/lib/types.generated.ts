@@ -474,6 +474,15 @@ export interface operations {
                     "application/json": components["schemas"]["TaskResponse"];
                 };
             };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Path outside every configured --search-root */
             403: {
                 headers: {
@@ -501,6 +510,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DetectorsResponse"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Error */
@@ -537,6 +555,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Path outside every configured --search-root */
             403: {
                 headers: {
@@ -568,6 +595,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Path outside every configured --search-root */
@@ -612,6 +648,15 @@ export interface operations {
                     "application/json": components["schemas"]["SamplesResponse"];
                 };
             };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Path outside every configured --search-root */
             403: {
                 headers: {
@@ -642,6 +687,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskStatusResponse"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Error */
@@ -688,6 +742,15 @@ export interface operations {
                     "application/json": components["schemas"]["TraceResponse"];
                 };
             };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Path outside every configured --search-root */
             403: {
                 headers: {
@@ -718,6 +781,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TreeResponse"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Path outside every configured --search-root */
