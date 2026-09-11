@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for the browser tab in `sessionStorage`, removed from the address bar,
   and sent as `Authorization: Bearer …` on every request. When a request
   is refused with 401, a dialog asks for the token and says when the one
-  the tab held was refused. 14 tests cover the fragment parsing, the
+  the tab held was refused. 12 tests cover the fragment parsing, the
   storage fallback, the header and the 401. Needs contract 1.2 (rx-go
   `9b28ab5`); against a backend without a token nothing changes.
 
