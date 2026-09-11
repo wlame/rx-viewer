@@ -1,9 +1,9 @@
 # AGENTS.md — rx-viewer
 
 Instructions for AI coding agents working in this repository. If a sibling
-checkout exists at `../AGENTS.md`, read it first: it holds the parity rules that
-bind this repo to the two backends. The same rules are repeated below so this
-file stands alone.
+checkout exists at `../AGENTS.md`, read it first: it holds the rules that bind
+this repo to the backends. The ones that bind this repo are repeated below so
+this file stands alone.
 
 ## What this is
 
@@ -16,11 +16,11 @@ It is a standalone artifact. It builds to a static `dist/`, is published as
 caches it under `~/.cache/rx/frontend/` and serves it. One frontend, two
 interchangeable backends, no vendoring.
 
-| Repo                    | Role                                                                       |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `rx-go`                 | Flagship backend. Reference for the HTTP wire contract. Default port 7777. |
-| `rx-python`             | Second backend, drop-in replacement for rx-go. Default port 8000.          |
-| `rx-viewer` (this repo) | Must work against both backends with no code change.                       |
+| Repo                    | Role                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `rx-go`                 | The focus. Reference for the HTTP wire contract. Default port 7777.               |
+| `rx-python`             | The original backend. **Paused** since 2026-10-02. Default port 7777.             |
+| `rx-viewer` (this repo) | Works against rx-go; against rx-python on a best-effort basis while it is paused. |
 
 `rx-rust` also exists beside them. It is frozen. Do not target it.
 
@@ -33,10 +33,11 @@ interchangeable backends, no vendoring.
    drift. `just ci` runs `types-check` and fails when the generated file is
    stale. Never hand-edit a wire type; regenerate.
 2. **Never call an endpoint that only one backend has** without a capability
-   check. Today both backends implement `/health`, `/v1/tree`, `/v1/samples`,
+   check. Both backends implement `/health`, `/v1/tree`, `/v1/samples`,
    `/v1/trace`, `/v1/index` (GET and POST), `/v1/tasks/{id}` and
    `/v1/detectors`. `/v1/complexity` exists only in rx-python; this app does
-   not call it.
+   not call it. An endpoint rx-go adds while rx-python is paused is
+   rx-go-only until rx-python catches up: check for it before calling it.
 3. **Never hardcode detector names, category names or ports.** Detector sets
    differ between backends. Drive the UI from the live `/v1/detectors`
    response (`src/lib/stores/detectors.ts`).
@@ -45,16 +46,18 @@ interchangeable backends, no vendoring.
    the count is 1. `absolute_line_number` is `-1` when unknown. When it is
    unknown, resolve the position through `/v1/samples` by byte offset, which is
    always absolute.
-5. **Test against both backends before a release.** Start each backend with
-   `--port=8080`, run the app, and exercise tree, open file, search, jump to
-   result, index and detectors. A viewer release changes behaviour for every
-   installed backend on its next cache refresh.
+5. **Test against rx-go before a release.** Start it with `--port=8080`, run
+   the app, and exercise tree, open file, search, jump to result, index and
+   detectors. A viewer release changes behaviour for every installed backend
+   on its next cache refresh. rx-python is paused: test against it only when
+   the owner asks, and record a difference you find in
+   `../tickets/PARITY-DEBT.md`.
 6. **Release order:** a viewer change that needs a new backend field ships
-   after both backends have released that field.
+   after rx-go has released that field.
 7. **Check the contract version.** `/health` reports `contract_version`
    (MAJOR.MINOR). `src/lib/utils/contractVersion.ts` holds the major this
    viewer supports; a different major is refused in the status bar rather
-   than misread. Bump it together with both backends' constants.
+   than misread. Bump it together with rx-go's `ContractVersion`.
 
 ## Quick orientation
 
@@ -162,16 +165,16 @@ Paste the output.
   the archive root, and publishes `dist.tar.gz` with its `.sha256` sidecar.
   Backends verify that sidecar and only install a version inside their
   supported range, so a minor bump needs a matching backend release.
-- **A minor bump is not released until both backends accept it.** Each
-  backend hardcodes the window it was checked against —
-  `MaxViewerVersionExclusive` in `rx-go/internal/frontend/compat.go` and
-  `MAX_VIEWER_VERSION_EXCLUSIVE` in
-  `rx-python/src/rx/frontend_manager.py`. Publish a viewer past the
-  window and every backend refuses to install it: `rx serve` comes up
-  with no interface and redirects to its API docs, which is how v0.3.0
-  shipped on 2026-09-03 against backends that stopped at 0.2.x. Widen
-  both constants, with their tests, in the same change that cuts the
-  viewer release.
+- **A minor bump is not released until rx-go accepts it.** Each backend
+  hardcodes the window it was checked against — `MaxViewerVersionExclusive`
+  in `rx-go/internal/frontend/compat.go` and `MAX_VIEWER_VERSION_EXCLUSIVE`
+  in `rx-python/src/rx/frontend_manager.py`. Publish a viewer past the
+  window and that backend refuses to install it: `rx serve` comes up with
+  no interface and redirects to its API docs, which is how v0.3.0 shipped
+  on 2026-09-03 against backends that stopped at 0.2.x. Widen rx-go's
+  constant, with its test, in the same change that cuts the viewer
+  release. rx-python's window stays where it is while it is paused; add a
+  `../tickets/PARITY-DEBT.md` row instead.
 - rx-go keeps a real bundle as a test fixture
   (`rx-go/internal/webapi/testdata/rx-viewer-v0.2.0-dist.tar.gz`). If the bundle
   layout changes, refresh that fixture in rx-go.
