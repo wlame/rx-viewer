@@ -175,6 +175,10 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Closing the last open file left it named in the URL, so a reload
+  reopened the file just closed. The URL now drops `file`, `line` and
+  `highlight` when no file is left open; 2 tests cover it.
+
 - The `:` go-to-line shortcut did nothing while the file's text had
   focus — which is most of the time, since a click in the text puts it
   there. The pane skipped any focused text area, and the read-only

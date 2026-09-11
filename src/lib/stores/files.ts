@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { api } from '../api';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
+import { updateUrlState } from '../utils/urlState';
 import type { OpenFile, FileLine, FileMatch } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
@@ -666,6 +667,10 @@ function createFilesStore() {
         return newMatches;
       })(),
     }));
+
+    // With a file still open its pane keeps the URL current. With none,
+    // the URL must stop naming the closed one, or a reload reopens it.
+    if (get({ subscribe }).openFiles.length === 0) updateUrlState(null);
   }
 
   /**
