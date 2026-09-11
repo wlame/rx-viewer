@@ -143,6 +143,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The anomaly chips in the editor did nothing against rx-go. Their
+  counts came from the index's `anomaly_summary`, which rx-go keys by
+  detector name and rx-python by category, while selecting a chip
+  picks anomalies by category — so against rx-go the chips were named
+  after detectors, highlighted no line, and next/previous never moved.
+  The counts now come from the anomalies themselves
+  (`src/lib/utils/anomalyCategories.ts`, 4 tests), which carry their
+  category in both backends.
+
 - The version badge printed a doubled `v` and linked to a release that
   does not exist. `dist/version.json` is written by the build recipe
   from `git describe --tags`, so its value already starts with `v`, and
@@ -204,12 +213,4 @@ typecheck lint test build` in the order CI runs them, and
   the viewer used it as a file line whenever `absolute_line_number` was
   `-1`. On a 60 MB file that put the cursor 351,232 lines away from the
   match. The line is now resolved through `/v1/samples` by byte offset,
-  which is always absolute, and the result list shows "resolving line…"
-  while the lookup is in flight.
-- `TraceResponse` was missing `file_chunks`, `context_lines`,
-  `before_context`, `after_context` and `cli_command`, and `TraceMatch` was
-  missing `submatches`. All are declared now, matching the golden OpenAPI
-  document.
-- The committed `bun.lock` did not contain `monaco-editor`, which
-  `package.json` declares, so `bun install --frozen-lockfile` failed and a
-  fresh checkout could not run `bun run check`.
+  which is always absol

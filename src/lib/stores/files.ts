@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { OpenFile, FileLine, FileMatch } from '../types';
 import { notifications } from './notifications';
@@ -51,7 +52,7 @@ function createFilesStore() {
               totalLines: indexData.line_count ?? f.totalLines,
               isIndexed: true,
               anomalies: indexData.anomalies ?? null,
-              anomalySummary: indexData.anomaly_summary ?? null,
+              anomalySummary: countAnomaliesByCategory(indexData.anomalies),
             };
           }),
         }));

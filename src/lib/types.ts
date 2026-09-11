@@ -151,7 +151,7 @@ export interface IndexData {
   decompressed_size_bytes: number | null;
   compression_ratio: number | null;
   anomaly_count: number;
-  anomaly_summary: Record<string, number> | null; // category -> count
+  anomaly_summary: Record<string, number> | null; // keyed by category (rx-python) or detector (rx-go)
   anomalies: Anomaly[] | null;
 }
 
