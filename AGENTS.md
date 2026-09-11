@@ -102,7 +102,7 @@ just check                        # ci + package + audit
 `.github/workflows/ci.yml` runs `just ci` — the two cannot disagree.
 
 Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/log`
-(rx-go or rx-python). Bun is the package manager; Node is not used for tooling.
+(rx-go). Bun is the package manager; Node is not used for tooling.
 A `Dockerfile` builds without a host Bun install.
 
 **`just typecheck` is green and must stay that way.** `svelte-check` reports
@@ -172,7 +172,7 @@ Paste the output.
   window and that backend refuses to install it: `rx serve` comes up with
   no interface and redirects to its API docs, which is how v0.3.0 shipped
   on 2026-09-03 against backends that stopped at 0.2.x. Widen rx-go's
-  constant, with its test, in the same change that cuts the viewer
+  constant, with its test, and release rx-go before you cut the viewer
   release. rx-python's window stays where it is while it is paused; add a
   `../tickets/PARITY-DEBT.md` row instead.
 - rx-go keeps a real bundle as a test fixture
