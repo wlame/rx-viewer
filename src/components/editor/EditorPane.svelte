@@ -9,7 +9,15 @@
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { updateUrlState, debounce } from '$lib/utils/urlState';
   import Prism from 'prismjs';
-  import { processContent, HIDDEN_MARKER } from '$lib/utils/processContent';
+  import { processContent } from '$lib/utils/processContent';
+  import {
+    anomalyCategoryDecorations,
+    hiddenMarkerDecorations,
+    highlightedRangeDecorations,
+    matchLineDecorations,
+    regexHighlightDecorations,
+  } from '$lib/utils/editorDecorations';
+  import './editorDecorations.css';
   import 'prismjs/components/prism-regex';
   import type * as Monaco from 'monaco-editor';
 
@@ -94,232 +102,35 @@
 
   function updateDecorations() {
     if (!monacoEditor) return;
+    decorationsCollection?.clear();
 
-    // Clear previous decorations
-    if (decorationsCollection) {
-      decorationsCollection.clear();
-    }
+    const editorWindow = { startLine: file.startLine, lineCount: file.lines.length };
+    const model = monacoEditor.getModel();
+    const filter = file.regexFilter;
+    const filterActive = Boolean(filter?.enabled && filter.compiledRegex);
+    const category = file.selectedAnomalyCategory;
 
-    const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
-
-    // Add decorations for trace search matches
-    for (const match of fileMatches) {
-      // Convert file line number to Monaco line number
-      const monacoLine = match.lineNumber - file.startLine + 1;
-      if (monacoLine >= 1 && monacoLine <= file.lines.length) {
-        decorations.push({
-          range: {
-            startLineNumber: monacoLine,
-            startColumn: 1,
-            endLineNumber: monacoLine,
-            endColumn: 1,
-          },
-          options: {
-            isWholeLine: true,
-            className: 'monaco-match-line',
-            glyphMarginClassName: 'monaco-match-glyph',
-          },
-        });
-      }
-    }
-
-    // Add decorations for highlighted lines (e.g., from single anomaly click)
-    if (file.highlightedLines) {
-      const { start, end } = file.highlightedLines;
-      for (let lineNum = start; lineNum <= end; lineNum++) {
-        // Convert file line number to Monaco line number
-        const monacoLine = lineNum - file.startLine + 1;
-        if (monacoLine >= 1 && monacoLine <= file.lines.length) {
-          decorations.push({
-            range: {
-              startLineNumber: monacoLine,
-              startColumn: 1,
-              endLineNumber: monacoLine,
-              endColumn: 1,
-            },
-            options: {
-              isWholeLine: true,
-              className: 'monaco-anomaly-line',
-              glyphMarginClassName: 'monaco-anomaly-glyph',
-              minimap: {
-                color: { id: 'minimap.findMatchHighlight' },
-                position: 1, // Monaco.editor.MinimapPosition.Inline
-              },
-            },
-          });
-        }
-      }
-    }
-
-    // Add decorations for selected anomaly category (highlights all lines in that category)
-    if (file.selectedAnomalyCategory && file.anomalies) {
-      const selectedCategory = file.selectedAnomalyCategory;
-      const categoryColor = CATEGORY_ICONS[selectedCategory]?.color || '#6b7280';
-
-      // Filter anomalies by selected category
-      const categoryAnomalies = file.anomalies.filter((a) => a.category === selectedCategory);
-
-      for (const anomaly of categoryAnomalies) {
-        // Build hover message with anomaly details
-        const hoverMessage = {
-          value: [
-            `**${anomaly.category.toUpperCase()}** | Severity: ${anomaly.severity}`,
-            ``,
-            `**Detector:** ${anomaly.detector}`,
-            ``,
-            anomaly.description || '_No description_',
-          ].join('\n'),
-          isTrusted: true,
-        };
-
-        for (let lineNum = anomaly.start_line; lineNum <= anomaly.end_line; lineNum++) {
-          // Convert file line number to Monaco line number
-          const monacoLine = lineNum - file.startLine + 1;
-          if (monacoLine >= 1 && monacoLine <= file.lines.length) {
-            decorations.push({
-              range: {
-                startLineNumber: monacoLine,
-                startColumn: 1,
-                endLineNumber: monacoLine,
-                endColumn: 1,
-              },
-              options: {
-                isWholeLine: true,
-                className: `monaco-anomaly-category-line monaco-anomaly-${selectedCategory}`,
-                glyphMarginClassName: `monaco-anomaly-category-glyph monaco-anomaly-${selectedCategory}-glyph`,
-                glyphMarginHoverMessage: hoverMessage,
-                minimap: {
-                  color: categoryColor,
-                  position: 1, // Monaco.editor.MinimapPosition.Inline
-                },
-              },
-            });
-          }
-        }
-      }
-    }
-
-    // Add decorations for regex filter in highlight mode
-    if (
-      file.regexFilter?.enabled &&
-      file.regexFilter?.compiledRegex &&
-      file.regexFilter.mode === 'highlight'
-    ) {
-      const model = monacoEditor.getModel();
-      if (model) {
-        try {
-          // Use our own regex matching for more control
-          const pattern = file.regexFilter.pattern;
-          const regex = new RegExp(pattern, 'g');
-          const lineCount = model.getLineCount();
-
-          // Check if regex has capturing groups
-          const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
-
-          for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
-            const lineContent = model.getLineContent(lineNum);
-            let match;
-            regex.lastIndex = 0; // Reset regex state
-
-            while ((match = regex.exec(lineContent)) !== null) {
-              if (hasGroups && match.length > 1) {
-                // Highlight only captured groups
-                let searchStart = match.index;
-                for (let i = 1; i < match.length; i++) {
-                  if (match[i] !== undefined) {
-                    const groupText = match[i];
-                    const groupStart = lineContent.indexOf(groupText, searchStart);
-                    if (groupStart !== -1) {
-                      decorations.push({
-                        range: {
-                          startLineNumber: lineNum,
-                          startColumn: groupStart + 1,
-                          endLineNumber: lineNum,
-                          endColumn: groupStart + groupText.length + 1,
-                        },
-                        options: {
-                          inlineClassName: 'monaco-regex-highlight',
-                        },
-                      });
-                      searchStart = groupStart + groupText.length;
-                    }
-                  }
-                }
-              } else {
-                // No groups - highlight entire match
-                const startCol = match.index + 1;
-                const endCol = match.index + match[0].length + 1;
-
-                decorations.push({
-                  range: {
-                    startLineNumber: lineNum,
-                    startColumn: startCol,
-                    endLineNumber: lineNum,
-                    endColumn: endCol,
-                  },
-                  options: {
-                    inlineClassName: 'monaco-regex-highlight',
-                  },
-                });
-              }
-
-              // Prevent infinite loop on zero-width matches
-              if (match[0].length === 0) {
-                regex.lastIndex++;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Regex filter error:', e);
-        }
-      }
-    }
-
-    // Add decorations for hidden content markers (hide/show modes)
-    if (
-      file.regexFilter?.enabled &&
-      file.regexFilter?.compiledRegex &&
-      (file.regexFilter.mode === 'hide' || file.regexFilter.mode === 'show')
-    ) {
-      const model = monacoEditor.getModel();
-      if (model) {
-        const markerClass =
-          file.regexFilter.mode === 'hide'
-            ? 'monaco-hidden-marker-red'
-            : 'monaco-hidden-marker-blue';
-
-        const lineCount = model.getLineCount();
-        for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
-          const lineContent = model.getLineContent(lineNum);
-          let col = 1;
-          let markerIndex = 0;
-          for (const char of lineContent) {
-            if (char === HIDDEN_MARKER) {
-              // Get the hidden text for this marker
-              const key = `${lineNum}:${markerIndex}`;
-              const hiddenText = hiddenContentMap.get(key);
-
-              decorations.push({
-                range: {
-                  startLineNumber: lineNum,
-                  startColumn: col,
-                  endLineNumber: lineNum,
-                  endColumn: col + 1,
-                },
-                options: {
-                  inlineClassName: markerClass,
-                  hoverMessage: hiddenText ? { value: hiddenText } : undefined,
-                },
-              });
-              markerIndex++;
-            }
-            col++;
-          }
-        }
-      }
-    }
-
-    // Create new decorations collection
+    const decorations = [
+      ...matchLineDecorations(
+        fileMatches.map((match) => match.lineNumber),
+        editorWindow,
+      ),
+      ...highlightedRangeDecorations(file.highlightedLines, editorWindow),
+      ...(category && file.anomalies
+        ? anomalyCategoryDecorations(
+            file.anomalies,
+            category,
+            CATEGORY_ICONS[category]?.color || '#6b7280',
+            editorWindow,
+          )
+        : []),
+      ...(model && filter && filterActive && filter.mode === 'highlight'
+        ? regexHighlightDecorations(filter.pattern, model)
+        : []),
+      ...(model && filter && filterActive && filter.mode !== 'highlight'
+        ? hiddenMarkerDecorations(filter.mode, model, hiddenContentMap)
+        : []),
+    ];
     if (decorations.length > 0) {
       decorationsCollection = monacoEditor.createDecorationsCollection(decorations);
     }
@@ -1281,122 +1092,5 @@
 
   :global(.token.char-set) {
     color: #8b5cf6;
-  }
-
-  /* Monaco decorations for trace matches */
-  :global(.monaco-match-line) {
-    background-color: rgba(255, 200, 100, 0.2) !important;
-  }
-
-  :global(.monaco-match-glyph) {
-    background-color: #f59e0b;
-    width: 4px !important;
-    margin-left: 3px;
-  }
-
-  /* Monaco decorations for single anomaly highlighting (from popup click) */
-  :global(.monaco-anomaly-line) {
-    background-color: rgba(239, 68, 68, 0.15) !important;
-  }
-
-  :global(.monaco-anomaly-glyph) {
-    background-color: #ef4444;
-    width: 4px !important;
-    margin-left: 3px;
-  }
-
-  /* Monaco decorations for category-based anomaly highlighting */
-  :global(.monaco-anomaly-category-line) {
-    background-color: rgba(107, 114, 128, 0.15) !important; /* default gray */
-  }
-
-  :global(.monaco-anomaly-category-glyph) {
-    width: 4px !important;
-    margin-left: 3px;
-  }
-
-  /* Error category - red */
-  :global(.monaco-anomaly-error) {
-    background-color: rgba(239, 68, 68, 0.15) !important;
-  }
-  :global(.monaco-anomaly-error-glyph) {
-    background-color: #ef4444 !important;
-  }
-
-  /* Warning category - amber */
-  :global(.monaco-anomaly-warning) {
-    background-color: rgba(245, 158, 11, 0.15) !important;
-  }
-  :global(.monaco-anomaly-warning-glyph) {
-    background-color: #f59e0b !important;
-  }
-
-  /* Traceback category - dark red */
-  :global(.monaco-anomaly-traceback) {
-    background-color: rgba(220, 38, 38, 0.15) !important;
-  }
-  :global(.monaco-anomaly-traceback-glyph) {
-    background-color: #dc2626 !important;
-  }
-
-  /* Format category - violet */
-  :global(.monaco-anomaly-format) {
-    background-color: rgba(139, 92, 246, 0.15) !important;
-  }
-  :global(.monaco-anomaly-format-glyph) {
-    background-color: #8b5cf6 !important;
-  }
-
-  /* Security category - pink */
-  :global(.monaco-anomaly-security) {
-    background-color: rgba(236, 72, 153, 0.15) !important;
-  }
-  :global(.monaco-anomaly-security-glyph) {
-    background-color: #ec4899 !important;
-  }
-
-  /* Timing category - cyan */
-  :global(.monaco-anomaly-timing) {
-    background-color: rgba(6, 182, 212, 0.15) !important;
-  }
-  :global(.monaco-anomaly-timing-glyph) {
-    background-color: #06b6d4 !important;
-  }
-
-  /* Multiline category - indigo */
-  :global(.monaco-anomaly-multiline) {
-    background-color: rgba(99, 102, 241, 0.15) !important;
-  }
-  :global(.monaco-anomaly-multiline-glyph) {
-    background-color: #6366f1 !important;
-  }
-
-  /* Monaco decorations for regex filter highlight mode */
-  :global(.monaco-regex-highlight) {
-    background-color: rgba(255, 235, 59, 0.4);
-    border-radius: 2px;
-  }
-
-  /* Monaco decorations for hidden content markers */
-  :global(.monaco-hidden-marker-red) {
-    background-color: rgb(239, 68, 68) !important;
-    color: transparent !important;
-    border-radius: 1px;
-    cursor: help;
-    display: inline-block;
-    width: 4px !important;
-    min-width: 4px !important;
-    max-width: 4px !important;
-  }
-
-  :global(.monaco-hidden-marker-blue) {
-    background-color: rgb(59, 130, 246) !important;
-    color: transparent !important;
-    border-radius: 1px;
-    cursor: help;
-    display: inline-block;
-    width: 4px !important;
-    min-width: 4px !important;
-    max-width: 4px !important;
   }
 </style>
