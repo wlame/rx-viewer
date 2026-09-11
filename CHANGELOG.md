@@ -65,13 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answers anyway, so a caller cannot apply a stale response by
   forgetting half of the pattern. 18 tests cover it, including the
   out-of-order arrival that motivated it.
-- `src/lib/utils/editorDecorations.ts` builds the editor's Monaco
-  decorations — trace matches, a highlighted range, an anomaly
-  category, the regex filter's highlights and hidden-text markers — as
-  plain data, with the file-to-Monaco line conversion in one function.
-  12 tests cover it without booting an editor. Its classes are styled
-  in `components/editor/editorDecorations.css`. `EditorPane.svelte`
-  drops from 1,402 to 1,096 lines.
+- `EditorPane.svelte` is split by responsibility, from 1,402 lines to
+  880, each part checked in a browser against rx-go:
+  - `src/lib/utils/editorDecorations.ts` builds the editor's Monaco
+    decorations — trace matches, a highlighted range, an anomaly
+    category, the regex filter's highlights and hidden-text markers — as
+    plain data, with the file-to-Monaco line conversion in one function.
+    12 tests cover it without booting an editor. Its classes are styled
+    in `components/editor/editorDecorations.css`.
+  - `RegexFilterPanel.svelte` is the regex filter bar: the highlighted
+    pattern box with its caret handling, the three modes, Apply and
+    Cancel. Its Prism token colors now apply inside the box only,
+    rather than to every `.token` in the app.
 - `src/lib/utils/processContent.ts` holds the line-to-editor-text
   transformation that `EditorPane.svelte` used to do inline: carriage
   return handling and the hide/show filter modes. It returns the
