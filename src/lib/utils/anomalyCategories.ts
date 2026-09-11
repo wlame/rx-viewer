@@ -1,5 +1,6 @@
 /**
- * Anomaly counts per category, for the editor's category chips.
+ * Anomaly counts per category, and stepping between the anomalies of
+ * one category, for the editor's category chips.
  *
  * The count is taken from the anomalies themselves rather than from the
  * index's `anomaly_summary`, whose keys differ by backend: rx-python
@@ -30,4 +31,37 @@ export function countAnomaliesByCategory(
   }
   const names = [...counts.keys()].sort();
   return Object.fromEntries(names.map((name) => [name, counts.get(name) as number]));
+}
+
+/** The fields pickAnomalyTarget reads from an anomaly. */
+interface Positioned extends Categorized {
+  start_line: number;
+}
+
+/**
+ * Picks the anomaly of `category` to show next, relative to the line at
+ * the center of the view.
+ *
+ * "Next" is the first anomaly starting more than one line below the
+ * center and "previous" the last starting more than one line above it,
+ * so a step always moves off the anomaly the view is already centered
+ * on. Past either end it wraps around. Returns null when the category
+ * has no anomalies.
+ */
+export function pickAnomalyTarget<T extends Positioned>(
+  anomalies: readonly T[] | null | undefined,
+  category: string,
+  centerLine: number,
+  direction: 'next' | 'previous',
+): T | null {
+  const inCategory = (anomalies ?? [])
+    .filter((anomaly) => anomaly.category === category)
+    .sort((a, b) => a.start_line - b.start_line);
+  if (inCategory.length === 0) return null;
+
+  if (direction === 'next') {
+    return inCategory.find((anomaly) => anomaly.start_line > centerLine + 1) ?? inCategory[0];
+  }
+  const above = inCategory.filter((anomaly) => anomaly.start_line < centerLine - 1);
+  return above.length > 0 ? above[above.length - 1] : inCategory[inCategory.length - 1];
 }

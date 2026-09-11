@@ -7,6 +7,7 @@
   import MonacoEditor from './MonacoEditor.svelte';
   import RegexFilterPanel from './RegexFilterPanel.svelte';
   import EditorToolbar from './EditorToolbar.svelte';
+  import AnomalyCategoryNav from './AnomalyCategoryNav.svelte';
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { updateUrlState, debounce } from '$lib/utils/urlState';
   import { processContent } from '$lib/utils/processContent';
@@ -16,7 +17,9 @@
     highlightedRangeDecorations,
     matchLineDecorations,
     regexHighlightDecorations,
+    toMonacoLine,
   } from '$lib/utils/editorDecorations';
+  import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
 
@@ -154,104 +157,27 @@
     files.toggleInvisibleChars(file.path);
   }
 
-  // Get unique symbol for each anomaly category
-  function getCategorySymbol(category: string): string {
-    const symbols: Record<string, string> = {
-      error: '\u2716', // ✖ Heavy multiplication X
-      warning: '\u26A0', // ⚠ Warning sign
-      traceback: '\u2261', // ≡ Identical to (stack symbol)
-      format: '\u00B6', // ¶ Pilcrow sign
-      security: '\u2622', // ☢ Radioactive (or use 🔒)
-      timing: '\u23F1', // ⏱ Stopwatch
-      multiline: '\u2630', // ☰ Trigram for heaven (hamburger menu)
-    };
-    return symbols[category] || '\u2022'; // • Bullet as fallback
-  }
-
-  // Handle anomaly category button click with modifier key detection
+  // Step to the next or previous anomaly of a category, relative to the
+  // line at the center of the view, loading the window around it when
+  // the editor does not hold that line yet.
   function navigateToAnomaly(category: string, direction: 'next' | 'previous') {
-    if (!file.anomalies) return;
+    const target = pickAnomalyTarget(
+      file.anomalies,
+      category,
+      getCurrentViewportCenterLine(),
+      direction,
+    );
+    if (!target) return;
 
-    // Get anomalies of this category, sorted by start_line
-    const categoryAnomalies = file.anomalies
-      .filter((a) => a.category === category)
-      .sort((a, b) => a.start_line - b.start_line);
-
-    if (categoryAnomalies.length === 0) return;
-
-    // Get current center line of the viewport
-    let currentCenterLine: number;
-    if (monacoEditor) {
-      const visibleRanges = monacoEditor.getVisibleRanges();
-      if (visibleRanges.length > 0) {
-        const firstRange = visibleRanges[0];
-        const lastRange = visibleRanges[visibleRanges.length - 1];
-        const monacoCenter = Math.floor((firstRange.startLineNumber + lastRange.endLineNumber) / 2);
-        // Convert Monaco line to file line
-        currentCenterLine = monacoCenter + file.startLine - 1;
-      } else {
-        currentCenterLine = file.startLine;
-      }
+    const monacoLine = toMonacoLine(target.start_line, {
+      startLine: file.startLine,
+      lineCount: file.lines.length,
+    });
+    if (monacoLine !== null && monacoEditor) {
+      monacoEditor.revealLineInCenter(monacoLine);
     } else {
-      currentCenterLine = file.startLine;
+      files.jumpToLine(file.path, target.start_line);
     }
-
-    let targetAnomaly;
-
-    if (direction === 'previous') {
-      // Find previous anomaly (start_line < currentCenterLine)
-      // Use currentCenterLine - 1 to ensure we move past the current anomaly if centered on it
-      const previousAnomalies = categoryAnomalies.filter(
-        (a) => a.start_line < currentCenterLine - 1,
-      );
-      if (previousAnomalies.length > 0) {
-        targetAnomaly = previousAnomalies[previousAnomalies.length - 1];
-      } else {
-        // Wrap around to the last anomaly
-        targetAnomaly = categoryAnomalies[categoryAnomalies.length - 1];
-      }
-    } else {
-      // Find next anomaly (start_line > currentCenterLine)
-      // Use currentCenterLine + 1 to ensure we move past the current anomaly if centered on it
-      const nextAnomalies = categoryAnomalies.filter((a) => a.start_line > currentCenterLine + 1);
-      if (nextAnomalies.length > 0) {
-        targetAnomaly = nextAnomalies[0];
-      } else {
-        // Wrap around to the first anomaly
-        targetAnomaly = categoryAnomalies[0];
-      }
-    }
-
-    if (targetAnomaly) {
-      const targetLine = targetAnomaly.start_line;
-
-      // Check if target line is already loaded
-      const isLoaded =
-        targetLine >= file.startLine && targetLine <= file.startLine + file.lines.length - 1;
-
-      if (isLoaded && monacoEditor) {
-        // Scroll to the line within the editor
-        const monacoLine = targetLine - file.startLine + 1;
-        monacoEditor.revealLineInCenter(monacoLine);
-      } else {
-        // Jump to the line (will trigger loading)
-        files.jumpToLine(file.path, targetLine);
-      }
-    }
-  }
-
-  function handleCategoryClick(e: MouseEvent, category: string) {
-    const isNavModifier = e.metaKey || e.altKey; // Cmd or Alt/Option
-    const isReverse = e.shiftKey;
-
-    // If category is not currently selected, or no navigation modifier pressed, just toggle
-    if (file.selectedAnomalyCategory !== category || !isNavModifier) {
-      files.toggleAnomalyCategory(file.path, category);
-      return;
-    }
-
-    // Navigation mode: find next/previous anomaly of this category
-    navigateToAnomaly(category, isReverse ? 'previous' : 'next');
   }
 
   function applyFilter(e: CustomEvent<{ pattern: string; mode: typeof filterMode }>) {
@@ -568,57 +494,12 @@
       </div>
 
       <div class="flex items-center gap-2">
-        <!-- Anomaly category toggles (only shown if file has anomalies) -->
-        {#if file.anomalySummary && Object.keys(file.anomalySummary).length > 0}
-          {#each Object.entries(file.anomalySummary) as [category, count]}
-            {@const categoryInfo = CATEGORY_ICONS[category] || {
-              icon: '?',
-              color: '#6b7280',
-              label: category,
-            }}
-            {@const isActive = file.selectedAnomalyCategory === category}
-            <button
-              class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
-              style={isActive
-                ? `background-color: ${categoryInfo.color}; color: white;`
-                : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}
-              title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
-              on:click={(e) => handleCategoryClick(e, category)}
-            >
-              <span class="anomaly-icon" style="font-size: 10px;"
-                >{getCategorySymbol(category)}</span
-              >
-              <span>{count}</span>
-            </button>
-            {#if isActive}
-              <div class="flex flex-col gap-0 flex-shrink-0">
-                <button
-                  class="px-0.5 rounded-t flex-shrink-0 transition-colors hover:opacity-80"
-                  style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-                  title="Previous {categoryInfo.label.toLowerCase()}"
-                  on:click={() => navigateToAnomaly(category, 'previous')}
-                >
-                  <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
-                    <path d="M5 1L1 7h8L5 1z" />
-                  </svg>
-                </button>
-                <button
-                  class="px-0.5 rounded-b flex-shrink-0 transition-colors hover:opacity-80"
-                  style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-                  title="Next {categoryInfo.label.toLowerCase()}"
-                  on:click={() => navigateToAnomaly(category, 'next')}
-                >
-                  <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
-                    <path d="M5 7L1 1h8L5 7z" />
-                  </svg>
-                </button>
-              </div>
-            {/if}
-          {/each}
-
-          <!-- Vertical divider -->
-          <div class="w-px h-5 bg-gh-border-default dark:bg-gh-border-dark-default mx-1"></div>
-        {/if}
+        <AnomalyCategoryNav
+          summary={file.anomalySummary}
+          selectedCategory={file.selectedAnomalyCategory}
+          on:toggle={(e) => files.toggleAnomalyCategory(file.path, e.detail.category)}
+          on:navigate={(e) => navigateToAnomaly(e.detail.category, e.detail.direction)}
+        />
 
         <EditorToolbar
           syntaxHighlighting={file.syntaxHighlighting}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countAnomaliesByCategory } from './anomalyCategories';
+import { countAnomaliesByCategory, pickAnomalyTarget } from './anomalyCategories';
 
 describe('countAnomaliesByCategory', () => {
   it('counts by category when several detectors share one', () => {
@@ -30,5 +30,39 @@ describe('countAnomaliesByCategory', () => {
   it('returns null for a file that was never analyzed', () => {
     expect(countAnomaliesByCategory(null)).toBeNull();
     expect(countAnomaliesByCategory(undefined)).toBeNull();
+  });
+});
+
+describe('pickAnomalyTarget', () => {
+  const at = (category: string, start_line: number) => ({ category, start_line });
+  const anomalies = [
+    at('secrets', 50),
+    at('log-traceback', 300),
+    at('log-traceback', 100),
+    at('log-traceback', 200),
+  ];
+
+  it('steps to the first anomaly of the category below the view', () => {
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 150, 'next')?.start_line).toBe(200);
+  });
+
+  it('steps past the anomaly the view is already centered on', () => {
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 200, 'next')?.start_line).toBe(300);
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 199, 'next')?.start_line).toBe(300);
+  });
+
+  it('steps to the last anomaly of the category above the view', () => {
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 250, 'previous')?.start_line).toBe(200);
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 201, 'previous')?.start_line).toBe(100);
+  });
+
+  it('wraps around at either end', () => {
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 400, 'next')?.start_line).toBe(100);
+    expect(pickAnomalyTarget(anomalies, 'log-traceback', 10, 'previous')?.start_line).toBe(300);
+  });
+
+  it('returns null for a category with no anomalies', () => {
+    expect(pickAnomalyTarget(anomalies, 'log-crash', 10, 'next')).toBeNull();
+    expect(pickAnomalyTarget(null, 'log-crash', 10, 'next')).toBeNull();
   });
 });
