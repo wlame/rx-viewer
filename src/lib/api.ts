@@ -9,6 +9,7 @@ import type {
   DetectorsResponse,
 } from './types';
 import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
+import { getApiToken, tokenRequired } from './utils/apiToken';
 
 const API_BASE = '/v1';
 
@@ -66,15 +67,20 @@ function errorMessageFrom(body: string, statusText: string): string {
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getApiToken();
   const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   });
 
   if (!response.ok) {
+    // A backend started with RX_API_TOKEN refuses a request without it;
+    // the prompt that asks for one listens to this.
+    if (response.status === 401) tokenRequired.set(true);
     const text = await response.text();
     throw new ApiError(
       response.status,

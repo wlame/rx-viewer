@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The viewer works with a backend started with `RX_API_TOKEN`. A link of
+  the form `http://host:7777/#token=…` hands the token over: it is kept
+  for the browser tab in `sessionStorage`, removed from the address bar,
+  and sent as `Authorization: Bearer …` on every request. When a request
+  is refused with 401, a dialog asks for the token and says when the one
+  the tab held was refused. 14 tests cover the fragment parsing, the
+  storage fallback, the header and the 401. Needs contract 1.2 (rx-go
+  `9b28ab5`); against a backend without a token nothing changes.
+
 - A path outside the server's search roots is reported as a sentence
   naming the path and listing the roots that would have been accepted,
   instead of the machine code the backends now put in `detail`.

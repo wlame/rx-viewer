@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { get } from 'svelte/store';
 import { api, ApiError } from './api';
+import { clearApiToken, setApiToken, tokenRequired } from './utils/apiToken';
 
 /**
  * Every call goes through one fetch wrapper, so error mapping and URL
@@ -195,5 +197,53 @@ describe('request shape', () => {
     const spy = stubFetch({});
     await api.getTree('/x');
     expect(spy.mock.calls[0][0]).toMatch(/^\//);
+  });
+});
+
+/**
+ * A server started with RX_API_TOKEN refuses /v1 requests without
+ * `Authorization: Bearer <token>`. The client sends the token the tab
+ * holds on every request, and a refusal is what raises the prompt.
+ */
+describe('the API token', () => {
+  afterEach(() => {
+    clearApiToken();
+    tokenRequired.set(false);
+  });
+
+  it('sends the token the tab holds', async () => {
+    const spy = stubFetch({ json: async () => ({ detectors: [] }) });
+    setApiToken('s3cret');
+
+    await api.getDetectors();
+
+    expect(spy.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer s3cret' });
+  });
+
+  it('sends no Authorization header without a token', async () => {
+    const spy = stubFetch({ json: async () => ({ detectors: [] }) });
+
+    await api.getDetectors();
+
+    expect(spy.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+  });
+
+  it('raises the prompt when the server asks for a token', async () => {
+    stubFetch({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => '{"detail":"an API token is required"}',
+    });
+
+    await expect(api.getDetectors()).rejects.toMatchObject({ status: 401 });
+    expect(get(tokenRequired)).toBe(true);
+  });
+
+  it('leaves the prompt down for any other error', async () => {
+    stubFetch({ ok: false, status: 403, statusText: 'Forbidden', text: async () => '' });
+
+    await expect(api.getDetectors()).rejects.toMatchObject({ status: 403 });
+    expect(get(tokenRequired)).toBe(false);
   });
 });

@@ -126,6 +126,13 @@ separate comment above, or eslint reads every word as another rule.
   content is untrusted.
 - The app ships with no third-party runtime requests. Do not add a CDN script
   or stylesheet; bundle it.
+- The API token (a backend started with `RX_API_TOKEN`) arrives as
+  `#token=…` in the link, is moved to `sessionStorage` and stripped from the
+  address bar on load (`src/lib/utils/apiToken.ts`), and is sent as
+  `Authorization: Bearer …` on every request. `sessionStorage`, not memory
+  only: a script in the page could read either (it could wrap `fetch`), and
+  memory would lose the token on every reload. Not `localStorage`: it would
+  outlive the tab. A 401 opens `TokenPrompt.svelte`.
 
 ## Coding standards
 
