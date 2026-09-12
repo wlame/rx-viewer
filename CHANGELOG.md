@@ -193,6 +193,11 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The result line of a search counts the files it covered. It read
+  `scanned_files`, which lists only what a directory expanded to, so a
+  search of named files — every "Only opened files" search — said
+  "in 0 files".
+
 - The search panel's pattern fields had only a placeholder, which a
   screen reader does not announce; each now has a label ("Regex pattern
   1"). Six lists — search results, the theme picker, and the analysis
