@@ -32,6 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch from one pass, so what the number bounds is the response payload,
   not the work.
 
+- The documentation now states the intended use plainly: rx is for
+  internal use on a trusted network and is not intended to be exposed to
+  the internet. `serve` has no authentication by design; the operator
+  builds the perimeter. Added to the README.
+
+- The type check is a real gate. CI ran `bun run check || echo "..."`, which
+  could not fail; it now runs through `just ci`, and the four errors it had
+  been hiding are fixed, so `just ci` passes end to end for the first time.
+- `vite.config.ts` no longer drops every `a11y-*` and `unused-export-let`
+  warning at build time. The build reports what it finds; there were four
+  a11y warnings and no unused exports, and the four are fixed rather than
+  filtered.
+- The release version is stamped through a vite `define` from
+  `RX_VIEWER_VERSION` instead of rewriting `package.json` with `jq`, and
+  `dist/version.json` is written by the build rather than by the workflow,
+  so a local build produces the same artifact shape as a release.
+- `bun-version` is pinned in CI; it was `latest`.
+
 ### Added
 
 - The viewer works with a backend started with `RX_API_TOKEN`. A link of
@@ -143,26 +161,6 @@ typecheck lint test build` in the order CI runs them, and
 - `resolveMatchLine()` (`src/lib/utils/matchLine.ts`), which decides whether
   a match's line number is trustworthy, with unit tests.
 - `api.getSamplesByOffset()` for resolving byte offsets to line numbers.
-
-### Changed
-
-- The documentation now states the intended use plainly: rx is for
-  internal use on a trusted network and is not intended to be exposed to
-  the internet. `serve` has no authentication by design; the operator
-  builds the perimeter. Added to the README.
-
-- The type check is a real gate. CI ran `bun run check || echo "..."`, which
-  could not fail; it now runs through `just ci`, and the four errors it had
-  been hiding are fixed, so `just ci` passes end to end for the first time.
-- `vite.config.ts` no longer drops every `a11y-*` and `unused-export-let`
-  warning at build time. The build reports what it finds; there were four
-  a11y warnings and no unused exports, and the four are fixed rather than
-  filtered.
-- The release version is stamped through a vite `define` from
-  `RX_VIEWER_VERSION` instead of rewriting `package.json` with `jq`, and
-  `dist/version.json` is written by the build rather than by the workflow,
-  so a local build produces the same artifact shape as a release.
-- `bun-version` is pinned in CI; it was `latest`.
 
 ### Removed
 
