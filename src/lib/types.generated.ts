@@ -726,6 +726,16 @@ export interface operations {
                 hook_on_match?: string;
                 /** @description URL to POST when the whole trace completes */
                 hook_on_complete?: string;
+                /** @description Match case-insensitively (ripgrep -i) */
+                ignore_case?: boolean;
+                /** @description Match only whole words (ripgrep -w) */
+                word_regexp?: boolean;
+                /** @description Match only whole lines (ripgrep -x) */
+                line_regexp?: boolean;
+                /** @description Treat every pattern as literal text (ripgrep -F) */
+                fixed_strings?: boolean;
+                /** @description Use the PCRE2 engine, for look-around and backreferences (ripgrep -P) */
+                pcre2?: boolean;
             };
             header?: never;
             path?: never;
