@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { trace, tree, files, health } from '$lib/stores';
   import { api } from '$lib/api';
   import { resolveMatchLine } from '$lib/utils/matchLine';
@@ -7,15 +8,21 @@
     DEFAULT_SEARCH_TOGGLES,
     matchingFlagParams,
     toggleForShortcut,
+    togglesFromFlags,
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
+  import {
+    DEFAULT_MAX_RESULTS,
+    readSearchUrlState,
+    updateSearchUrlState,
+  } from '$lib/utils/urlState';
   import type { TraceMatch } from '$lib/types';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import SearchToggles from './SearchToggles.svelte';
 
   let searchPatterns: string[] = [''];
-  let maxResults = 100;
+  let maxResults = DEFAULT_MAX_RESULTS;
   let showAdvanced = false;
   let showOffsets = false; // Toggle between line numbers and byte offsets
   let onlyOpenedFiles = false; // Search only in currently opened files
@@ -30,6 +37,31 @@
 
   $: searchRoots = $tree.roots.map((r) => r.path);
   $: hasRoots = searchRoots.length > 0;
+
+  // The panel is rebuilt each time its tab opens, so its form comes from
+  // the URL, which holds the last search. On page load that search has
+  // not run yet; it runs once the backend's health says which parameters
+  // it takes and the paths to search are known.
+  let restorePending = false;
+
+  onMount(() => {
+    const saved = readSearchUrlState();
+    if (!saved) return;
+    searchPatterns = saved.patterns;
+    maxResults = saved.maxResults;
+    onlyOpenedFiles = saved.onlyOpenedFiles;
+    toggles = togglesFromFlags(saved.flags);
+    showAdvanced = saved.onlyOpenedFiles || saved.maxResults !== DEFAULT_MAX_RESULTS;
+    restorePending = $trace.response === null && !$trace.searching;
+  });
+
+  function runRestoredSearch() {
+    restorePending = false;
+    handleSearch();
+  }
+
+  $: pathsKnown = onlyOpenedFiles ? $files.openFiles.length > 0 : hasRoots;
+  $: if (restorePending && !$health.loading && pathsKnown) runRestoredSearch();
 
   function addPattern() {
     searchPatterns = [...searchPatterns, ''];
@@ -62,6 +94,13 @@
       if (!hasRoots) return;
       pathsToSearch = searchRoots;
     }
+
+    updateSearchUrlState({
+      patterns: validPatterns,
+      maxResults,
+      onlyOpenedFiles,
+      flags: matchingFlagParams(toggles),
+    });
 
     // Search with all patterns
     await trace.search(pathsToSearch, validPatterns, {

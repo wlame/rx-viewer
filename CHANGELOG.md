@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The URL carries the search, under the names `/v1/trace` uses: each
+  pattern as `regexp`, and `max_results`, `ignore_case`, `word_regexp`,
+  `fixed_strings` and `only_opened` when they differ from the default.
+  Opening such a link opens the Search tab, fills the form and runs the
+  search once the backend's health is known. The panel also refills its
+  form from the URL when its tab is opened again, which kept nothing
+  before: switching to Files and back emptied the patterns.
+
 - The search panel has the three toggles of an editor search box,
   beside Options: match case (`Aa`), match whole word (`ab`) and use
   regular expression (`.*`), also on Alt+C, Alt+W and Alt+R from a

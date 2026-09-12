@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { updateUrlState, readUrlState, debounce, type FileState } from './urlState';
+import {
+  updateUrlState,
+  readUrlState,
+  updateSearchUrlState,
+  readSearchUrlState,
+  debounce,
+  DEFAULT_MAX_RESULTS,
+  type FileState,
+  type SearchState,
+} from './urlState';
 
 /**
  * The URL is how a viewer session is shared and restored. A path that
@@ -74,6 +83,81 @@ describe('updateUrlState and readUrlState', () => {
     expect(readUrlState()).toBeNull();
     expect(window.location.search).not.toContain('line=');
     expect(window.location.search).not.toContain('highlight=');
+  });
+});
+
+describe('updateSearchUrlState and readSearchUrlState', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const plain: SearchState = {
+    patterns: ['error'],
+    maxResults: DEFAULT_MAX_RESULTS,
+    onlyOpenedFiles: false,
+    flags: {},
+  };
+
+  const cases: SearchState[] = [
+    plain,
+    { ...plain, patterns: ['timeout (\\d+)ms', 'a&b=c', 'naïve 日本語', 'x+y #1'] },
+    { ...plain, maxResults: 5000, onlyOpenedFiles: true },
+    { ...plain, flags: { ignore_case: true, word_regexp: true, fixed_strings: true } },
+  ];
+
+  it.each(cases)('survives a write then a read: %o', (search) => {
+    setLocation('');
+    updateSearchUrlState(search);
+    expect(readSearchUrlState()).toEqual(search);
+  });
+
+  // A link should carry what makes the search differ from a plain one and
+  // nothing else, under the names /v1/trace uses.
+  it('leaves the defaults out of the URL', () => {
+    setLocation('');
+    updateSearchUrlState(plain);
+    expect(window.location.search).toBe('?regexp=error');
+  });
+
+  it('writes a flag as 1 and reads true as well', () => {
+    setLocation('');
+    updateSearchUrlState({ ...plain, flags: { ignore_case: true } });
+    expect(window.location.search).toContain('ignore_case=1');
+
+    setLocation('?regexp=a&word_regexp=true');
+    expect(readSearchUrlState()?.flags).toEqual({ word_regexp: true });
+  });
+
+  it('keeps the file parameters when it writes the search', () => {
+    setLocation('?file=%2Fa.log&line=7&highlight=0');
+    updateSearchUrlState(plain);
+    expect(readUrlState()).toEqual({ path: '/a.log', line: 7, syntaxHighlighting: false });
+  });
+
+  it('clears the search parameters and nothing else when passed null', () => {
+    setLocation('?file=%2Fa.log&line=7&highlight=1');
+    updateSearchUrlState({ ...plain, onlyOpenedFiles: true, flags: { ignore_case: true } });
+    updateSearchUrlState(null);
+    expect(readSearchUrlState()).toBeNull();
+    expect(window.location.search).toBe('?file=%2Fa.log&line=7&highlight=1');
+  });
+
+  it('returns null when the URL names no pattern, or only empty ones', () => {
+    setLocation('?file=%2Fa.log');
+    expect(readSearchUrlState()).toBeNull();
+    setLocation('?regexp=&regexp=%20');
+    expect(readSearchUrlState()).toBeNull();
+  });
+
+  it.each(['abc', '0', '-5', '1.5', '99999'])(
+    'falls back to the default cap for max_results=%s',
+    (value) => {
+      setLocation(`?regexp=a&max_results=${value}`);
+      expect(readSearchUrlState()?.maxResults).toBe(DEFAULT_MAX_RESULTS);
+    },
+  );
+
+  it('ignores a parameter the search panel cannot set', () => {
+    setLocation('?regexp=a&pcre2=1&line_regexp=1');
+    expect(readSearchUrlState()?.flags).toEqual({});
   });
 });
 

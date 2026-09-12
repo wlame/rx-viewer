@@ -4,6 +4,8 @@ import {
   SEARCH_TOGGLES,
   matchingFlagParams,
   toggleForShortcut,
+  togglesFromFlags,
+  type SearchToggles,
 } from './searchToggles';
 
 describe('matchingFlagParams', () => {
@@ -42,5 +44,23 @@ describe('toggleForShortcut', () => {
   it('gives every toggle its own shortcut', () => {
     const codes = SEARCH_TOGGLES.map((spec) => spec.shortcutCode);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+});
+
+describe('togglesFromFlags', () => {
+  it('gives the defaults when no flag is set', () => {
+    expect(togglesFromFlags({})).toEqual(DEFAULT_SEARCH_TOGGLES);
+  });
+
+  // Every combination of the three toggles, so the URL can carry any of
+  // them through matchingFlagParams and back.
+  const combinations: SearchToggles[] = [false, true].flatMap((matchCase) =>
+    [false, true].flatMap((wholeWord) =>
+      [false, true].map((regex) => ({ matchCase, wholeWord, regex })),
+    ),
+  );
+
+  it.each(combinations)('inverts matchingFlagParams for %o', (toggles) => {
+    expect(togglesFromFlags(matchingFlagParams(toggles))).toEqual(toggles);
   });
 });

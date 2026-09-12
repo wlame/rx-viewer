@@ -75,6 +75,19 @@ export function matchingFlagParams(toggles: SearchToggles): TraceMatchingFlags {
 }
 
 /**
+ * The toggle states that send `flags`: the inverse of matchingFlagParams,
+ * for rebuilding the panel from a URL. A toggle whose parameter is absent
+ * is at its default, which is always the state that does not send it.
+ */
+export function togglesFromFlags(flags: TraceMatchingFlags): SearchToggles {
+  const toggles = { ...DEFAULT_SEARCH_TOGGLES };
+  for (const spec of SEARCH_TOGGLES) {
+    toggles[spec.key] = flags[spec.param] ? spec.sendsWhen : !spec.sendsWhen;
+  }
+  return toggles;
+}
+
+/**
  * The tooltip of a toggle: its name, its shortcut, and which state sends
  * which ripgrep flag, so the equivalent command is never a guess.
  */

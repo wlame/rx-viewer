@@ -1,11 +1,13 @@
 <script lang="ts">
   import { settings } from '$lib/stores';
+  import { readSearchUrlState } from '$lib/utils/urlState';
   import FileTree from '../tree/FileTree.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
 
   export let width: number;
 
-  let activeTab: 'tree' | 'search' = 'tree';
+  // A link that carries a search opens on its results.
+  let activeTab: 'tree' | 'search' = readSearchUrlState() ? 'search' : 'tree';
   let isResizing = false;
   let startX = 0;
   let startWidth = 0;
