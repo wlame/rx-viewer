@@ -291,6 +291,8 @@
 <div class="flex flex-col h-full">
   <!-- Search patterns -->
   <div class="p-3 border-b border-gh-border-default dark:border-gh-border-dark-default">
+    <!-- The fields stay usable during a search: a disabled field drops its
+         focus, and a new search simply replaces the running one. -->
     <div class="space-y-2 mb-2">
       {#each searchPatterns as pattern, index (index)}
         <div class="flex gap-2">
@@ -302,13 +304,12 @@
             value={pattern}
             on:input={(e) => updatePattern(index, e.currentTarget.value)}
             on:keydown={(e) => handleKeydown(e, index)}
-            disabled={$trace.searching || !hasRoots}
+            disabled={!hasRoots}
           />
           {#if searchPatterns.length > 1}
             <button
               class="btn btn-secondary px-2"
               on:click={() => removePattern(index)}
-              disabled={$trace.searching}
               title="Remove pattern"
             >
               ✕
@@ -319,11 +320,7 @@
     </div>
 
     <div class="flex gap-2">
-      <button
-        class="btn btn-secondary text-xs"
-        on:click={addPattern}
-        disabled={$trace.searching || !hasRoots}
-      >
+      <button class="btn btn-secondary text-xs" on:click={addPattern} disabled={!hasRoots}>
         + Add Pattern
       </button>
       <button
@@ -350,11 +347,7 @@
       >
         {showAdvanced ? '▼' : '▶'} Options
       </button>
-      <SearchToggles
-        bind:toggles
-        disabled={$trace.searching || !hasRoots}
-        unavailableReason={togglesUnavailable}
-      />
+      <SearchToggles bind:toggles disabled={!hasRoots} unavailableReason={togglesUnavailable} />
     </div>
 
     {#if showAdvanced}

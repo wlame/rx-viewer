@@ -193,6 +193,11 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A pattern field keeps its focus through a search, so a pattern can
+  be changed and run again from the keyboard. The fields were disabled
+  while a search ran, and a disabled field drops its focus; they stay
+  usable now, and Enter during a search replaces it.
+
 - The result line of a search counts the files it covered. It read
   `scanned_files`, which lists only what a directory expanded to, so a
   search of named files — every "Only opened files" search — said
