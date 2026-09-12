@@ -417,7 +417,9 @@
       <div class="p-3 border-b border-gh-border-default dark:border-gh-border-dark-default">
         <div class="flex items-center justify-between">
           <p class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
-            Found {$trace.response.matches.length.toLocaleString()} matches in {searchedFileCount($trace.response).toLocaleString()}
+            Found {$trace.response.matches.length.toLocaleString()} matches in {searchedFileCount(
+              $trace.response,
+            ).toLocaleString()}
             files ({$trace.response.time.toFixed(2)}s)
             {#if $trace.response.max_results && $trace.response.matches.length >= $trace.response.max_results}
               <span class="text-gh-attention-fg dark:text-gh-attention-dark-fg">
