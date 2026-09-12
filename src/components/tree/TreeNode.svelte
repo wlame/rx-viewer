@@ -631,7 +631,7 @@
                 {#if analyzeResult.anomaly_summary}
                   <div class="mb-3 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
                     Found:
-                    {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
+                    {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i (category)}
                       <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
                         >{count}</span
                       >
@@ -646,7 +646,7 @@
                 <div
                   class="flex flex-wrap border-b border-gh-border-default dark:border-gh-border-dark-default mb-3"
                 >
-                  {#each detectors as detector}
+                  {#each detectors as detector (detector)}
                     <button
                       class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors
                              {activeDetector === detector
@@ -687,7 +687,7 @@
                         </tr>
                       </thead>
                       <tbody>
-                        {#each anomaliesByDetector[activeDetector] as anomaly}
+                        {#each anomaliesByDetector[activeDetector] as anomaly (`${anomaly.start_offset}:${anomaly.end_offset}`)}
                           <tr
                             class="border-t border-gh-border-default dark:border-gh-border-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle cursor-pointer"
                             on:click={() => handleAnomalyClick(anomaly)}
@@ -732,7 +732,7 @@
                 </h3>
                 <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
                   Found:
-                  {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i}
+                  {#each Object.entries(analyzeResult.anomaly_summary) as [category, count], i (category)}
                     <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
                       >{count}</span
                     >

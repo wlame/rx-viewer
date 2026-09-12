@@ -143,7 +143,7 @@
                 border border-gh-border-default dark:border-gh-border-dark-default
                 rounded-md shadow-lg py-1 min-w-[160px]"
       >
-        {#each MONACO_THEMES as themeOption}
+        {#each MONACO_THEMES as themeOption (themeOption.id)}
           <button
             class="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
                  hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle

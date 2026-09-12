@@ -233,6 +233,7 @@
             type="text"
             class="input flex-1 font-mono text-sm"
             placeholder="Regex pattern {index + 1}..."
+            aria-label="Regex pattern {index + 1}"
             value={pattern}
             on:input={(e) => updatePattern(index, e.currentTarget.value)}
             on:keydown={(e) => handleKeydown(e, index)}
@@ -364,7 +365,7 @@
 
       {#if $trace.response.matches.length > 0}
         <ul class="divide-y divide-gh-border-default dark:divide-gh-border-dark-default">
-          {#each $trace.response.matches as match}
+          {#each $trace.response.matches as match (`${match.file}:${match.offset}:${match.pattern}`)}
             {@const filePath = getFilePath(match.file)}
             {@const lineNum = displayLine(match, filePath)}
             {@const isResolving = resolving[offsetKey(filePath, match.offset)]}

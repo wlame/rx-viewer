@@ -173,6 +173,13 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The search panel's pattern fields had only a placeholder, which a
+  screen reader does not announce; each now has a label ("Regex pattern
+  1"). Six lists — search results, the theme picker, and the analysis
+  dialog's summary, detector tabs and anomaly rows — are keyed by what
+  makes each entry unique, so an update moves the right row; `just lint`
+  is down from 10 warnings to 4.
+
 - Every anomaly category rx-go reports showed as the same gray chip,
   and a selected one marked its lines with an invisible gutter glyph:
   colors came from a table of rx-python's category names only.
