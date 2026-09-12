@@ -175,6 +175,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Every anomaly category rx-go reports showed as the same gray chip,
+  and a selected one marked its lines with an invisible gutter glyph:
+  colors came from a table of rx-python's category names only.
+  `src/lib/utils/categoryStyle.ts` keeps the hand-picked styles and gives
+  any other category one of ten palette colors, chosen by hashing its
+  name so it is the same everywhere; the matching decoration classes are
+  generated from the same palette, so chip and highlight cannot
+  disagree. The detectors store's own copy of the table is gone. 5 tests.
+
 - Closing the last open file left it named in the URL, so a reload
   reopened the file just closed. The URL now drops `file`, `line` and
   `highlight` when no file is left open; 2 tests cover it.

@@ -9,7 +9,7 @@
    * previous one. The pane does the stepping, since it owns the view.
    */
   import { createEventDispatcher } from 'svelte';
-  import { CATEGORY_ICONS } from '$lib/stores';
+  import { categoryStyle } from '$lib/utils/categoryStyle';
 
   /** Anomaly count per category, or null when the file was not analyzed. */
   export let summary: Record<string, number> | null;
@@ -20,21 +20,6 @@
     toggle: { category: string };
     navigate: { category: string; direction: 'next' | 'previous' };
   }>();
-
-  /** A symbol per category, so chips differ by more than color. */
-  const CATEGORY_SYMBOLS: Record<string, string> = {
-    error: '\u2716', // ✖ Heavy multiplication X
-    warning: '\u26A0', // ⚠ Warning sign
-    traceback: '\u2261', // ≡ Identical to (stack symbol)
-    format: '\u00B6', // ¶ Pilcrow sign
-    security: '\u2622', // ☢ Radioactive
-    timing: '\u23F1', // ⏱ Stopwatch
-    multiline: '\u2630', // ☰ Trigram for heaven (hamburger menu)
-  };
-
-  function getCategorySymbol(category: string): string {
-    return CATEGORY_SYMBOLS[category] || '\u2022'; // • Bullet as fallback
-  }
 
   function handleChipClick(e: MouseEvent, category: string) {
     const isNavModifier = e.metaKey || e.altKey; // Cmd or Alt/Option
@@ -49,11 +34,7 @@
 <!-- Anomaly category toggles (only shown if file has anomalies) -->
 {#if summary && Object.keys(summary).length > 0}
   {#each Object.entries(summary) as [category, count] (category)}
-    {@const categoryInfo = CATEGORY_ICONS[category] || {
-      icon: '?',
-      color: '#6b7280',
-      label: category,
-    }}
+    {@const categoryInfo = categoryStyle(category)}
     {@const isActive = selectedCategory === category}
     <button
       class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
@@ -63,7 +44,7 @@
       title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
       on:click={(e) => handleChipClick(e, category)}
     >
-      <span class="anomaly-icon" style="font-size: 10px;">{getCategorySymbol(category)}</span>
+      <span class="anomaly-icon" style="font-size: 10px;">{categoryInfo.symbol}</span>
       <span>{count}</span>
     </button>
     {#if isActive}

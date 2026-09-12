@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { OpenFile } from '$lib/types';
-  import { files, settings, resolvedTheme, CATEGORY_ICONS } from '$lib/stores';
+  import { files, settings, resolvedTheme } from '$lib/stores';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import MonacoEditor from './MonacoEditor.svelte';
@@ -22,6 +22,7 @@
   } from '$lib/utils/editorDecorations';
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import { acceptsTyping } from '$lib/utils/keyTargets';
+  import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
 
@@ -118,7 +119,7 @@
         ? anomalyCategoryDecorations(
             file.anomalies,
             category,
-            CATEGORY_ICONS[category]?.color || '#6b7280',
+            categoryStyle(category),
             editorWindow,
           )
         : []),
@@ -357,6 +358,7 @@
   }
 
   onMount(() => {
+    installPaletteStyles();
     paneEl?.addEventListener('keydown', handleKeyDown);
   });
 

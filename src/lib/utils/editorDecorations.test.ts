@@ -78,12 +78,13 @@ describe('anomalyCategoryDecorations', () => {
     const decorations = anomalyCategoryDecorations(
       anomalies,
       'log-traceback',
-      '#dc2626',
+      { color: '#14b8a6', decorationClass: 'palette-4' },
       editorWindow,
     );
 
     expect(decorations.map((d) => d.range.startLineNumber)).toEqual([3, 4]);
-    expect(decorations[0].options.className).toContain('monaco-anomaly-log-traceback');
+    expect(decorations[0].options.className).toContain('monaco-anomaly-palette-4');
+    expect(decorations[0].options.glyphMarginClassName).toContain('monaco-anomaly-palette-4-glyph');
     expect(decorations[0].options.glyphMarginHoverMessage).toMatchObject({
       value: expect.stringContaining('traceback-python'),
     });

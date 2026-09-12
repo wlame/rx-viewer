@@ -12,6 +12,7 @@
  */
 import type * as Monaco from 'monaco-editor';
 import type { Anomaly } from '../types';
+import type { CategoryStyle } from './categoryStyle';
 import { HIDDEN_MARKER } from './processContent';
 
 type Decoration = Monaco.editor.IModelDeltaDecoration;
@@ -105,12 +106,13 @@ export function highlightedRangeDecorations(
 
 /**
  * Marks every line of every anomaly in the selected category, with the
- * anomaly's details on the glyph and the category's color in the minimap.
+ * anomaly's details on the glyph, and the category's classes and color
+ * (see categoryStyle.ts) on the line and in the minimap.
  */
 export function anomalyCategoryDecorations(
   anomalies: readonly Anomaly[],
   category: string,
-  color: string,
+  style: Pick<CategoryStyle, 'color' | 'decorationClass'>,
   editorWindow: EditorWindow,
 ): Decoration[] {
   return anomalies
@@ -118,8 +120,8 @@ export function anomalyCategoryDecorations(
     .flatMap((anomaly) =>
       fileLineRange(anomaly.start_line, anomaly.end_line, editorWindow, {
         isWholeLine: true,
-        className: `monaco-anomaly-category-line monaco-anomaly-${category}`,
-        glyphMarginClassName: `monaco-anomaly-category-glyph monaco-anomaly-${category}-glyph`,
+        className: `monaco-anomaly-category-line monaco-anomaly-${style.decorationClass}`,
+        glyphMarginClassName: `monaco-anomaly-category-glyph monaco-anomaly-${style.decorationClass}-glyph`,
         glyphMarginHoverMessage: {
           value: [
             `**${anomaly.category.toUpperCase()}** | Severity: ${anomaly.severity}`,
@@ -130,7 +132,7 @@ export function anomalyCategoryDecorations(
           ].join('\n'),
           isTrusted: true,
         },
-        minimap: { color, position: MINIMAP_INLINE },
+        minimap: { color: style.color, position: MINIMAP_INLINE },
       }),
     );
 }
