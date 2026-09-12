@@ -76,8 +76,8 @@ typecheck:
 lint:
     {{bun}} run lint
 
-# Regenerate src/lib/types.generated.ts from rx-go's OpenAPI document.
 # RX_GO_OPENAPI overrides the location (default: ../rx-go/docs/api/openapi.json).
+# Regenerate src/lib/types.generated.ts from rx-go's OpenAPI document
 gen-types:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -89,8 +89,9 @@ gen-types:
     fi
     {{bun}} x openapi-typescript "$spec" -o src/lib/types.generated.ts
 
-# Fail when the generated types are stale (CI gate). Skips with a notice
-# when rx-go is not checked out, so the viewer stays buildable alone.
+# Skips with a notice when rx-go is not checked out, so the viewer stays
+# buildable alone.
+# Fail when the generated types are stale (CI gate)
 types-check:
     #!/usr/bin/env bash
     set -euo pipefail
