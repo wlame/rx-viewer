@@ -175,16 +175,38 @@ describe('request shape', () => {
     ['getTree', (o: object) => api.getTree('/x', o)],
     ['getSamples', (o: object) => api.getSamples('/x', ['1-2'], undefined, o)],
     ['getSamplesByOffset', (o: object) => api.getSamplesByOffset('/x', [10], undefined, o)],
-    [
-      'trace',
-      (o: object) => api.trace(['/x'], ['e'], undefined, undefined, undefined, undefined, o),
-    ],
+    ['trace', (o: object) => api.trace(['/x'], ['e'], {}, o)],
     ['getIndex', (o: object) => api.getIndex('/x', o)],
   ])('%s forwards the signal', async (_name, call) => {
     const spy = stubFetch({});
     const controller = new AbortController();
     await call({ signal: controller.signal });
     expect(spy.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it('sends each matching flag that is on as a trace parameter', async () => {
+    const spy = stubFetch({});
+    await api.trace(['/a.log'], ['err'], {
+      maxResults: 50,
+      flags: { ignore_case: true, word_regexp: false, fixed_strings: true },
+    });
+
+    const query = new URL(spy.mock.calls[0][0], 'http://x').searchParams;
+    expect(query.get('ignore_case')).toBe('true');
+    expect(query.get('fixed_strings')).toBe('true');
+    expect(query.has('word_regexp')).toBe(false);
+    expect(query.get('max_results')).toBe('50');
+  });
+
+  // case_sensitive, context_before and context_after are not trace
+  // parameters in the contract; a backend ignores them, so sending one
+  // only suggests a setting that does nothing.
+  it('sends only parameters the trace contract declares', async () => {
+    const spy = stubFetch({});
+    await api.trace(['/a.log'], ['err']);
+
+    const query = new URL(spy.mock.calls[0][0], 'http://x').searchParams;
+    expect([...new Set(query.keys())]).toEqual(['path', 'regexp']);
   });
 
   it('sends no signal when none is given', async () => {

@@ -52,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The search panel has the three toggles of an editor search box,
+  beside Options: match case (`Aa`), match whole word (`ab`) and use
+  regular expression (`.*`), also on Alt+C, Alt+W and Alt+R from a
+  pattern field. They start at ripgrep's defaults — case-sensitive,
+  regular expressions, matching anywhere — and a toggle moved away from
+  its default sends `ignore_case`, `word_regexp` or `fixed_strings` to
+  `/v1/trace`; each tooltip names the ripgrep flag. A backend older than
+  API contract 1.3 ignores those parameters, so there the toggles are
+  disabled and say why. The trace request no longer sends
+  `case_sensitive`, `context_before` or `context_after`: no backend reads
+  them.
+
 - The viewer works with a backend started with `RX_API_TOKEN`. A link of
   the form `http://host:7777/#token=…` hands the token over: it is kept
   for the browser tab in `sessionStorage`, removed from the address bar,

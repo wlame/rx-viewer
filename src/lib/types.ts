@@ -1,4 +1,4 @@
-import type { components } from './types.generated';
+import type { components, operations } from './types.generated';
 
 // API Types matching backend models
 
@@ -64,6 +64,19 @@ export interface SamplesResponse {
  * were, and is the actual contract.
  */
 type Schemas = components['schemas'];
+
+/** The query parameters of `GET /v1/trace`. */
+export type TraceQuery = operations['trace']['parameters']['query'];
+
+/**
+ * ripgrep's matching flags as trace parameters (`ignore_case=true` is
+ * `rx trace --ignore-case`). They arrived in contract 1.3; check
+ * `contractSupports(…, 'traceMatchingFlags')` before relying on them.
+ */
+export type TraceMatchingFlags = Pick<
+  TraceQuery,
+  'ignore_case' | 'word_regexp' | 'line_regexp' | 'fixed_strings' | 'pcre2'
+>;
 
 /**
  * The body both backends return with 403 for a path outside every

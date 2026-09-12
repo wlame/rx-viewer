@@ -3,6 +3,7 @@ import type {
   TreeResponse,
   SamplesResponse,
   TraceResponse,
+  TraceMatchingFlags,
   TaskStatus,
   IndexData,
   IndexTaskResponse,
@@ -163,37 +164,26 @@ export const api = {
   },
 
   /**
-   * Search for patterns in files using ripgrep
-   * @param paths - File or directory paths to search
-   * @param patterns - Regex patterns to search for
-   * @param maxResults - Maximum number of results (optional)
-   * @param caseSensitive - Case sensitive search (optional)
-   * @param contextBefore - Lines of context before match (optional)
-   * @param contextAfter - Lines of context after match (optional)
+   * Search files for one or more patterns.
+   * @param paths - Files or directories to search
+   * @param patterns - Patterns; a line matching any of them is a match
+   * @param query.maxResults - Stop after this many matches
+   * @param query.flags - ripgrep matching flags; only those set to true are sent
    */
   async trace(
     paths: string[],
     patterns: string[],
-    maxResults?: number,
-    caseSensitive?: boolean,
-    contextBefore?: number,
-    contextAfter?: number,
+    query: { maxResults?: number; flags?: TraceMatchingFlags } = {},
     options?: RequestOptions,
   ): Promise<TraceResponse> {
     const params = new URLSearchParams();
     paths.forEach((p) => params.append('path', p));
     patterns.forEach((r) => params.append('regexp', r));
-    if (maxResults !== undefined) {
-      params.set('max_results', maxResults.toString());
+    if (query.maxResults !== undefined) {
+      params.set('max_results', query.maxResults.toString());
     }
-    if (caseSensitive !== undefined) {
-      params.set('case_sensitive', caseSensitive.toString());
-    }
-    if (contextBefore !== undefined) {
-      params.set('context_before', contextBefore.toString());
-    }
-    if (contextAfter !== undefined) {
-      params.set('context_after', contextAfter.toString());
+    for (const [name, on] of Object.entries(query.flags ?? {})) {
+      if (on) params.set(name, 'true');
     }
     return fetchJson<TraceResponse>(`${API_BASE}/trace?${params}`, options);
   },

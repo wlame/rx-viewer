@@ -1,16 +1,32 @@
 <script lang="ts">
-  import { trace, tree, files } from '$lib/stores';
+  import { trace, tree, files, health } from '$lib/stores';
   import { api } from '$lib/api';
   import { resolveMatchLine } from '$lib/utils/matchLine';
+  import { contractSupports } from '$lib/utils/contractVersion';
+  import {
+    DEFAULT_SEARCH_TOGGLES,
+    matchingFlagParams,
+    toggleForShortcut,
+    type SearchToggles as Toggles,
+  } from '$lib/utils/searchToggles';
   import type { TraceMatch } from '$lib/types';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
+  import SearchToggles from './SearchToggles.svelte';
 
   let searchPatterns: string[] = [''];
   let maxResults = 100;
   let showAdvanced = false;
   let showOffsets = false; // Toggle between line numbers and byte offsets
   let onlyOpenedFiles = false; // Search only in currently opened files
+  let toggles: Toggles = { ...DEFAULT_SEARCH_TOGGLES };
+
+  // A backend on an older contract ignores the matching flags, so the
+  // toggles are disabled there rather than shown doing nothing.
+  $: flagsSupported = contractSupports($health.contract, 'traceMatchingFlags');
+  $: togglesUnavailable = flagsSupported
+    ? null
+    : 'This backend does not take match options (it needs API contract 1.3 or newer)';
 
   $: searchRoots = $tree.roots.map((r) => r.path);
   $: hasRoots = searchRoots.length > 0;
@@ -48,10 +64,19 @@
     }
 
     // Search with all patterns
-    await trace.search(pathsToSearch, validPatterns, maxResults);
+    await trace.search(pathsToSearch, validPatterns, {
+      maxResults,
+      flags: flagsSupported ? matchingFlagParams(toggles) : {},
+    });
   }
 
   function handleKeydown(event: KeyboardEvent, _index: number) {
+    const toggle = toggleForShortcut(event);
+    if (toggle && flagsSupported) {
+      event.preventDefault();
+      toggles = { ...toggles, [toggle.key]: !toggles[toggle.key] };
+      return;
+    }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSearch();
@@ -277,13 +302,20 @@
       </button>
     </div>
 
-    <!-- Advanced options toggle -->
-    <button
-      class="text-xs text-gh-accent-fg dark:text-gh-accent-dark-fg hover:underline mt-2"
-      on:click={() => (showAdvanced = !showAdvanced)}
-    >
-      {showAdvanced ? '▼' : '▶'} Options
-    </button>
+    <!-- Advanced options toggle, and the match options, which apply to every pattern -->
+    <div class="flex items-center justify-between mt-2">
+      <button
+        class="text-xs text-gh-accent-fg dark:text-gh-accent-dark-fg hover:underline"
+        on:click={() => (showAdvanced = !showAdvanced)}
+      >
+        {showAdvanced ? '▼' : '▶'} Options
+      </button>
+      <SearchToggles
+        bind:toggles
+        disabled={$trace.searching || !hasRoots}
+        unavailableReason={togglesUnavailable}
+      />
+    </div>
 
     {#if showAdvanced}
       <div class="mt-3 space-y-2 text-sm">

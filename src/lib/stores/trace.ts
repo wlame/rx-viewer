@@ -1,12 +1,16 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
-import type { TraceMatch, TraceResponse } from '../types';
+import type { TraceMatch, TraceMatchingFlags, TraceResponse } from '../types';
+
+/** What a search asks the backend for besides paths and patterns. */
+export interface SearchQuery {
+  maxResults?: number;
+  flags?: TraceMatchingFlags;
+}
 
 interface TraceState {
   query: string;
-  isRegex: boolean;
-  caseSensitive: boolean;
   searching: boolean;
   response: TraceResponse | null;
   error: string | null;
@@ -15,8 +19,6 @@ interface TraceState {
 function createTraceStore() {
   const { subscribe, set, update } = writable<TraceState>({
     query: '',
-    isRegex: true, // ripgrep uses regex by default
-    caseSensitive: true,
     searching: false,
     response: null,
     error: null,
@@ -27,7 +29,7 @@ function createTraceStore() {
   // screen, which is not necessarily the one the user asked for.
   const latestSearch = new LatestRequest();
 
-  async function search(paths: string[], patterns: string[], maxResults?: number) {
+  async function search(paths: string[], patterns: string[], query: SearchQuery = {}) {
     if (patterns.length === 0) return;
 
     update((s) => ({
@@ -40,7 +42,7 @@ function createTraceStore() {
 
     try {
       const response = await latestSearch.run((signal) =>
-        api.trace(paths, patterns, maxResults, undefined, undefined, undefined, { signal }),
+        api.trace(paths, patterns, query, { signal }),
       );
 
       // A newer search is already running; leave the store to it rather
@@ -71,19 +73,9 @@ function createTraceStore() {
     update((s) => ({ ...s, query }));
   }
 
-  function setIsRegex(isRegex: boolean) {
-    update((s) => ({ ...s, isRegex }));
-  }
-
-  function setCaseSensitive(caseSensitive: boolean) {
-    update((s) => ({ ...s, caseSensitive }));
-  }
-
   function clear() {
     set({
       query: '',
-      isRegex: true,
-      caseSensitive: true,
       searching: false,
       response: null,
       error: null,
@@ -119,8 +111,6 @@ function createTraceStore() {
     subscribe,
     search,
     setQuery,
-    setIsRegex,
-    setCaseSensitive,
     clear,
     getMatchesForFile,
   };
