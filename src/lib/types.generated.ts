@@ -457,7 +457,7 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
-            /** @description Error */
+            /** @description Any other error */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -490,6 +490,15 @@ export interface operations {
                     "application/json": components["schemas"]["TaskResponse"];
                 };
             };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The server requires an API token and the request did not carry it */
             401: {
                 headers: {
@@ -499,13 +508,49 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A task for the same path is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -537,7 +582,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Error */
+            /** @description Any other error */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -580,13 +625,40 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -613,6 +685,15 @@ export interface operations {
                     "application/json": components["schemas"]["TaskResponse"];
                 };
             };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The server requires an API token and the request did not carry it */
             401: {
                 headers: {
@@ -622,13 +703,49 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A task for the same path is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -664,6 +781,15 @@ export interface operations {
                     "application/json": components["schemas"]["SamplesResponse"];
                 };
             };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The server requires an API token and the request did not carry it */
             401: {
                 headers: {
@@ -673,13 +799,58 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description ripgrep is not available on this system */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -714,7 +885,16 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Error */
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
             default: {
                 headers: {
                     [name: string]: unknown;
@@ -768,6 +948,15 @@ export interface operations {
                     "application/json": components["schemas"]["TraceResponse"];
                 };
             };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The server requires an API token and the request did not carry it */
             401: {
                 headers: {
@@ -777,13 +966,58 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description ripgrep is not available on this system */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -809,6 +1043,15 @@ export interface operations {
                     "application/json": components["schemas"]["TreeResponse"];
                 };
             };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description The server requires an API token and the request did not carry it */
             401: {
                 headers: {
@@ -818,13 +1061,31 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Path outside every configured --search-root */
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SandboxError"];
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
