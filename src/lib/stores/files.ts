@@ -3,7 +3,8 @@ import { api } from '../api';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { updateUrlState } from '../utils/urlState';
-import type { OpenFile, FileLine, FileMatch } from '../types';
+import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
+import type { OpenFile, FileLine, FileMatch, SamplesResponse } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -17,6 +18,21 @@ import { settings } from './settings';
  * one tab does not cancel another tab's.
  */
 const fileLoads = new LatestRequestMap();
+
+/**
+ * The first and last loaded line of a window, and whether paging may go
+ * on past either. An empty window has no lines: start 1, end 0.
+ */
+function windowBounds(window: SampleWindow) {
+  const { lines } = window;
+  return {
+    lines,
+    startLine: lines.length > 0 ? lines[0].lineNumber : 1,
+    endLine: lines.length > 0 ? lines[lines.length - 1].lineNumber : 0,
+    reachedStart: window.reachedStart,
+    reachedEnd: window.reachedEnd,
+  };
+}
 
 interface FilesState {
   openFiles: OpenFile[];
@@ -158,6 +174,60 @@ function createFilesStore() {
   }
 
   /**
+   * Report a window load that failed. A binary file is refused with a
+   * notification and closed; anything else shows in the file's tab.
+   */
+  function showLoadError(path: string, e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
+
+    if (errorMessage.includes('binary') || errorMessage.includes('Binary')) {
+      notifications.error(`Cannot open binary file: ${path.split('/').pop()}`, 5000);
+      update((s) => ({
+        ...s,
+        openFiles: s.openFiles.filter((f) => f.path !== path),
+      }));
+    } else {
+      update((s) => ({
+        ...s,
+        openFiles: s.openFiles.map((f) =>
+          f.path === path ? { ...f, loading: false, error: errorMessage } : f,
+        ),
+      }));
+    }
+    console.error('Failed to load file:', e);
+  }
+
+  /**
+   * Replace a file's lines with a freshly loaded window. The window's own
+   * ends decide whether paging may continue in either direction, and a
+   * window that shows where the file ends also gives its line count.
+   * `extra` holds any other fields to set in the same update.
+   */
+  function showWindow(
+    path: string,
+    window: SampleWindow,
+    response: SamplesResponse,
+    extra: Partial<OpenFile> = {},
+  ) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path
+          ? {
+              ...f, // Preserve all existing fields including scrollToLine
+              ...windowBounds(window),
+              totalLines: window.lineCount ?? f.totalLines,
+              loading: false,
+              isCompressed: response.is_compressed,
+              compressionFormat: response.compression_format,
+              ...extra,
+            }
+          : f,
+      ),
+    }));
+  }
+
+  /**
    * Load lines from the start of the file
    * This loads lines 1 to totalLines
    */
@@ -170,108 +240,27 @@ function createFilesStore() {
     }));
 
     try {
-      // Request lines 1 to totalLines as a range
       const range = `1-${totalLines}`;
       const response = await fileLoads.run(path, (signal) =>
         api.getSamples(path, [range], undefined, { signal }),
       );
       if (response === SUPERSEDED) return;
 
-      // Parse response - samples key is the range string (e.g., "1-100")
-      const lines: FileLine[] = [];
-
-      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
-        // Parse the range key to get the start line
-        // Range format: "start-end" (e.g., "1-100")
-        const dashIndex = rangeKey.indexOf('-');
-        const startLineNum =
-          dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
-
-        for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = startLineNum + i;
-          lines.push({
-            lineNumber: actualLineNum,
-            content: contentArr[i],
-          });
-        }
-      }
-
-      // Sort by line number and dedupe
-      const lineMap = new Map<number, FileLine>();
-      for (const line of lines) {
-        lineMap.set(line.lineNumber, line);
-      }
-      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
-
-      update((s) => ({
-        ...s,
-        openFiles: s.openFiles.map((f) =>
-          f.path === path
-            ? {
-                ...f, // Preserve all existing fields including scrollToLine
-                lines: sortedLines,
-                startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
-                endLine:
-                  sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
-                loading: false,
-                isCompressed: response.is_compressed,
-                compressionFormat: response.compression_format,
-              }
-            : f,
-        ),
-      }));
+      showWindow(path, readSamplesAnswer(response), response);
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
       if (isAbortError(e)) return;
-      const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
-
-      // Check if it's a binary file error
-      if (errorMessage.includes('binary') || errorMessage.includes('Binary')) {
-        // Show notification instead of creating an error tab
-        notifications.error(`Cannot open binary file: ${path.split('/').pop()}`, 5000);
-
-        // Remove the file from open files
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.filter((f) => f.path !== path),
-        }));
-      } else if (errorMessage.includes('EOF reached') || errorMessage.includes('out of bounds')) {
-        // Handle EOF errors specifically
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.map((f) =>
-            f.path === path
-              ? {
-                  ...f,
-                  loading: false,
-                  error: errorMessage,
-                }
-              : f,
-          ),
-        }));
-      } else {
-        // For other errors, show in the tab
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.map((f) =>
-            f.path === path
-              ? {
-                  ...f,
-                  loading: false,
-                  error: errorMessage,
-                }
-              : f,
-          ),
-        }));
-      }
-      console.error('Failed to load file:', e);
+      showLoadError(path, e);
     }
   }
 
   /**
    * Load lines around a center line using context parameter
    * Uses /v1/samples?path=...&lines=<centerLine>&context=<contextLines>
-   * This returns lines from (centerLine - context) to (centerLine + context)
+   * This returns lines from max(1, centerLine - context) to (centerLine + context)
+   *
+   * A center so far past the end that its window holds no line shows the
+   * end of the file instead, the nearest lines that exist.
    */
   async function loadLinesAroundCenter(
     path: string,
@@ -286,94 +275,21 @@ function createFilesStore() {
     }));
 
     try {
-      // Request the center line with context
-      // Backend returns lines from (centerLine - context) to (centerLine + context)
       const response = await fileLoads.run(path, (signal) =>
         api.getSamples(path, [centerLine.toString()], contextLines, { signal }),
       );
       if (response === SUPERSEDED) return;
 
-      // Parse response - the key is the requested line number
-      const lines: FileLine[] = [];
-
-      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
-        const requestedLine = parseInt(lineNumStr, 10);
-
-        // Calculate start line based on before_context from response
-        // But clamp to 1 since we can't have negative line numbers
-        // The actual start is: max(1, requestedLine - before_context)
-        const theoreticalStart = requestedLine - response.before_context;
-        const actualStart = Math.max(1, theoreticalStart);
-
-        for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = actualStart + i;
-          lines.push({
-            lineNumber: actualLineNum,
-            content: contentArr[i],
-          });
-        }
+      const window = readSamplesAnswer(response);
+      if (window.lines.length === 0 && !window.reachedStart) {
+        await jumpToEnd(path);
+        return;
       }
-
-      // Sort by line number and dedupe
-      const lineMap = new Map<number, FileLine>();
-      for (const line of lines) {
-        lineMap.set(line.lineNumber, line);
-      }
-      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
-
-      update((s) => ({
-        ...s,
-        openFiles: s.openFiles.map((f) =>
-          f.path === path
-            ? {
-                ...f, // Preserve all existing fields including scrollToLine
-                lines: sortedLines,
-                startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
-                endLine:
-                  sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0,
-                loading: false,
-                isCompressed: response.is_compressed,
-                compressionFormat: response.compression_format,
-              }
-            : f,
-        ),
-      }));
+      showWindow(path, window, response);
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
       if (isAbortError(e)) return;
-      const errorMessage = e instanceof Error ? e.message : 'Failed to load file';
-
-      // Check if it's a binary file error
-      if (errorMessage.includes('binary') || errorMessage.includes('Binary')) {
-        // Show notification instead of creating an error tab
-        notifications.error(`Cannot open binary file: ${path.split('/').pop()}`, 5000);
-
-        // Remove the file from open files
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.filter((f) => f.path !== path),
-        }));
-      } else if (errorMessage.includes('EOF reached') || errorMessage.includes('out of bounds')) {
-        // If we tried to load around a line that's out of bounds, fall back to loading from start
-        console.warn(`Line ${centerLine} is out of bounds, loading from start instead`);
-        const linesPerPage = get(settings).linesPerPage;
-        await loadLinesFromStart(path, linesPerPage);
-      } else {
-        // For other errors, show in the tab
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.map((f) =>
-            f.path === path
-              ? {
-                  ...f,
-                  loading: false,
-                  error: errorMessage,
-                }
-              : f,
-          ),
-        }));
-      }
-      console.error('Failed to load file:', e);
+      showLoadError(path, e);
     }
   }
 
@@ -417,23 +333,7 @@ function createFilesStore() {
       );
       if (response === SUPERSEDED) return;
 
-      // Parse response
-      const newLines: FileLine[] = [];
-
-      for (const [rangeKey, contentArr] of Object.entries(response.samples)) {
-        // Parse the range key to get the start line
-        const dashIndex = rangeKey.indexOf('-');
-        const startLineNum =
-          dashIndex > 0 ? parseInt(rangeKey.substring(0, dashIndex), 10) : parseInt(rangeKey, 10);
-
-        for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = startLineNum + i;
-          newLines.push({
-            lineNumber: actualLineNum,
-            content: contentArr[i],
-          });
-        }
-      }
+      const window = readSamplesAnswer(response);
 
       update((s) => ({
         ...s,
@@ -442,63 +342,39 @@ function createFilesStore() {
 
           // Merge with existing lines
           const lineMap = new Map<number, FileLine>();
-
-          // Add existing lines
-          for (const line of f.lines) {
-            lineMap.set(line.lineNumber, line);
-          }
-
-          // Add new lines
-          for (const line of newLines) {
-            lineMap.set(line.lineNumber, line);
-          }
-
+          for (const line of f.lines) lineMap.set(line.lineNumber, line);
+          for (const line of window.lines) lineMap.set(line.lineNumber, line);
           const mergedLines = Array.from(lineMap.values()).sort(
             (a, b) => a.lineNumber - b.lineNumber,
           );
 
-          const newStartLine = mergedLines.length > 0 ? mergedLines[0].lineNumber : 1;
-          const newEndLine =
-            mergedLines.length > 0 ? mergedLines[mergedLines.length - 1].lineNumber : 0;
-
+          const newStartLine = mergedLines[0]?.lineNumber ?? 1;
+          const newEndLine = mergedLines.at(-1)?.lineNumber ?? 0;
+          // A range after the loaded lines that comes back short or null
+          // ends the file, and the loaded lines run up to that end.
+          const reachedEnd = direction === 'after' ? window.reachedEnd : f.reachedEnd;
           return {
             ...f,
             lines: mergedLines,
             startLine: newStartLine,
             endLine: newEndLine,
-            loading: false,
             reachedStart: newStartLine === 1,
+            reachedEnd,
+            totalLines: direction === 'after' && reachedEnd ? newEndLine : f.totalLines,
+            loading: false,
           };
         }),
       }));
     } catch (e) {
-      // A superseded load was cancelled on purpose. Return before the
-      // boundary flags below: an abort says nothing about whether the
-      // file has more lines, and the load that replaced this one owns
-      // the loading flag now.
+      // A superseded load was cancelled on purpose. The load that
+      // replaced this one owns the loading flag now.
       if (isAbortError(e)) return;
-
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      const isEOF = errorMessage.includes('EOF reached') || errorMessage.includes('out of bounds');
 
       update((s) => ({
         ...s,
-        openFiles: s.openFiles.map((f) => {
-          if (f.path !== path) return f;
-
-          return {
-            ...f,
-            loading: false,
-            // Mark boundary reached if we got EOF error
-            reachedEnd: isEOF && direction === 'after',
-            reachedStart: isEOF && direction === 'before',
-          };
-        }),
+        openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, loading: false } : f)),
       }));
-
-      if (!isEOF) {
-        console.error('Failed to load more lines:', e);
-      }
+      console.error('Failed to load more lines:', e);
     }
   }
 
@@ -574,62 +450,13 @@ function createFilesStore() {
       );
       if (response === SUPERSEDED) return;
 
-      // Parse response - the key will be the actual last line number
-      const lines: FileLine[] = [];
-      let discoveredTotalLines: number | null = null;
-
-      for (const [lineNumStr, contentArr] of Object.entries(response.samples)) {
-        const lineNum = parseInt(lineNumStr, 10);
-
-        // The line number in response is the actual last line number
-        // This tells us the total line count
-        if (discoveredTotalLines === null || lineNum > discoveredTotalLines) {
-          discoveredTotalLines = lineNum;
-        }
-
-        // Calculate start line based on context
-        const startLineNum = lineNum - response.before_context;
-
-        for (let i = 0; i < contentArr.length; i++) {
-          const actualLineNum = startLineNum + i;
-          if (actualLineNum > 0) {
-            lines.push({
-              lineNumber: actualLineNum,
-              content: contentArr[i],
-            });
-          }
-        }
-      }
-
-      // Sort by line number and dedupe
-      const lineMap = new Map<number, FileLine>();
-      for (const line of lines) {
-        lineMap.set(line.lineNumber, line);
-      }
-      const sortedLines = Array.from(lineMap.values()).sort((a, b) => a.lineNumber - b.lineNumber);
-
-      const newEndLine =
-        sortedLines.length > 0 ? sortedLines[sortedLines.length - 1].lineNumber : 0;
-
-      update((s) => ({
-        ...s,
-        openFiles: s.openFiles.map((f) =>
-          f.path === path
-            ? {
-                ...f,
-                lines: sortedLines,
-                startLine: sortedLines.length > 0 ? sortedLines[0].lineNumber : 1,
-                endLine: newEndLine,
-                loading: false,
-                isCompressed: response.is_compressed,
-                compressionFormat: response.compression_format,
-                scrollToLine: newEndLine, // Scroll to the last line
-                totalLines: discoveredTotalLines, // Update total lines
-                reachedEnd: true, // We're at the end
-              }
-            : f,
-        ),
-      }));
+      // rx-go answers -1 under the key of the last line, so the window
+      // ends at the end of the file whatever context was asked for.
+      const window = readSamplesAnswer(response);
+      const { endLine } = windowBounds(window);
+      showWindow(path, { ...window, reachedEnd: true, lineCount: endLine }, response, {
+        scrollToLine: endLine,
+      });
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
       if (isAbortError(e)) return;

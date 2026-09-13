@@ -39,18 +39,12 @@ export interface TreeResponse {
   total_size_human: string | null;
 }
 
-// Backend samples endpoint response
-// GET /v1/samples?path=file&lines=1,2,3&context=3
-export interface SamplesResponse {
-  path: string;
-  offsets: Record<string, number>; // offset -> line_number
-  lines: Record<string, number>; // line_number -> offset
-  before_context: number;
-  after_context: number;
-  samples: Record<string, string[]>; // key (offset or line) -> array of context lines
-  is_compressed: boolean;
-  compression_format: string | null;
-}
+/**
+ * `GET /v1/samples`. A sample is null when its window holds no line of
+ * the file: past the end, or any window of an empty file. Read it with
+ * `readSamplesAnswer` (`utils/sampleWindow.ts`).
+ */
+export type SamplesResponse = Schemas['SamplesResponse'];
 
 // Trace endpoint (GET /v1/trace)
 

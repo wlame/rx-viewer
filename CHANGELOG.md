@@ -193,6 +193,22 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The file window reads samples answers the way rx-go sends them.
+  A sample past the end of the file, and any sample of an empty file,
+  is null; every loader threw on it, and the end of the file was
+  detected from error strings no backend sends, so scrolling at the
+  bottom asked again forever. A null or short answer now ends paging and
+  gives the file's line count. Jump to end numbered its window from the
+  last line minus the context it asked for, which rx-go echoes even when
+  the file is shorter: a 7-line file showed nothing and a 300-line file
+  labelled lines 202–300 as 1–99. Every loader now numbers a window with
+  one function (`src/lib/utils/sampleWindow.ts`), from line
+  `max(1, N - before_context)` for a line and from its first line for a
+  range. A window that replaces the loaded lines sets both ends afresh,
+  so paging down works again after a jump from the end into the middle,
+  and a line too far past the end shows the end of the file instead of
+  an error. 15 tests.
+
 - A pattern field keeps its focus through a search, so a pattern can
   be changed and run again from the keyboard. The fields were disabled
   while a search ran, and a disabled field drops its focus; they stay
