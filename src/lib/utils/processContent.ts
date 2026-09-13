@@ -22,6 +22,7 @@
  */
 
 import type { RegexFilter } from '$lib/types';
+import { matchesIn } from './regexMatches';
 
 /** A line as the editor holds it. Only `content` is read here. */
 export interface EditorLine {
@@ -40,6 +41,43 @@ export const HIDDEN_MARKER = '\u200A';
 
 /** Monaco renders a lone \r as a line break; U+240D shows it instead. */
 const CR_SYMBOL = '\u240D';
+
+/** A span of one line that a filter mode hides or shows. */
+interface MatchedRange {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * The spans of `lineContent` a hide or show filter acts on: each captured
+ * group when the pattern has groups, each whole match otherwise.
+ *
+ * An empty span is left out. It covers no text, so in hide mode it would
+ * leave a marker that hides nothing, and in show mode it would show
+ * nothing; a line whose only matches are empty reads as a line without a
+ * match.
+ */
+function matchedRanges(lineContent: string, regex: RegExp, hasGroups: boolean): MatchedRange[] {
+  const ranges: MatchedRange[] = [];
+  for (const match of matchesIn(lineContent, regex)) {
+    if (hasGroups && match.length > 1) {
+      // Locate each captured group in the line, left to right within the match.
+      let searchStart = match.index;
+      for (let i = 1; i < match.length; i++) {
+        const groupText = match[i];
+        if (!groupText) continue;
+        const groupStart = lineContent.indexOf(groupText, searchStart);
+        if (groupStart === -1) continue;
+        ranges.push({ start: groupStart, end: groupStart + groupText.length, text: groupText });
+        searchStart = groupStart + groupText.length;
+      }
+    } else if (match[0].length > 0) {
+      ranges.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    }
+  }
+  return ranges;
+}
 
 export function processContent(
   lines: readonly EditorLine[],
@@ -66,42 +104,11 @@ export function processContent(
       // Hide matching groups (or entire match if no groups) - replace with marker
       try {
         const resultLines: string[] = [];
+        const regex = new RegExp(pattern, 'g');
 
         processedLines.forEach((lineContent, lineIdx) => {
           const monacoLine = lineIdx + 1;
-          const lineRegex = new RegExp(pattern, 'g');
-          let match;
-
-          // Collect all group matches with their positions
-          const replacements: Array<{ start: number; end: number; text: string }> = [];
-
-          while ((match = lineRegex.exec(lineContent)) !== null) {
-            if (hasGroups && match.length > 1) {
-              // Find and replace each captured group
-              let matchOffset = match.index;
-              for (let i = 1; i < match.length; i++) {
-                if (match[i] !== undefined) {
-                  const groupText = match[i];
-                  const groupStart = lineContent.indexOf(groupText, matchOffset);
-                  if (groupStart !== -1) {
-                    replacements.push({
-                      start: groupStart,
-                      end: groupStart + groupText.length,
-                      text: groupText,
-                    });
-                    matchOffset = groupStart + groupText.length;
-                  }
-                }
-              }
-            } else {
-              // No groups - hide entire match
-              replacements.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                text: match[0],
-              });
-            }
-          }
+          const replacements = matchedRanges(lineContent, regex, hasGroups);
 
           // Sort by position and apply replacements from end to start
           replacements.sort((a, b) => b.start - a.start);
@@ -132,42 +139,11 @@ export function processContent(
       // Show only matching groups (or entire match if no groups) - replace non-matching parts with marker
       try {
         const resultLines: string[] = [];
+        const regex = new RegExp(pattern, 'g');
 
         processedLines.forEach((lineContent, lineIdx) => {
           const monacoLine = lineIdx + 1;
-          const lineRegex = new RegExp(pattern, 'g');
-          let match;
-
-          // Collect all "show" ranges (captured groups or entire matches)
-          const showRanges: Array<{ start: number; end: number; text: string }> = [];
-
-          while ((match = lineRegex.exec(lineContent)) !== null) {
-            if (hasGroups && match.length > 1) {
-              // Find actual positions of each captured group within the line
-              let searchStart = match.index;
-              for (let i = 1; i < match.length; i++) {
-                if (match[i] !== undefined) {
-                  const groupText = match[i];
-                  const groupStart = lineContent.indexOf(groupText, searchStart);
-                  if (groupStart !== -1) {
-                    showRanges.push({
-                      start: groupStart,
-                      end: groupStart + groupText.length,
-                      text: groupText,
-                    });
-                    searchStart = groupStart + groupText.length;
-                  }
-                }
-              }
-            } else {
-              // No groups - show entire match
-              showRanges.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                text: match[0],
-              });
-            }
-          }
+          const showRanges = matchedRanges(lineContent, regex, hasGroups);
 
           // Build segments: alternating between hidden and shown parts
           const segments: Array<{ isMatch: boolean; text: string }> = [];

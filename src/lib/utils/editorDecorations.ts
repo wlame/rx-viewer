@@ -14,6 +14,7 @@ import type * as Monaco from 'monaco-editor';
 import type { Anomaly } from '../types';
 import type { CategoryStyle } from './categoryStyle';
 import { HIDDEN_MARKER } from './processContent';
+import { matchesIn } from './regexMatches';
 
 type Decoration = Monaco.editor.IModelDeltaDecoration;
 type DecorationOptions = Monaco.editor.IModelDecorationOptions;
@@ -155,9 +156,7 @@ export function regexHighlightDecorations(pattern: string, source: LineSource): 
 
   for (let lineNumber = 1; lineNumber <= source.getLineCount(); lineNumber++) {
     const lineContent = source.getLineContent(lineNumber);
-    regex.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(lineContent)) !== null) {
+    for (const match of matchesIn(lineContent, regex)) {
       if (hasGroups && match.length > 1) {
         let searchStart = match.index;
         for (let group = 1; group < match.length; group++) {
@@ -175,8 +174,6 @@ export function regexHighlightDecorations(pattern: string, source: LineSource): 
           inlineSpan(lineNumber, match.index + 1, match.index + match[0].length + 1, options),
         );
       }
-      // A zero-width match would match again at the same place forever.
-      if (match[0].length === 0) regex.lastIndex++;
     }
   }
   return out;

@@ -202,6 +202,17 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The editor filter's hide and show modes no longer freeze the tab on a
+  pattern that can match the empty string, such as `^`, `\d*` or `x?`.
+  Their match loop never stepped past an empty match, so it matched at
+  the same place forever while its list of markers grew. All three modes
+  now iterate matches through one helper (`src/lib/utils/regexMatches.ts`)
+  built on `String.prototype.matchAll`. An empty match or an empty
+  captured group no longer leaves a marker that hides nothing; such a
+  marker also landed at the start of the match instead of where the
+  group was. In show mode a line whose only matches are empty collapses
+  to one marker, like a line without a match. 10 tests.
+
 - The file window reads samples answers the way rx-go sends them.
   A sample past the end of the file, and any sample of an empty file,
   is null; every loader threw on it, and the end of the file was

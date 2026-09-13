@@ -109,6 +109,15 @@ describe('regexHighlightDecorations', () => {
     expect(regexHighlightDecorations('x*', lines('abc')).length).toBeGreaterThan(0);
   });
 
+  it('marks every match of a pattern that can match the empty string, empty ones included', () => {
+    expect(spans(regexHighlightDecorations('x*', lines('axb')))).toEqual([
+      [1, 1],
+      [2, 3],
+      [3, 3],
+      [4, 4],
+    ]);
+  });
+
   it('returns nothing for a pattern that does not compile', () => {
     expect(regexHighlightDecorations('(', lines('abc'))).toEqual([]);
   });

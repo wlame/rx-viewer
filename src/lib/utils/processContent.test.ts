@@ -1,6 +1,50 @@
-import { describe, it, expect } from 'vitest';
-import { processContent, HIDDEN_MARKER, type EditorLine } from './processContent';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  processContent,
+  HIDDEN_MARKER,
+  type EditorLine,
+  type ProcessedContent,
+} from './processContent';
 import type { RegexFilter } from '../types';
+
+/** Far more exec calls than a few short lines need; a loop stuck on one index exceeds it at once. */
+const EXEC_CALL_BUDGET = 10_000;
+
+/**
+ * Run processContent with a cap on RegExp exec calls.
+ *
+ * A vitest timeout cannot stop a synchronous loop, so a filter loop that
+ * never advances would hang the whole run. Past the cap, exec throws and
+ * the loop ends; processContent catches that, so the test asserts on the
+ * flag rather than on the error.
+ */
+function processWithinExecBudget(
+  input: readonly EditorLine[],
+  regexFilter: RegexFilter,
+): ProcessedContent {
+  const realExec = RegExp.prototype.exec;
+  let calls = 0;
+  let isBudgetExceeded = false;
+  const spy = vi.spyOn(RegExp.prototype, 'exec').mockImplementation(function (
+    this: RegExp,
+    text: string,
+  ) {
+    calls += 1;
+    if (calls > EXEC_CALL_BUDGET) {
+      isBudgetExceeded = true;
+      throw new Error('exec call budget exceeded');
+    }
+    return realExec.call(this, text);
+  });
+  let result: ProcessedContent;
+  try {
+    result = processContent(input, regexFilter, false);
+  } finally {
+    spy.mockRestore();
+  }
+  expect(isBudgetExceeded, 'the filter loop did not advance past an empty match').toBe(false);
+  return result;
+}
 
 function lines(...contents: string[]): EditorLine[] {
   return contents.map((content) => ({ content }));
@@ -138,6 +182,54 @@ describe('show mode', () => {
     // along with the text before it.
     expect(hiddenContent.get('1:0')).toBe('aaa id=');
     expect(hiddenContent.get('1:1')).toBe(' bbb');
+  });
+});
+
+describe('patterns that can match the empty string', () => {
+  it('hides only the digits with \\d* and leaves the other lines alone', () => {
+    const { content, hiddenContent } = processWithinExecBudget(
+      lines('a12b', 'no digits', '7'),
+      filter('\\d*', 'hide'),
+    );
+    expect(content).toBe(`a${HIDDEN_MARKER}b\nno digits\n${HIDDEN_MARKER}`);
+    expect([...hiddenContent]).toEqual([
+      ['1:0', '12'],
+      ['3:0', '7'],
+    ]);
+  });
+
+  it('keeps every line with ^ in show mode, each behind one marker holding its text', () => {
+    const { content, hiddenContent } = processWithinExecBudget(
+      lines('first', 'second', ''),
+      filter('^', 'show'),
+    );
+    expect(content).toBe(`${HIDDEN_MARKER}\n${HIDDEN_MARKER}\n`);
+    expect([...hiddenContent]).toEqual([
+      ['1:0', 'first'],
+      ['2:0', 'second'],
+    ]);
+  });
+
+  it('keeps every line with x? in show mode, showing the x and hiding the rest', () => {
+    const { content, hiddenContent } = processWithinExecBudget(
+      lines('axb', 'none'),
+      filter('x?', 'show'),
+    );
+    expect(content).toBe(`${HIDDEN_MARKER}x${HIDDEN_MARKER}\n${HIDDEN_MARKER}`);
+    expect([...hiddenContent]).toEqual([
+      ['1:0', 'a'],
+      ['1:1', 'b'],
+      ['2:0', 'none'],
+    ]);
+  });
+
+  it('leaves no marker for an empty captured group', () => {
+    const { content, hiddenContent } = processWithinExecBudget(
+      lines('id= next'),
+      filter('id=(\\d*)', 'hide'),
+    );
+    expect(content).toBe('id= next');
+    expect(hiddenContent.size).toBe(0);
   });
 });
 
