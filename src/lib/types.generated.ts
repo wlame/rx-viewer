@@ -184,15 +184,31 @@ export interface components {
             name: string;
         };
         CompressRequest: {
+            /**
+             * @description Build the line index of the compressed file after compressing it.
+             * @default true
+             */
             build_index: boolean;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description zstd compression level.
+             * @default 3
+             */
             compression_level: number;
+            /**
+             * @description Overwrite the output file if it exists.
+             * @default false
+             */
             force: boolean;
+            /**
+             * @description Target frame size: bytes, or a number with B, K, KB, M, MB, G or GB.
+             * @default 4M
+             */
             frame_size: string;
             /** @description Path to the input file. Must be inside a configured --search-root. */
             input_path: string;
             /** @description Path for the output .zst file (default: input_path + ".zst"). Must be inside a configured --search-root. */
-            output_path: string | null;
+            output_path?: string;
         };
         ContextLine: {
             /** Format: int64 */
