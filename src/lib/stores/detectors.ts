@@ -34,9 +34,9 @@ function createDetectorsStore() {
     try {
       const response = await api.getDetectors();
       set({
-        detectors: response.detectors,
-        categories: response.categories,
-        severityScale: response.severity_scale,
+        detectors: response.detectors ?? [],
+        categories: response.categories ?? [],
+        severityScale: response.severity_scale ?? [],
         loading: false,
         loaded: true,
         error: null,

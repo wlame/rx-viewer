@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The wire types of `/health`, `/v1/tree`, `/v1/samples`,
+  `/v1/tasks/{id}`, `POST /v1/index` and `/v1/detectors` are aliases of
+  the generated contract types, like the trace types already were; ten
+  were written by hand and claimed lists the contract allows to be null
+  were never null. The tree and the detector list now read a null list
+  as empty. A task's `result` stays typed as index data until the
+  contract describes it. `src/lib/types.test.ts` checks each alias at
+  type-check time.
+
 - The `just` recipes run bun from the `oven/bun` image when bun is not
   on the `PATH`, mounting the directory that holds this repo so
   `../rx-go` still resolves for the generated types. A host that keeps no

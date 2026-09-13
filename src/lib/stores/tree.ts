@@ -70,7 +70,7 @@ function createTreeStore() {
       const response = await latestRoots.run((signal) => api.getTree(undefined, { signal }));
       if (response === SUPERSEDED) return;
 
-      const roots = response.entries
+      const roots = (response.entries ?? [])
         .filter((e) => e.type === 'directory')
         .map((e) => entryToNode(e, 0));
       update((s) => ({ ...s, roots, loading: false }));
@@ -98,7 +98,7 @@ function createTreeStore() {
       const response = await directoryLoads.run(path, (signal) => api.getTree(path, { signal }));
       if (response === SUPERSEDED) return;
 
-      const children = response.entries.map((e) => entryToNode(e, node.level + 1));
+      const children = (response.entries ?? []).map((e) => entryToNode(e, node.level + 1));
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({

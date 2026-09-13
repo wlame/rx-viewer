@@ -1,43 +1,27 @@
 import type { components, operations } from './types.generated';
 
-// API Types matching backend models
+/**
+ * The wire types are aliases of the generated schemas, so they cannot
+ * drift from rx-go's OpenAPI document. Regenerate with `just gen-types`
+ * after a backend change; `just ci` fails when the generated file is stale.
+ *
+ * The generated shapes are nullable wherever the spec says so — a Go nil
+ * slice marshals as null — which is the actual contract: read a list
+ * through `?? []` rather than assuming it is there.
+ */
+type Schemas = components['schemas'];
 
-export interface HealthResponse {
-  status: string;
-  app_version: string;
-  /**
-   * The HTTP wire contract the backend speaks, MAJOR.MINOR. Absent on
-   * backends released before it existed — see checkContractVersion().
-   */
-  contract_version?: string;
-  ripgrep_available: boolean;
-  search_roots: string[] | null;
-}
+/**
+ * `GET /health`. A backend released before `contract_version` existed
+ * leaves it out; `checkContractVersion` reads that as unknown.
+ */
+export type HealthResponse = Schemas['HealthResponse'];
 
-export interface TreeEntry {
-  name: string;
-  path: string;
-  type: 'file' | 'directory';
-  size: number | null;
-  size_human: string | null;
-  modified_at: string | null;
-  is_text: boolean | null;
-  is_compressed: boolean | null;
-  compression_format: string | null;
-  is_indexed: boolean | null;
-  line_count: number | null;
-  children_count: number | null;
-}
+/** One file or directory in a `GET /v1/tree` listing; `type` is `file` or `directory`. */
+export type TreeEntry = Schemas['TreeEntry'];
 
-export interface TreeResponse {
-  path: string;
-  parent: string | null;
-  is_search_root: boolean;
-  entries: TreeEntry[];
-  total_entries: number;
-  total_size: number | null;
-  total_size_human: string | null;
-}
+/** `GET /v1/tree`. */
+export type TreeResponse = Schemas['TreeResponse'];
 
 /**
  * `GET /v1/samples`. A sample is null when its window holds no line of
@@ -47,17 +31,6 @@ export interface TreeResponse {
 export type SamplesResponse = Schemas['SamplesResponse'];
 
 // Trace endpoint (GET /v1/trace)
-
-/**
- * The trace wire types are aliases of the generated schemas, so they cannot
- * drift from rx-go's OpenAPI document. Regenerate with `just gen-types`
- * after a backend change; `just ci` fails when the generated file is stale.
- *
- * The generated shapes are nullable wherever the spec says so — a Go nil
- * slice marshals as null — which is stricter than the hand-written types
- * were, and is the actual contract.
- */
-type Schemas = components['schemas'];
 
 /** The query parameters of `GET /v1/trace`. */
 export type TraceQuery = operations['trace']['parameters']['query'];
@@ -98,16 +71,14 @@ export type TraceMatch = Schemas['Match'];
 
 export type TraceResponse = Schemas['TraceResponse'];
 
-export interface TaskStatus {
-  task_id: string;
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  path: string;
-  operation: string;
-  started_at: string | null;
-  completed_at: string | null;
-  error: string | null;
+/**
+ * `GET /v1/tasks/{id}`. The contract types `result` as an open object;
+ * it holds the index data of a finished index task, and is null until
+ * the task completes.
+ */
+export type TaskStatus = Omit<Schemas['TaskStatusResponse'], 'result'> & {
   result: IndexData | null;
-}
+};
 
 // Index endpoint types (GET /v1/index, POST /v1/index)
 
@@ -162,53 +133,25 @@ export interface IndexData {
   anomalies: Anomaly[] | null;
 }
 
-/** Response from POST /v1/index */
-export interface IndexTaskResponse {
-  task_id: string;
-  status: string;
-  message: string;
-  path: string;
-  started_at: string;
-}
+/** `POST /v1/index`: the task that builds the index. */
+export type IndexTaskResponse = Schemas['TaskResponse'];
 
 // Detectors endpoint types (GET /v1/detectors)
 
-/** Severity range for a detector */
-export interface SeverityRange {
-  min: number;
-  max: number;
-}
+/** The severity band a detector can emit, 0.0 to 1.0. */
+export type SeverityRange = Schemas['SeverityRange'];
 
-/** Detector metadata */
-export interface DetectorInfo {
-  name: string;
-  category: string;
-  description: string;
-  severity_range: SeverityRange;
-  examples: string[];
-}
+/** One detector a backend has registered. */
+export type DetectorInfo = Schemas['DetectorInfo'];
 
-/** Category metadata */
-export interface CategoryInfo {
-  name: string;
-  description: string;
-  detectors: string[];
-}
+/** One category detectors report under. */
+export type CategoryInfo = Schemas['CategoryInfo'];
 
-/** Severity scale level */
-export interface SeverityLevel {
-  min: number;
-  max: number;
-  label: string;
-  description: string;
-}
+/** One band of the severity scale. */
+export type SeverityLevel = Schemas['SeverityScaleLevel'];
 
-/** Response from GET /v1/detectors */
-export interface DetectorsResponse {
-  detectors: DetectorInfo[];
-  categories: CategoryInfo[];
-  severity_scale: SeverityLevel[];
-}
+/** `GET /v1/detectors`. Both backends ship different sets; render whatever comes. */
+export type DetectorsResponse = Schemas['DetectorsResponse'];
 
 // Frontend-specific types
 
