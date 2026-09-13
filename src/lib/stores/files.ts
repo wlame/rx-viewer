@@ -4,7 +4,7 @@ import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { updateUrlState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
-import type { OpenFile, FileLine, FileMatch, SamplesResponse } from '../types';
+import type { OpenFile, FileLine, FileMatch, IndexData, SamplesResponse } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -59,21 +59,7 @@ function createFilesStore() {
 
     api
       .getIndex(path)
-      .then((indexData) => {
-        update((s) => ({
-          ...s,
-          openFiles: s.openFiles.map((f) => {
-            if (f.path !== path) return f;
-            return {
-              ...f,
-              totalLines: indexData.line_count ?? f.totalLines,
-              isIndexed: true,
-              anomalies: indexData.anomalies ?? null,
-              anomalySummary: countAnomaliesByCategory(indexData.anomalies),
-            };
-          }),
-        }));
-      })
+      .then((indexData) => applyIndex(path, indexData))
       .catch((e) => {
         // Silently ignore index errors - it's just for enhancement
         // 404 means no index exists, which is fine
@@ -83,6 +69,26 @@ function createFilesStore() {
         }));
         console.debug('File index fetch failed (non-critical):', path, e);
       });
+  }
+
+  /**
+   * Take a file's line count and anomalies from its index. A file that is
+   * not open is left alone.
+   */
+  function applyIndex(path: string, indexData: IndexData) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => {
+        if (f.path !== path) return f;
+        return {
+          ...f,
+          totalLines: indexData.line_count ?? f.totalLines,
+          isIndexed: true,
+          anomalies: indexData.anomalies ?? null,
+          anomalySummary: countAnomaliesByCategory(indexData.anomalies),
+        };
+      }),
+    }));
   }
 
   /**
@@ -706,6 +712,7 @@ function createFilesStore() {
   return {
     subscribe,
     openFile,
+    applyIndex,
     closeFile,
     loadMore,
     jumpToLine,

@@ -2,8 +2,7 @@
   import { onDestroy } from 'svelte';
   import type { TreeNode as TreeNodeType, IndexData, TaskStatus } from '$lib/types';
   import { tree, files, notifications } from '$lib/stores';
-  import { api, ApiError } from '$lib/api';
-  import { taskPolls } from '$lib/utils/taskPolling';
+  import { analyzeFile, indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { isAbortError } from '$lib/utils/latestRequest';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
@@ -60,7 +59,11 @@
     return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
   }
 
+  $: menuItems = treeMenuItems(node);
+
+  /** A row with no action of its own keeps the browser's own menu. */
   function handleContextMenu(event: MouseEvent) {
+    if (menuItems.length === 0) return;
     event.preventDefault();
     contextMenuX = event.clientX;
     contextMenuY = event.clientY;
@@ -78,73 +81,22 @@
     analyzeStatusMessage = `Analyzing... (${task.status})`;
   }
 
-  /** Wait for a task, sharing the poll with anyone already following it. */
-  function waitForTask(taskId: string, signal: AbortSignal): Promise<IndexData> {
-    return taskPolls.join(node.path, taskId, { signal, onStatus: onTaskStatus });
-  }
-
   async function handleAnalyze() {
     closeContextMenu();
     analyzeRun?.abort();
     const run = new AbortController();
     analyzeRun = run;
-    const { signal } = run;
     analyzeLoading = true;
     showAnalyzePopup = true;
     analyzeResult = null;
-    analyzeStatusMessage = 'Checking for cached index...';
+    analyzeStatusMessage = 'Checking for an analysis...';
 
     try {
-      // A task already followed for this file: wait for it rather than
-      // asking for a second one.
-      const followed = taskPolls.activeTask(node.path);
-      if (followed) {
-        analyzeStatusMessage = 'Joining existing analysis task...';
-        analyzeResult = await waitForTask(followed, signal);
-        notifications.success(`Analysis complete for ${node.name}`, 3000);
-        return;
-      }
-
-      // Step 1: Try to get cached index data
-      try {
-        const indexData = await api.getIndex(node.path, { signal });
-        analyzeResult = indexData;
-        notifications.success(`Analysis loaded for ${node.name}`, 3000);
-        return;
-      } catch (e) {
-        // If not 404, rethrow
-        if (!(e instanceof ApiError && e.status === 404)) {
-          throw e;
-        }
-        // 404 means no index exists, proceed to create one
-      }
-
-      // Step 2: Start indexing task with analyze=true
-      analyzeStatusMessage = 'Starting analysis...';
-      let taskResponse;
-      try {
-        taskResponse = await api.startIndex(node.path, { analyze: true });
-      } catch (e) {
-        // Handle 409 Conflict (task already in progress)
-        if (e instanceof ApiError && e.status === 409) {
-          // Extract task ID from error message if possible
-          const errorText = e.message;
-          const taskIdMatch = errorText.match(/task:\s*([a-f0-9-]+)/i);
-          if (taskIdMatch) {
-            analyzeStatusMessage = 'Joining existing analysis task...';
-            analyzeResult = await waitForTask(taskIdMatch[1], signal);
-            notifications.success(`Analysis complete for ${node.name}`, 3000);
-            return;
-          }
-        }
-        throw e;
-      }
-
-      analyzeStatusMessage = 'Analyzing file...';
-
-      // Step 3: Poll until task completes
-      analyzeResult = await waitForTask(taskResponse.task_id, signal);
-      notifications.success(`Analysis complete for ${node.name}`, 3000);
+      analyzeResult = await analyzeFile(node.path, {
+        signal: run.signal,
+        onStatus: onTaskStatus,
+      });
+      notifications.success(`Analysis ready for ${node.name}`, 3000);
     } catch (e) {
       // Closing the dialog cancels the run; nothing to report.
       if (isAbortError(e)) return;
@@ -252,16 +204,24 @@
     return `${mins}m ${secs.toFixed(0)}s`;
   }
 
-  async function handleIndex() {
+  async function handleIndex(reindex: boolean) {
     closeContextMenu();
+    notifications.info(`Indexing ${node.name}...`, 3000);
     try {
-      await api.startIndex(node.path, { force: false });
-      notifications.success(`Indexing started for ${node.name}`, 3000);
+      await indexFile(node.path, { reindex });
+      notifications.success(`Index ready for ${node.name}`, 3000);
     } catch (e) {
       const error = e instanceof Error ? e.message : 'Indexing failed';
       notifications.error(error, 5000);
     }
   }
+
+  /** What each context-menu item does. */
+  const MENU_HANDLERS: Record<TreeMenuAction, () => void> = {
+    analyze: handleAnalyze,
+    index: () => handleIndex(false),
+    reindex: () => handleIndex(true),
+  };
 </script>
 
 <div class="select-none">
@@ -356,29 +316,14 @@
     class="fixed z-50 bg-gh-canvas-default dark:bg-gh-canvas-dark-subtle border border-gh-border-default dark:border-gh-border-dark-default rounded-lg shadow-xl py-1 min-w-40"
     style="left: {contextMenuX}px; top: {contextMenuY}px;"
   >
-    {#if node.type === 'file'}
+    {#each menuItems as item (item.action)}
       <button
         class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-        on:click={handleAnalyze}
+        on:click={MENU_HANDLERS[item.action]}
       >
-        Analyze
+        {item.label}
       </button>
-      {#if node.is_compressed}
-        <button
-          class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-          on:click={handleIndex}
-        >
-          {node.is_indexed ? 'Re-index' : 'Index'}
-        </button>
-      {/if}
-    {:else}
-      <button
-        class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-        on:click={handleAnalyze}
-      >
-        Analyze
-      </button>
-    {/if}
+    {/each}
   </div>
 {/if}
 
@@ -728,6 +673,17 @@
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            {:else if analyzeResult.analysis_performed && !analyzeResult.anomaly_count}
+              <div>
+                <h3
+                  class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
+                >
+                  Anomalies Detection
+                </h3>
+                <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                  No anomalies found.
                 </div>
               </div>
             {:else if analyzeResult.anomaly_summary}

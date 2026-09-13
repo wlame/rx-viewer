@@ -202,6 +202,36 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Analyze runs an analysis when the cached index has none. Opening or
+  searching a large or compressed file writes an index without an
+  analysis, and Analyze showed that index as a clean file. It now shows
+  a cached index only when `analysis_performed` is true, and otherwise
+  starts an analysis task. A task already running for the file is
+  joined; when that task was a plain index build, the analysis is asked
+  for after it ends. An analysis that found nothing says "No anomalies
+  found." instead of an empty "Found:" line.
+
+- Index and Re-index do what they say. Both send `threshold: 0`, so a
+  compressed file under the backend's size threshold is indexed instead
+  of refused with a 400, and Re-index sends `force: true`, so it
+  rebuilds instead of returning the cached index. Re-index keeps the
+  analysis when the cached index has one. Both follow their task to the
+  end.
+
+- After an Analyze, Index or Re-index, the tree marks the file indexed
+  with its line count, and an open copy of the file takes the new line
+  count and anomalies. Before, both stayed as they were until a reload.
+
+- The tree's context menu offers Analyze only on text files. A
+  directory and a binary file have no menu of their own, and keep the
+  browser's; the backend answers both with a 400.
+
+- Joining an index task that is already running reads the task ID from
+  a `task_id` member of the 409 body, and falls back to the ID in the
+  error sentence for a backend that only names it there. The fallback
+  takes any ID up to the closing parenthesis rather than only hex
+  digits.
+
 - Analyze stops following its task when its dialog closes or its tree
   row goes away. The poll used to run on for up to ten minutes after
   the dialog closed, a second Analyze started a second loop, and an

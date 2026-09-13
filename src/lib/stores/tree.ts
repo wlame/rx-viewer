@@ -145,6 +145,18 @@ function createTreeStore() {
     update((s) => ({ ...s, selectedPath: path }));
   }
 
+  /** Show a file as indexed after an index or analysis task built its index. */
+  function markIndexed(path: string, lineCount: number | null) {
+    update((s) => ({
+      ...s,
+      roots: updateNode(s.roots, path, (n) => ({
+        ...n,
+        is_indexed: true,
+        line_count: lineCount ?? n.line_count,
+      })),
+    }));
+  }
+
   function clearError() {
     update((s) => ({ ...s, error: null }));
   }
@@ -200,6 +212,7 @@ function createTreeStore() {
     loadDirectory,
     toggleExpanded,
     selectPath,
+    markIndexed,
     clearError,
     expandToPath,
   };
