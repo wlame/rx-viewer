@@ -177,6 +177,7 @@ describe('request shape', () => {
     ['getSamplesByOffset', (o: object) => api.getSamplesByOffset('/x', [10], undefined, o)],
     ['trace', (o: object) => api.trace(['/x'], ['e'], {}, o)],
     ['getIndex', (o: object) => api.getIndex('/x', o)],
+    ['getTaskStatus', (o: object) => api.getTaskStatus('t1', o)],
   ])('%s forwards the signal', async (_name, call) => {
     const spy = stubFetch({});
     const controller = new AbortController();

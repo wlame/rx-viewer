@@ -202,6 +202,16 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Analyze stops following its task when its dialog closes or its tree
+  row goes away. The poll used to run on for up to ten minutes after
+  the dialog closed, a second Analyze started a second loop, and an
+  analysis that ran longer than ten minutes was reported as a timeout.
+  Polling now lives in `src/lib/utils/taskPolling.ts`: one poll per
+  file, shared by every caller waiting on that file's task, stopped when
+  the last caller leaves, with no attempt cap while the task reports
+  `queued` or `running`. It gives up after three failed status requests
+  in a row, or at once when the backend no longer knows the task.
+
 - The editor filter's hide and show modes no longer freeze the tab on a
   pattern that can match the empty string, such as `^`, `\d*` or `x?`.
   Their match loop never stepped past an empty match, so it matched at

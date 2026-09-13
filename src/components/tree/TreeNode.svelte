@@ -1,7 +1,10 @@
 <script lang="ts">
-  import type { TreeNode as TreeNodeType, IndexData } from '$lib/types';
+  import { onDestroy } from 'svelte';
+  import type { TreeNode as TreeNodeType, IndexData, TaskStatus } from '$lib/types';
   import { tree, files, notifications } from '$lib/stores';
   import { api, ApiError } from '$lib/api';
+  import { taskPolls } from '$lib/utils/taskPolling';
+  import { isAbortError } from '$lib/utils/latestRequest';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -21,6 +24,10 @@
   let analyzeStatusMessage = ''; // Status message during analysis
   let analyzeResult: IndexData | null = null;
   let selectedAnomalyDetector: string | null = null; // Selected tab for anomaly detector
+
+  // The tree drops this node when its folder collapses or the sidebar
+  // switches to Search; a poll nobody can see must stop with it.
+  onDestroy(() => analyzeRun?.abort());
 
   function handleClick() {
     if (node.type === 'directory') {
@@ -64,49 +71,45 @@
     showContextMenu = false;
   }
 
-  /**
-   * Poll a task until it completes or fails
-   */
-  async function pollTaskUntilComplete(
-    taskId: string,
-    intervalMs = 2000,
-    maxAttempts = 300,
-  ): Promise<IndexData> {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const task = await api.getTaskStatus(taskId);
+  /** Cancels the running Analyze: its index request and its share of the task poll. */
+  let analyzeRun: AbortController | null = null;
 
-      if (task.status === 'completed' && task.result) {
-        return task.result;
-      }
+  function onTaskStatus(task: TaskStatus) {
+    analyzeStatusMessage = `Analyzing... (${task.status})`;
+  }
 
-      if (task.status === 'failed') {
-        throw new Error(task.error || 'Task failed');
-      }
-
-      // Update status message
-      analyzeStatusMessage = `Analyzing... (${task.status})`;
-
-      // Still running, wait and poll again
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    }
-
-    throw new Error('Task polling timeout');
+  /** Wait for a task, sharing the poll with anyone already following it. */
+  function waitForTask(taskId: string, signal: AbortSignal): Promise<IndexData> {
+    return taskPolls.join(node.path, taskId, { signal, onStatus: onTaskStatus });
   }
 
   async function handleAnalyze() {
     closeContextMenu();
+    analyzeRun?.abort();
+    const run = new AbortController();
+    analyzeRun = run;
+    const { signal } = run;
     analyzeLoading = true;
     showAnalyzePopup = true;
     analyzeResult = null;
     analyzeStatusMessage = 'Checking for cached index...';
 
     try {
+      // A task already followed for this file: wait for it rather than
+      // asking for a second one.
+      const followed = taskPolls.activeTask(node.path);
+      if (followed) {
+        analyzeStatusMessage = 'Joining existing analysis task...';
+        analyzeResult = await waitForTask(followed, signal);
+        notifications.success(`Analysis complete for ${node.name}`, 3000);
+        return;
+      }
+
       // Step 1: Try to get cached index data
       try {
-        const indexData = await api.getIndex(node.path);
+        const indexData = await api.getIndex(node.path, { signal });
         analyzeResult = indexData;
         notifications.success(`Analysis loaded for ${node.name}`, 3000);
-        analyzeLoading = false;
         return;
       } catch (e) {
         // If not 404, rethrow
@@ -129,10 +132,8 @@
           const taskIdMatch = errorText.match(/task:\s*([a-f0-9-]+)/i);
           if (taskIdMatch) {
             analyzeStatusMessage = 'Joining existing analysis task...';
-            const result = await pollTaskUntilComplete(taskIdMatch[1]);
-            analyzeResult = result;
+            analyzeResult = await waitForTask(taskIdMatch[1], signal);
             notifications.success(`Analysis complete for ${node.name}`, 3000);
-            analyzeLoading = false;
             return;
           }
         }
@@ -142,16 +143,20 @@
       analyzeStatusMessage = 'Analyzing file...';
 
       // Step 3: Poll until task completes
-      const result = await pollTaskUntilComplete(taskResponse.task_id);
-      analyzeResult = result;
+      analyzeResult = await waitForTask(taskResponse.task_id, signal);
       notifications.success(`Analysis complete for ${node.name}`, 3000);
     } catch (e) {
+      // Closing the dialog cancels the run; nothing to report.
+      if (isAbortError(e)) return;
       const error = e instanceof Error ? e.message : 'Analysis failed';
       notifications.error(error, 5000);
       showAnalyzePopup = false;
     } finally {
-      analyzeLoading = false;
-      analyzeStatusMessage = '';
+      if (analyzeRun === run) {
+        analyzeRun = null;
+        analyzeLoading = false;
+        analyzeStatusMessage = '';
+      }
     }
   }
 
@@ -174,6 +179,9 @@
   }
 
   function closeAnalyzePopup() {
+    analyzeRun?.abort();
+    analyzeRun = null;
+    analyzeLoading = false;
     showAnalyzePopup = false;
     analyzeResult = null;
     analyzeStatusMessage = '';

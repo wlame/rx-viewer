@@ -225,8 +225,8 @@ export const api = {
    * Get task status
    * @param taskId - Task ID to check
    */
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
-    return fetchJson<TaskStatus>(`${API_BASE}/tasks/${taskId}`);
+  async getTaskStatus(taskId: string, options?: RequestOptions): Promise<TaskStatus> {
+    return fetchJson<TaskStatus>(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, options);
   },
 
   /**
