@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatSize, formatRelativeTime, formatNumber, truncatePath } from './format';
+import { formatSize, formatRelativeTime, formatNumber, formatCount, truncatePath } from './format';
 
 describe('formatSize', () => {
   it.each([
@@ -90,5 +90,17 @@ describe('truncatePath', () => {
 
   it('handles a relative path', () => {
     expect(truncatePath('a/b/c/d.log')).toBe('.../b/c/d.log');
+  });
+});
+
+describe('formatCount', () => {
+  it.each([
+    [0, 'file', undefined, '0 files'],
+    [1, 'file', undefined, '1 file'],
+    [2, 'file', undefined, '2 files'],
+    [1, 'match', 'matches', '1 match'],
+    [2461, 'match', 'matches', '2,461 matches'],
+  ])('formats %i with %s (plural %s) as %s', (count, singular, plural, expected) => {
+    expect(formatCount(count, singular, plural)).toBe(expected);
   });
 });

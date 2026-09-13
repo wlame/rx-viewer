@@ -51,6 +51,14 @@ export function formatNumber(num: number): string {
 }
 
 /**
+ * A count with its noun, singular for exactly one: "1 file", "2,461 matches".
+ * The plural defaults to the singular plus "s".
+ */
+export function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
+}
+
+/**
  * Truncate a path to show the last N segments
  */
 export function truncatePath(path: string, maxSegments: number = 3): string {
