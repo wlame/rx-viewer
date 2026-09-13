@@ -57,24 +57,27 @@ interchangeable backends, no vendoring.
 7. **Check the contract version.** `/health` reports `contract_version`
    (MAJOR.MINOR). `src/lib/utils/contractVersion.ts` holds the major this
    viewer supports; a different major is refused in the status bar rather
-   than misread. Bump it together with rx-go's `ContractVersion`.
+   than misread. Bump it together with rx-go's `ContractVersion`. A
+   feature a later minor added — the trace matching flags of 1.3 — is
+   listed in `CONTRACT_FEATURES` there; check `contractSupports()` before
+   using it, since an older backend ignores what it does not know.
 
 ## Quick orientation
 
-| Where                                                             | What                                                                                    |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/main.ts`, `src/App.svelte`                                   | Entry point and root layout                                                             |
-| `src/lib/api.ts`                                                  | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                   |
-| `src/lib/types.generated.ts`                                      | Generated from rx-go's OpenAPI document — do not edit                                   |
-| `src/lib/types.ts`                                                | Aliases of the generated wire types, plus the app's own types                           |
-| `src/lib/stores/`                                                 | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
-| `src/lib/utils/regexFilter.ts`                                    | Regex filter engine (hide, show, highlight)                                             |
-| `src/lib/utils/urlState.ts`                                       | URL to app-state persistence (no router)                                                |
-| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts`         | Monaco language registration and the log grammar                                        |
-| `src/components/editor/`                                          | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                   |
-| `src/components/tree/`, `search/`, `trace/`, `layout/`, `common/` | Tree, search panel, results, chrome, shared widgets                                     |
-| `vite.config.ts`                                                  | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                 |
-| `.github/workflows/`                                              | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                  |
+| Where                                                     | What                                                                                    |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/main.ts`, `src/App.svelte`                           | Entry point and root layout                                                             |
+| `src/lib/api.ts`                                          | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                   |
+| `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                   |
+| `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                           |
+| `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
+| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                             |
+| `src/lib/utils/urlState.ts`                               | URL to app-state persistence (no router): open file, line, and the search               |
+| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                        |
+| `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                   |
+| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                   |
+| `vite.config.ts`                                          | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                 |
+| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                  |
 
 ## Build, run, test
 
@@ -199,6 +202,12 @@ Paste the output.
 - Relative asset paths must stay relative; backends serve the app from a cache
   directory with an SPA fallback.
 - `/health` accepts a `client` query parameter; `clientId.ts` generates it.
+- On the macOS host the recipes run in Docker, and right after a file is
+  written on the host the container can still read the old copy:
+  prettier has reported a just-formatted file as unformatted, and vitest
+  has failed to load a module it read the next second. Run the check
+  again before believing a failure that follows an edit, and chain a
+  commit on the checks with `&&`, never `;`.
 - Backend responses use `file` and `pattern` IDs (`f1`, `p1`) with lookup maps
   in the response, not paths, to keep payloads small.
 
