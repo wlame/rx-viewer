@@ -374,7 +374,7 @@ export interface components {
             path: string;
             result: {
                 [key: string]: unknown;
-            };
+            } | null;
             started_at: string | null;
             status: string;
             task_id: string;
