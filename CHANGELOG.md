@@ -202,6 +202,11 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The analysis report shows "—" for a line-length statistic the backend
+  left null (average, median, 95th and 99th percentile, standard
+  deviation) instead of failing to render. The contract allows each of
+  them to be null.
+
 - A backend on a different API contract major is refused, as the docs
   said it was. The viewer covers itself with a message that names the
   backend's contract and the major this viewer reads, and sends no `/v1`

@@ -58,6 +58,17 @@ export function formatCount(count: number, singular: string, plural = `${singula
   return `${formatNumber(count)} ${count === 1 ? singular : plural}`;
 }
 
+/** What a statistic the backend could not compute is shown as. */
+export const ABSENT_STATISTIC = '—';
+
+/**
+ * A statistic with one decimal, or a dash when the backend left it null
+ * because it could not compute it.
+ */
+export function formatStatistic(value: number | null): string {
+  return value === null ? ABSENT_STATISTIC : value.toFixed(1);
+}
+
 /**
  * Truncate a path to show the last N segments
  */

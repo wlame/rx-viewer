@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { IndexData } from '$lib/types';
+  import { formatStatistic } from '$lib/utils/format';
   import AnomalyReport from './AnomalyReport.svelte';
 
   /** The index to describe, with or without an analysis. */
@@ -116,26 +117,26 @@
             </div>
             <div>
               <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Average</div>
-              <div class="font-semibold">{result.line_length.avg.toFixed(1)}</div>
+              <div class="font-semibold">{formatStatistic(result.line_length.avg)}</div>
             </div>
             <div>
               <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Median</div>
               <div class="font-semibold">
-                {result.line_length.median.toFixed(1)}
+                {formatStatistic(result.line_length.median)}
               </div>
             </div>
             <div>
               <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">95th %ile</div>
-              <div class="font-semibold">{result.line_length.p95.toFixed(1)}</div>
+              <div class="font-semibold">{formatStatistic(result.line_length.p95)}</div>
             </div>
             <div>
               <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">99th %ile</div>
-              <div class="font-semibold">{result.line_length.p99.toFixed(1)}</div>
+              <div class="font-semibold">{formatStatistic(result.line_length.p99)}</div>
             </div>
             <div>
               <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Std Dev</div>
               <div class="font-semibold">
-                {result.line_length.stddev.toFixed(1)}
+                {formatStatistic(result.line_length.stddev)}
               </div>
             </div>
           </div>

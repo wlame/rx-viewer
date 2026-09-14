@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatSize, formatRelativeTime, formatNumber, formatCount, truncatePath } from './format';
+import {
+  formatSize,
+  formatRelativeTime,
+  formatNumber,
+  formatCount,
+  formatStatistic,
+  truncatePath,
+} from './format';
 
 describe('formatSize', () => {
   it.each([
@@ -102,5 +109,21 @@ describe('formatCount', () => {
     [2461, 'match', 'matches', '2,461 matches'],
   ])('formats %i with %s (plural %s) as %s', (count, singular, plural, expected) => {
     expect(formatCount(count, singular, plural)).toBe(expected);
+  });
+});
+
+describe('formatStatistic', () => {
+  it.each([
+    [42.25, '42.3'],
+    [0, '0.0'],
+    [1234.5, '1234.5'],
+  ])('formats %d with one decimal as %s', (value, expected) => {
+    expect(formatStatistic(value)).toBe(expected);
+  });
+
+  // The backend leaves a statistic null when it cannot compute it, for
+  // example the spread of a file with no lines.
+  it('shows a dash for a statistic the backend left null', () => {
+    expect(formatStatistic(null)).toBe('—');
   });
 });
