@@ -354,6 +354,12 @@ export interface components {
             start: number;
             text: string;
         };
+        TaskConflictError: {
+            /** @description Human-readable explanation naming the path and the running task. */
+            detail: string;
+            /** @description ID of the task already running for the path; poll GET /v1/tasks/{task_id}. */
+            task_id: string;
+        };
         TaskResponse: {
             message: string;
             path: string;
@@ -526,13 +532,13 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description A task for the same path is already running */
+            /** @description A task for the same path is already running; task_id names it */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["TaskConflictError"];
                 };
             };
             /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
@@ -721,13 +727,13 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description A task for the same path is already running */
+            /** @description A task for the same path is already running; task_id names it */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiError"];
+                    "application/json": components["schemas"]["TaskConflictError"];
                 };
             };
             /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
