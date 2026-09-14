@@ -77,7 +77,8 @@ just shell      # a shell in the oven/bun image, with this repo mounted
 
 ### Dev Server
 
-The dev server runs on `http://localhost:5173` and proxies API requests to `http://localhost:8080`.
+The dev server runs on `http://localhost:5173` and proxies the backend's
+paths, `/v1` and `/health`, to `http://localhost:8080`.
 
 Start a backend server:
 

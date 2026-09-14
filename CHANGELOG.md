@@ -202,6 +202,12 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- `just dev` forwards `/health` to the backend as well as `/v1`. The dev
+  server answered `/health` itself, so the viewer showed the backend as
+  disconnected and kept the search toggles disabled. The forwarded paths
+  are listed once, in `src/lib/backendRoutes.ts`, which `vite.config.ts`
+  and the API client both read.
+
 - Keyboard shortcuts come from one table that both the key handlers and
   the help dialog read. Cmd/Ctrl+K goes to the search pattern field,
   opening the Search tab and a hidden sidebar if needed; it looked for a

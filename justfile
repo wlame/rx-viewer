@@ -32,7 +32,7 @@ clean:
 
 # ── develop ──────────────────────────────────────────────────────────────
 
-# Dev server on the given port, proxying /v1 to a backend on :8080
+# Dev server on the given port, proxying /v1 and /health to a backend on :8080
 dev port='5173':
     #!/usr/bin/env bash
     set -euo pipefail
@@ -41,8 +41,9 @@ dev port='5173':
     fi
     # In the container the backend on the host is host.docker.internal,
     # and the server has to listen beyond the container's own loopback.
+    # RX_DEV_PROXY_TARGET set on the host still wins.
     exec docker run --rm -it -p "{{port}}:{{port}}" \
-        -e RX_DEV_PROXY_TARGET=http://host.docker.internal:8080 \
+        -e RX_DEV_PROXY_TARGET="${RX_DEV_PROXY_TARGET:-http://host.docker.internal:8080}" \
         -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" \
         {{bun_image}} bun run dev --host=0.0.0.0 --port={{port}}
 

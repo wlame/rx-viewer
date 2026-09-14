@@ -76,7 +76,7 @@ interchangeable backends, no vendoring.
 | `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                  |
 | `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                             |
 | `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                             |
-| `vite.config.ts`                                          | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                           |
+| `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                |
 | `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                            |
 
 ## Build, run, test
@@ -85,7 +85,7 @@ interchangeable backends, no vendoring.
 
 ```bash
 just install                      # bun install --frozen-lockfile
-just dev                          # dev server :5173, proxies /v1 to localhost:8080
+just dev                          # dev server :5173, proxies /v1 and /health to localhost:8080
 just build                        # production build → dist/ (+ version.json)
 just package                      # dist.tar.gz + .sha256, the way a release does
 just preview

@@ -11,8 +11,7 @@ import type {
 } from './types';
 import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
 import { getApiToken, tokenRequired } from './utils/apiToken';
-
-const API_BASE = '/v1';
+import { API_BASE, HEALTH_PATH } from './backendRoutes';
 
 /**
  * Per-call options. Only a cancellation signal for now — pass the one a
@@ -100,7 +99,7 @@ export const api = {
    * @param clientId - Optional client identifier for tracking
    */
   async getHealth(clientId?: string): Promise<HealthResponse> {
-    const url = clientId ? `/health?client=${encodeURIComponent(clientId)}` : '/health';
+    const url = clientId ? `${HEALTH_PATH}?client=${encodeURIComponent(clientId)}` : HEALTH_PATH;
     return fetchJson<HealthResponse>(url);
   },
 
