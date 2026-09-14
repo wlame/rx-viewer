@@ -9,6 +9,7 @@
   import KeyboardShortcuts from './components/common/KeyboardShortcuts.svelte';
   import Notifications from './components/common/Notifications.svelte';
   import TokenPrompt from './components/common/TokenPrompt.svelte';
+  import ContractRefused from './components/common/ContractRefused.svelte';
 
   onMount(() => {
     health.startPolling();
@@ -47,4 +48,5 @@
   <KeyboardShortcuts />
   <Notifications />
   <TokenPrompt />
+  <ContractRefused />
 </div>

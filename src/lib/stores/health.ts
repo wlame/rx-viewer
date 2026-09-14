@@ -1,8 +1,16 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
+import { contractGate } from '../contractGate';
 import type { HealthResponse } from '../types';
 import { checkContractVersion, type ContractCompatibility } from '../utils/contractVersion';
 import { getFullClientId } from '../utils/clientId';
+
+/**
+ * How often `/health` is asked while the backend's contract is refused.
+ * The viewer is blocked until it changes, so the normal interval would
+ * leave the message up for minutes after the backend is replaced.
+ */
+export const BLOCKED_RECHECK_MS = 10_000;
 
 interface HealthState {
   connected: boolean;
@@ -29,36 +37,51 @@ function createHealthStore() {
   let checkInterval: ReturnType<typeof setInterval> | null = null;
   let pollingIntervalMs: number = 300000;
   let isPollingActive: boolean = false;
+  // The interval the running timer was started with.
+  let activeIntervalMs: number = pollingIntervalMs;
+  let lastContract: ContractCompatibility = { kind: 'unknown' };
+
+  /** A refused backend is asked again soon; any other on the normal interval. */
+  function intervalFor(contract: ContractCompatibility): number {
+    return contract.kind === 'incompatible' ? BLOCKED_RECHECK_MS : pollingIntervalMs;
+  }
 
   // Get client ID once (stable across checks)
   const clientId = typeof window !== 'undefined' ? getFullClientId() : undefined;
 
-  async function check() {
-    // Don't check if tab is not visible
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      return;
-    }
+  /** Whether the page is in a hidden tab, where polling pauses. */
+  function isTabHidden(): boolean {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  }
 
+  /** Ask `/health` now, unless the tab is hidden. */
+  async function check() {
+    if (isTabHidden()) return;
+    await askHealth();
+  }
+
+  /** Ask `/health` and record what it says about the backend. */
+  async function askHealth() {
     update((s) => ({ ...s, loading: true }));
+    let contract: ContractCompatibility;
     try {
       const data = await api.getHealth(clientId);
-      set({
-        connected: true,
-        loading: false,
-        error: null,
-        data,
-        contract: checkContractVersion(data.contract_version),
-      });
+      contract = checkContractVersion(data.contract_version);
+      set({ connected: true, loading: false, error: null, data, contract });
     } catch (e) {
+      // Nothing was read, so nothing is known about the contract.
+      contract = { kind: 'unknown' };
       set({
         connected: false,
         loading: false,
         error: e instanceof Error ? e.message : 'Connection failed',
         data: null,
-        // Nothing was read, so nothing is known about the contract.
-        contract: { kind: 'unknown' },
+        contract,
       });
     }
+    lastContract = contract;
+    contractGate.decide(contract);
+    if (checkInterval && activeIntervalMs !== intervalFor(contract)) restartInterval();
   }
 
   function handleVisibilityChange() {
@@ -81,24 +104,26 @@ function createHealthStore() {
     if (checkInterval) {
       clearInterval(checkInterval);
     }
-    checkInterval = setInterval(check, pollingIntervalMs);
+    activeIntervalMs = intervalFor(lastContract);
+    checkInterval = setInterval(check, activeIntervalMs);
   }
 
   function startPolling(intervalMs: number = 300000) {
     stopPolling();
     pollingIntervalMs = intervalMs;
     isPollingActive = true;
+    // The app's first /v1 requests wait for the first answer.
+    contractGate.hold();
 
     // Add visibility change listener
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
-    // Only start if tab is visible
-    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-      check();
-      checkInterval = setInterval(check, intervalMs);
-    }
+    // The first answer is asked even in a hidden tab: the requests the
+    // app starts with wait for it. Only the periodic checks pause.
+    if (!isTabHidden()) restartInterval();
+    askHealth();
   }
 
   function stopPolling() {

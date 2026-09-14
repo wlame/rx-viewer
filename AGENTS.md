@@ -56,8 +56,12 @@ interchangeable backends, no vendoring.
    after rx-go has released that field.
 7. **Check the contract version.** `/health` reports `contract_version`
    (MAJOR.MINOR). `src/lib/utils/contractVersion.ts` holds the major this
-   viewer supports; a different major is refused in the status bar rather
-   than misread. Bump it together with rx-go's `ContractVersion`. A
+   viewer supports. A different major is refused rather than misread: a
+   blocking message names both versions, and `src/lib/contractGate.ts`
+   holds every `/v1` request (the first ones wait for the first `/health`
+   answer) until `/health`, asked every 10 s meanwhile, reports a
+   supported major. Every request goes through `fetchJson`, so it passes
+   the gate; do not call `fetch` for `/v1` directly. Bump it together with rx-go's `ContractVersion`. A
    feature a later minor added — the trace matching flags of 1.3 — is
    listed in `CONTRACT_FEATURES` there; check `contractSupports()` before
    using it, since an older backend ignores what it does not know.

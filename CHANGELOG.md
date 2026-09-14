@@ -202,6 +202,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A backend on a different API contract major is refused, as the docs
+  said it was. The viewer covers itself with a message that names the
+  backend's contract and the major this viewer reads, and sends no `/v1`
+  request: those requests wait, and the first ones also wait for the
+  first `/health` answer instead of racing it. `/health` is asked every
+  10 seconds while the message is up, and the viewer continues by
+  itself once the backend reports a supported contract. Before, only a
+  status-bar label said so, while the data kept flowing.
+
 - `just dev` forwards `/health` to the backend as well as `/v1`. The dev
   server answered `/health` itself, so the viewer showed the backend as
   disconnected and kept the search toggles disabled. The forwarded paths

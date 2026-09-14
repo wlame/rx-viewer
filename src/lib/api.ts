@@ -12,6 +12,7 @@ import type {
 import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
 import { getApiToken, tokenRequired } from './utils/apiToken';
 import { API_BASE, HEALTH_PATH } from './backendRoutes';
+import { contractGate } from './contractGate';
 
 /**
  * Per-call options. Only a cancellation signal for now — pass the one a
@@ -67,6 +68,9 @@ function errorMessageFrom(body: string, statusText: string): string {
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  // A /v1 request waits while the backend speaks a contract this viewer
+  // would misread; /health is how the viewer finds that out, so it never waits.
+  if (url.startsWith(API_BASE)) await contractGate.pass(options?.signal);
   const token = getApiToken();
   const response = await fetch(url, {
     ...options,
