@@ -172,6 +172,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AnomalyRangeResult: {
+            category: string;
+            description: string;
+            detector: string;
+            /** Format: int64 */
+            end_line: number;
+            /** Format: int64 */
+            end_offset: number;
+            /** Format: double */
+            severity: number;
+            /** Format: int64 */
+            start_line: number;
+            /** Format: int64 */
+            start_offset: number;
+        };
         ApiError: {
             detail: string;
         };
@@ -209,6 +224,30 @@ export interface components {
             input_path: string;
             /** @description Path for the output .zst file (default: input_path + ".zst"). Must be inside a configured --search-root. */
             output_path?: string;
+        };
+        CompressTaskResult: {
+            /** @description The rx command that does what this task did. */
+            cli_command: string;
+            /** Format: int64 */
+            compressed_size: number;
+            /**
+             * Format: double
+             * @description decompressed_size / compressed_size, rounded down to two decimals.
+             */
+            compression_ratio: number;
+            /** Format: int64 */
+            decompressed_size: number;
+            /** Format: int64 */
+            frame_count: number;
+            index_built: boolean;
+            index_error: string | null;
+            input_path: string;
+            output_path: string;
+            success: boolean;
+            /** Format: double */
+            time_seconds: number;
+            /** Format: int64 */
+            total_lines: number | null;
         };
         ContextLine: {
             /** Format: int64 */
@@ -276,6 +315,130 @@ export interface components {
             /** Format: int64 */
             threshold?: number;
         };
+        IndexResponse: {
+            /** @description Whether the line statistics and anomalies were computed. */
+            analysis_performed: boolean;
+            anomalies: components["schemas"]["AnomalyRangeResult"][] | null;
+            /** Format: int64 */
+            anomaly_count: number;
+            anomaly_summary: {
+                [key: string]: number;
+            } | null;
+            /** Format: double */
+            build_time_seconds: number;
+            /** @description The rx command that gives this answer. */
+            cli_command: string;
+            compression_format: string | null;
+            /** Format: double */
+            compression_ratio: number | null;
+            /** @description When the index was built (ISO 8601). */
+            created_at: string;
+            /** Format: int64 */
+            decompressed_size_bytes: number | null;
+            /** Format: int64 */
+            empty_line_count: number | null;
+            /** @enum {string} */
+            file_type: "text" | "binary" | "compressed" | "seekable_zstd";
+            /**
+             * Format: int64
+             * @description Number of line_index entries.
+             */
+            index_entries: number;
+            /** Format: int64 */
+            line_count: number | null;
+            /** @description LF, CRLF, CR or mixed; null without analysis. */
+            line_ending: string | null;
+            line_index: components["schemas"]["LineIndexEntry"][];
+            /** @description Line-length statistics; null without analysis. */
+            line_length: components["schemas"]["LineLengthStats"];
+            /** @description Where the longest line is; null without analysis. */
+            longest_line: components["schemas"]["LongestLine"];
+            /** @description The indexed file. */
+            path: string;
+            /**
+             * Format: int64
+             * @description Size of the file on disk.
+             */
+            size_bytes: number;
+        };
+        IndexTaskResult: {
+            /** @description Whether the line statistics and anomalies were computed. */
+            analysis_performed: boolean;
+            anomalies: components["schemas"]["AnomalyRangeResult"][] | null;
+            /** Format: int64 */
+            anomaly_count: number;
+            anomaly_summary: {
+                [key: string]: number;
+            } | null;
+            /** Format: double */
+            build_time_seconds: number;
+            /** @description The rx command that gives this answer. */
+            cli_command: string;
+            compression_format: string | null;
+            /** Format: double */
+            compression_ratio: number | null;
+            /** @description When the index was built (ISO 8601). */
+            created_at: string;
+            /** Format: int64 */
+            decompressed_size_bytes: number | null;
+            /** Format: int64 */
+            empty_line_count: number | null;
+            /** @enum {string} */
+            file_type: "text" | "binary" | "compressed" | "seekable_zstd";
+            /**
+             * Format: int64
+             * @description Number of line_index entries.
+             */
+            index_entries: number;
+            /** @description Where the index is stored in the cache. */
+            index_path: string;
+            /** Format: int64 */
+            line_count: number | null;
+            /** @description LF, CRLF, CR or mixed; null without analysis. */
+            line_ending: string | null;
+            line_index: components["schemas"]["LineIndexEntry"][];
+            /** @description Line-length statistics; null without analysis. */
+            line_length: components["schemas"]["LineLengthStats"];
+            /** @description Where the longest line is; null without analysis. */
+            longest_line: components["schemas"]["LongestLine"];
+            /** @description The indexed file. */
+            path: string;
+            /**
+             * Format: int64
+             * @description Size of the file on disk.
+             */
+            size_bytes: number;
+            success: boolean;
+        };
+        /** @description A line-index checkpoint: the 1-based line number and the byte offset where that line starts in the file's text. An entry of a seekable-zstd index has a third element, the 0-based index of the frame holding the line. */
+        LineIndexEntry: [
+            number,
+            number
+        ] | [
+            number,
+            number,
+            number
+        ];
+        LineLengthStats: {
+            /** Format: double */
+            avg: number | null;
+            /** Format: int64 */
+            max: number;
+            /** Format: double */
+            median: number | null;
+            /** Format: double */
+            p95: number | null;
+            /** Format: double */
+            p99: number | null;
+            /** Format: double */
+            stddev: number | null;
+        } | null;
+        LongestLine: {
+            /** Format: int64 */
+            byte_offset: number;
+            /** Format: int64 */
+            line_number: number;
+        } | null;
         Match: {
             /** Format: int64 */
             absolute_line_number: number;
@@ -372,9 +535,8 @@ export interface components {
             error: string | null;
             operation: string;
             path: string;
-            result: {
-                [key: string]: unknown;
-            } | null;
+            /** @description The task's result once it completes: IndexTaskResult for an index task, CompressTaskResult for a compress task. Null until then. */
+            result: components["schemas"]["IndexTaskResult"] | components["schemas"]["CompressTaskResult"] | null;
             started_at: string | null;
             status: string;
             task_id: string;
@@ -617,9 +779,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndexResponse"];
                 };
             };
             /** @description The server requires an API token and the request did not carry it */
