@@ -1,6 +1,13 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { trace, tree, files } from '$lib/stores';
-  import { api } from '$lib/api';
+  import {
+    OffsetLineResolver,
+    offsetKey,
+    unresolvedOffsetsByFile,
+    type ResolvedLines,
+  } from '$lib/offsetLines';
+  import { SUPERSEDED } from '$lib/utils/latestRequest';
   import { resolveMatchLine } from '$lib/utils/matchLine';
   import { searchedFileCount } from '$lib/utils/traceSummary';
   import { formatCount } from '$lib/utils/format';
@@ -10,15 +17,13 @@
   let showOffsets = false; // Toggle between line numbers and byte offsets
 
   // Byte offset -> absolute line number, for matches whose line the
-  // backend could not report. Keyed by "path:offset" so one lookup serves
-  // both the result list and the jump.
-  let resolvedLines: Record<string, number> = {};
+  // backend could not report, keyed by offsetKey.
+  let resolvedLines: ResolvedLines = {};
   // Matches currently being resolved, so the row can say so.
   let resolving: Record<string, boolean> = {};
 
-  function offsetKey(filePath: string, offset: number): string {
-    return `${filePath}:${offset}`;
-  }
+  const resolver = new OffsetLineResolver();
+  onDestroy(() => resolver.cancel());
 
   /**
    * The line to navigate to, or null when it still has to be fetched.
@@ -34,66 +39,25 @@
     return resolvedLines[offsetKey(filePath, resolved.offset)] ?? null;
   }
 
-  // Resolve unknown lines as soon as results arrive, one request per file,
-  // so the result list shows real line numbers instead of making the user
-  // click to find out. A stale response is dropped by sequence number.
-  //
-  // Both backends answer a whole batch of offsets from one pass over the
-  // file, so the cap no longer bounds scans — it bounds the response,
-  // which carries a context window per offset. Anything beyond it
-  // resolves when the user clicks the result.
-  //
-  // A backend released before the batch resolver still answers correctly,
-  // just more slowly, so the number is a payload budget rather than a
-  // compatibility floor.
-  const EAGER_RESOLVE_LIMIT_PER_FILE = 200;
-  let resolveSequence = 0;
+  // Resolve unknown lines as soon as results arrive, so the result list
+  // shows real line numbers instead of making the user click to find
+  // out. A new answer, or none, aborts the lookups of the previous one.
   $: resolveUnknownLines($trace.response);
 
   async function resolveUnknownLines(response: typeof $trace.response) {
     resolvedLines = {};
-    resolving = {};
-    if (!response) return;
-
-    const sequence = ++resolveSequence;
-    const offsetsByFile = new Map<string, number[]>();
-    for (const match of response.matches) {
-      if (resolveMatchLine(match, response).kind === 'line') continue;
-      const filePath = response.files[match.file] ?? match.file;
-      const offsets = offsetsByFile.get(filePath) ?? [];
-      if (offsets.length >= EAGER_RESOLVE_LIMIT_PER_FILE) continue;
-      if (!offsets.includes(match.offset)) offsets.push(match.offset);
-      offsetsByFile.set(filePath, offsets);
-    }
-    if (offsetsByFile.size === 0) return;
-
     const pending: Record<string, boolean> = {};
-    for (const [filePath, offsets] of offsetsByFile) {
-      for (const offset of offsets) pending[offsetKey(filePath, offset)] = true;
+    if (response) {
+      for (const [filePath, offsets] of unresolvedOffsetsByFile(response)) {
+        for (const offset of offsets) pending[offsetKey(filePath, offset)] = true;
+      }
     }
     resolving = pending;
 
-    await Promise.all(
-      [...offsetsByFile].map(async ([filePath, offsets]) => {
-        try {
-          const samples = await api.getSamplesByOffset(filePath, offsets, 0);
-          if (sequence !== resolveSequence) return;
-          const found: Record<string, number> = {};
-          for (const offset of offsets) {
-            const line = samples.offsets?.[String(offset)];
-            if (typeof line === 'number' && line >= 1) {
-              found[offsetKey(filePath, offset)] = line;
-            }
-          }
-          resolvedLines = { ...resolvedLines, ...found };
-        } catch {
-          // Leave these matches showing the byte offset; clicking one
-          // still retries the lookup.
-        }
-      }),
-    );
-
-    if (sequence === resolveSequence) resolving = {};
+    await resolver.resolveAll(response, (found) => {
+      resolvedLines = { ...resolvedLines, ...found };
+    });
+    if (response === $trace.response) resolving = {};
   }
 
   /** Ask the backend which line a byte offset falls on. */
@@ -102,22 +66,12 @@
     if (resolvedLines[key] !== undefined) return resolvedLines[key];
 
     resolving = { ...resolving, [key]: true };
-    try {
-      const samples = await api.getSamplesByOffset(filePath, [offset], 0);
-      const line = samples.offsets?.[String(offset)];
-      if (typeof line === 'number' && line >= 1) {
-        resolvedLines = { ...resolvedLines, [key]: line };
-        return line;
-      }
-      return null;
-    } catch {
-      // The jump still works from the offset's file window; a failed
-      // lookup only costs the gutter number.
-      return null;
-    } finally {
-      const { [key]: _dropped, ...rest } = resolving;
-      resolving = rest;
-    }
+    const line = await resolver.resolveOne(filePath, offset);
+    const { [key]: _dropped, ...rest } = resolving;
+    resolving = rest;
+    if (line === SUPERSEDED || line === null) return null;
+    resolvedLines = { ...resolvedLines, [key]: line };
+    return line;
   }
 
   async function openMatch(match: TraceMatch, filePath: string) {

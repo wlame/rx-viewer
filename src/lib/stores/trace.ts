@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { TraceMatch, TraceMatchingFlags, TraceResponse } from '../types';
+import { files } from './files';
 
 /** What a search asks the backend for besides paths and patterns. */
 export interface SearchQuery {
@@ -32,6 +33,8 @@ function createTraceStore() {
   async function search(paths: string[], patterns: string[], query: SearchQuery = {}) {
     if (patterns.length === 0) return;
 
+    // The editor's match highlights belong to the previous search.
+    files.clearMatches();
     update((s) => ({
       ...s,
       query: patterns.join(' | '),
@@ -74,6 +77,8 @@ function createTraceStore() {
   }
 
   function clear() {
+    latestSearch.abort();
+    files.clearMatches();
     set({
       query: '',
       searching: false,

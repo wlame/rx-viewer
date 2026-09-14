@@ -202,6 +202,12 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A new search clears the previous search's match highlights in every
+  open file; they stayed marked until a result in that file was clicked.
+  The line lookups for matches whose line the backend left unknown are
+  aborted when a new search, or a second click, replaces them, instead
+  of finishing and being dropped.
+
 - Analyze runs an analysis when the cached index has none. Opening or
   searching a large or compressed file writes an index without an
   analysis, and Analyze showed that index as a clean file. It now shows

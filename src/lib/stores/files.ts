@@ -518,6 +518,14 @@ function createFilesStore() {
   }
 
   /**
+   * Remove the search-match highlights from every file. They belong to
+   * one search, so a new search starts from none.
+   */
+  function clearMatches() {
+    update((s) => (s.matches.size === 0 ? s : { ...s, matches: new Map() }));
+  }
+
+  /**
    * Clear scroll position after scrolling is done
    */
   function clearScrollPosition(path: string) {
@@ -718,6 +726,7 @@ function createFilesStore() {
     jumpToLine,
     jumpToEnd,
     setMatches,
+    clearMatches,
     clearScrollPosition,
     reorderFiles,
     toggleSyntaxHighlighting,
