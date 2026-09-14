@@ -64,20 +64,20 @@ interchangeable backends, no vendoring.
 
 ## Quick orientation
 
-| Where                                                     | What                                                                                    |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/main.ts`, `src/App.svelte`                           | Entry point and root layout                                                             |
-| `src/lib/api.ts`                                          | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                   |
-| `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                   |
-| `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                           |
-| `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version` |
-| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                             |
-| `src/lib/utils/urlState.ts`                               | URL to app-state persistence (no router): open file, line, and the search               |
-| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                        |
-| `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                   |
-| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                   |
-| `vite.config.ts`                                          | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                 |
-| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                  |
+| Where                                                     | What                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/main.ts`, `src/App.svelte`                           | Entry point and root layout                                                                       |
+| `src/lib/api.ts`                                          | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                             |
+| `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                             |
+| `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                                     |
+| `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version`, `layout` |
+| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                                       |
+| `src/lib/utils/urlState.ts`                               | URL to app-state persistence (no router): open file, line, and the search                         |
+| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                  |
+| `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                             |
+| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                             |
+| `vite.config.ts`                                          | Dev proxy `/v1` → `localhost:8080`; Monaco manual chunk                                           |
+| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                            |
 
 ## Build, run, test
 
@@ -120,6 +120,11 @@ separate comment above, or eslint reads every word as another rule.
 ## Architecture notes
 
 - Svelte 4 stores, no router. Navigation state lives in the URL via `urlState.ts`.
+- Every keyboard shortcut and mouse gesture is a row of one table,
+  `src/lib/utils/shortcuts.ts`. The key handlers ask it whether a key is
+  theirs and the help dialog (Cmd/Ctrl+/) lists it, so add a shortcut
+  there, never as a bare `event.key` check. A handler calls
+  `preventDefault` only when it acted.
 - Monaco is code-split into its own chunk (about 3.3 MB, 860 KB gzip). Check the
   bundle delta before adding Monaco features.
 - Large files are never loaded whole. The editor requests windows through

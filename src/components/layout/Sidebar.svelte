@@ -1,5 +1,6 @@
 <script lang="ts">
   import { settings } from '$lib/stores';
+  import { sidebarTab as activeTab, sidebarVisible } from '$lib/stores/layout';
   import { readSearchUrlState } from '$lib/utils/urlState';
   import FileTree from '../tree/FileTree.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
@@ -7,7 +8,7 @@
   export let width: number;
 
   // A link that carries a search opens on its results.
-  let activeTab: 'tree' | 'search' = readSearchUrlState() ? 'search' : 'tree';
+  if (readSearchUrlState()) activeTab.set('search');
   let isResizing = false;
   let startX = 0;
   let startWidth = 0;
@@ -44,24 +45,25 @@
          border-r border-gh-border-default dark:border-gh-border-dark-default
          relative"
   style="width: {width}px"
+  style:display={$sidebarVisible ? null : 'none'}
 >
   <!-- Tabs -->
   <div class="flex border-b border-gh-border-default dark:border-gh-border-dark-default">
     <button
       class="flex-1 px-4 py-2 text-sm font-medium
-             {activeTab === 'tree'
+             {$activeTab === 'tree'
         ? 'text-gh-fg-default dark:text-gh-fg-dark-default border-b-2 border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis'
         : 'text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
-      on:click={() => (activeTab = 'tree')}
+      on:click={() => activeTab.set('tree')}
     >
       Files
     </button>
     <button
       class="flex-1 px-4 py-2 text-sm font-medium
-             {activeTab === 'search'
+             {$activeTab === 'search'
         ? 'text-gh-fg-default dark:text-gh-fg-dark-default border-b-2 border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis'
         : 'text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
-      on:click={() => (activeTab = 'search')}
+      on:click={() => activeTab.set('search')}
     >
       Search
     </button>
@@ -69,7 +71,7 @@
 
   <!-- Content -->
   <div class="flex-1 overflow-hidden">
-    {#if activeTab === 'tree'}
+    {#if $activeTab === 'tree'}
       <FileTree />
     {:else}
       <SearchPanel />

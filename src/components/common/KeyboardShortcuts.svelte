@@ -1,44 +1,50 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { focusSearch, toggleSidebar } from '$lib/stores/layout';
+  import {
+    handleGlobalKey,
+    shortcutLabel,
+    shortcutsByScope,
+    type GlobalShortcutActions,
+  } from '$lib/utils/shortcuts';
 
   let showHelp = false;
 
-  function handleKeydown(event: KeyboardEvent) {
-    // Cmd/Ctrl + K: Focus search
-    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
-      event.preventDefault();
-      const searchInput = document.querySelector(
-        'input[placeholder*="Search"]',
-      ) as HTMLInputElement;
-      if (searchInput) {
-        searchInput.focus();
-      }
-    }
+  const groups = shortcutsByScope();
 
-    // Cmd/Ctrl + B: Toggle sidebar (future)
-    if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
-      event.preventDefault();
-      // Could toggle sidebar visibility
-    }
-
-    // Cmd/Ctrl + /: Show keyboard shortcuts
-    if ((event.metaKey || event.ctrlKey) && event.key === '/') {
-      event.preventDefault();
-      showHelp = !showHelp;
-    }
-
-    // Escape: Close help dialog
-    if (event.key === 'Escape' && showHelp) {
+  const actions: GlobalShortcutActions = {
+    focusSearch: () => {
       showHelp = false;
-    }
+      focusSearch();
+      return true;
+    },
+    toggleSidebar: () => {
+      toggleSidebar();
+      return true;
+    },
+    showShortcuts: () => {
+      showHelp = !showHelp;
+      return true;
+    },
+    closeDialog: () => {
+      if (!showHelp) return false;
+      showHelp = false;
+      return true;
+    },
+  };
+
+  function handleKeydown(event: KeyboardEvent) {
+    handleGlobalKey(event, actions);
   }
 
+  // The capture phase runs before the editor sees the key: Monaco binds
+  // Cmd/Ctrl+K and Cmd/Ctrl+/ itself and would stop them otherwise.
   onMount(() => {
-    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('keydown', handleKeydown, true);
   });
 
   onDestroy(() => {
-    window.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('keydown', handleKeydown, true);
   });
 </script>
 
@@ -56,7 +62,7 @@
     <div
       class="bg-gh-canvas-default dark:bg-gh-canvas-dark-default
              border border-gh-border-default dark:border-gh-border-dark-default
-             rounded-lg shadow-lg p-6 max-w-md"
+             rounded-lg shadow-lg p-6 max-w-lg w-full max-h-[85vh] overflow-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-title"
@@ -65,40 +71,30 @@
     >
       <h2 id="shortcuts-title" class="text-lg font-semibold mb-4">Keyboard Shortcuts</h2>
 
-      <div class="space-y-2 text-sm">
-        <div class="flex justify-between">
-          <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Focus Search</span>
-          <kbd
-            class="px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
-                   border border-gh-border-default dark:border-gh-border-dark-default
-                   rounded text-xs"
-          >
-            ⌘K / Ctrl+K
-          </kbd>
-        </div>
-
-        <div class="flex justify-between">
-          <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Show Shortcuts</span>
-          <kbd
-            class="px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
-                   border border-gh-border-default dark:border-gh-border-dark-default
-                   rounded text-xs"
-          >
-            ⌘/ / Ctrl+/
-          </kbd>
-        </div>
-
-        <div class="flex justify-between">
-          <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted">Close Dialog</span>
-          <kbd
-            class="px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
-                   border border-gh-border-default dark:border-gh-border-dark-default
-                   rounded text-xs"
-          >
-            Esc
-          </kbd>
-        </div>
-      </div>
+      {#each groups as group (group.scope)}
+        <h3
+          class="text-xs font-semibold uppercase tracking-wide mt-4 mb-2
+                 text-gh-fg-subtle dark:text-gh-fg-dark-subtle"
+        >
+          {group.title}
+        </h3>
+        <dl class="space-y-2 text-sm">
+          {#each group.shortcuts as shortcut (shortcut.id)}
+            <div class="flex justify-between gap-4">
+              <dt class="text-gh-fg-muted dark:text-gh-fg-dark-muted">{shortcut.description}</dt>
+              <dd class="flex-shrink-0">
+                <kbd
+                  class="px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
+                         border border-gh-border-default dark:border-gh-border-dark-default
+                         rounded text-xs whitespace-nowrap"
+                >
+                  {shortcutLabel(shortcut)}
+                </kbd>
+              </dd>
+            </div>
+          {/each}
+        </dl>
+      {/each}
 
       <button class="btn btn-primary w-full mt-4" on:click={() => (showHelp = false)}>
         Close

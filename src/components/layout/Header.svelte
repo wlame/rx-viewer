@@ -1,6 +1,10 @@
 <script lang="ts">
   import { health, settings, resolvedTheme, version } from '$lib/stores';
+  import { sidebarVisible, toggleSidebar } from '$lib/stores/layout';
   import { formatVersionTag } from '$lib/utils/versionTag';
+  import { shortcutById, shortcutLabel } from '$lib/utils/shortcuts';
+
+  const sidebarShortcut = shortcutLabel(shortcutById('toggleSidebar'));
 
   const GITHUB_REPO = 'https://github.com/wlame/rx-viewer';
 
@@ -18,6 +22,19 @@
          border-b border-gh-border-default dark:border-gh-border-dark-default"
 >
   <div class="flex items-center gap-3">
+    <button
+      class="p-1.5 rounded-md hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
+             text-gh-fg-muted dark:text-gh-fg-dark-muted"
+      title="{$sidebarVisible ? 'Hide' : 'Show'} the sidebar ({sidebarShortcut})"
+      aria-label="Sidebar"
+      aria-pressed={$sidebarVisible}
+      on:click={toggleSidebar}
+    >
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 4v16" />
+      </svg>
+    </button>
     <h1 class="text-lg font-semibold">rx-trace</h1>
     {#if $version.data}
       <a

@@ -202,6 +202,18 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Keyboard shortcuts come from one table that both the key handlers and
+  the help dialog read. Cmd/Ctrl+K goes to the search pattern field,
+  opening the Search tab and a hidden sidebar if needed; it looked for a
+  field that does not exist and did nothing. Cmd/Ctrl+B shows or hides
+  the sidebar instead of swallowing the key, and a header button does
+  the same. The help dialog (Cmd/Ctrl+/) lists every shortcut: Enter and
+  Alt+C, Alt+W and Alt+R in a search field, `:` in the open file,
+  Cmd/Ctrl+F, and Cmd- or Alt-click on an anomaly chip. A shortcut keeps
+  the key from the browser only when it acts. The README no longer
+  offers Cmd/Ctrl+G, which is the editor's own go-to-line and counts the
+  lines loaded in the editor, not the lines of the file.
+
 - A new search clears the previous search's match highlights in every
   open file; they stayed marked until a result in that file was clicked.
   The line lookups for matches whose line the backend left unknown are

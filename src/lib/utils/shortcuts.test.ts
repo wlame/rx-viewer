@@ -1,0 +1,138 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  SHORTCUTS,
+  handleGlobalKey,
+  isShortcut,
+  shortcutLabel,
+  shortcutsByScope,
+  type GlobalShortcutActions,
+  type KeyPress,
+} from './shortcuts';
+import { SEARCH_TOGGLES } from './searchToggles';
+
+/** A key press with no modifier unless one is given. */
+function press(key: string, modifiers: Partial<KeyPress> = {}) {
+  return {
+    key,
+    code: modifiers.code ?? '',
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...modifiers,
+    preventDefault: vi.fn(),
+  };
+}
+
+/** Actions that all act, recording which one ran. */
+function recordingActions(overrides: Partial<GlobalShortcutActions> = {}) {
+  const ran: string[] = [];
+  const act = (id: string) => () => {
+    ran.push(id);
+    return true;
+  };
+  const actions: GlobalShortcutActions = {
+    focusSearch: act('focusSearch'),
+    toggleSidebar: act('toggleSidebar'),
+    showShortcuts: act('showShortcuts'),
+    closeDialog: act('closeDialog'),
+    ...overrides,
+  };
+  return { actions, ran };
+}
+
+describe('handleGlobalKey', () => {
+  it('runs focus search for Cmd+K and for Ctrl+K and keeps the key from the browser', () => {
+    for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+      const { actions, ran } = recordingActions();
+      const event = press('k', modifier);
+
+      expect(handleGlobalKey(event, actions)).toBe(true);
+      expect(ran).toEqual(['focusSearch']);
+      expect(event.preventDefault).toHaveBeenCalled();
+    }
+  });
+
+  it('runs the sidebar toggle for Cmd+B', () => {
+    const { actions, ran } = recordingActions();
+
+    handleGlobalKey(press('b', { metaKey: true }), actions);
+
+    expect(ran).toEqual(['toggleSidebar']);
+  });
+
+  it('leaves a key to the browser when the action had nothing to do', () => {
+    const { actions } = recordingActions({ closeDialog: () => false });
+    const event = press('Escape');
+
+    expect(handleGlobalKey(event, actions)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('leaves keys that are not shortcuts to the browser', () => {
+    const { actions, ran } = recordingActions();
+    for (const event of [press('k'), press('l', { metaKey: true }), press('k', { altKey: true })]) {
+      expect(handleGlobalKey(event, actions)).toBe(false);
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+    expect(ran).toEqual([]);
+  });
+});
+
+describe('isShortcut', () => {
+  it('matches the go-to-line colon, which needs Shift on most layouts', () => {
+    expect(isShortcut('gotoLine', press(':', { shiftKey: true }))).toBe(true);
+    expect(isShortcut('gotoLine', press(':', { metaKey: true }))).toBe(false);
+  });
+
+  it('matches Enter without Shift as the search key', () => {
+    expect(isShortcut('runSearch', press('Enter'))).toBe(true);
+    expect(isShortcut('runSearch', press('Enter', { shiftKey: true }))).toBe(false);
+  });
+
+  // On a Mac Alt+C types "ç", so the toggles match the key's code.
+  it('matches a search toggle by key code with Alt', () => {
+    expect(isShortcut('toggle:matchCase', press('ç', { code: 'KeyC', altKey: true }))).toBe(true);
+  });
+});
+
+describe('the shortcut list', () => {
+  it('lists every row of the table once, grouped by where it works', () => {
+    const listed = shortcutsByScope().flatMap((group) => group.shortcuts);
+
+    expect(listed).toHaveLength(SHORTCUTS.length);
+    expect(new Set(listed.map((s) => s.id)).size).toBe(SHORTCUTS.length);
+  });
+
+  it('holds the pane, search and chip shortcuts besides the window-wide ones', () => {
+    const labels = SHORTCUTS.map(shortcutLabel);
+
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        '⌘/Ctrl+K',
+        '⌘/Ctrl+B',
+        '⌘/Ctrl+/',
+        'Esc',
+        'Enter',
+        ':',
+        'Alt+C',
+        'Alt+W',
+        'Alt+R',
+        '⌘/Alt+click',
+      ]),
+    );
+  });
+
+  it('holds one row per search toggle, from the toggle table', () => {
+    for (const toggle of SEARCH_TOGGLES) {
+      expect(SHORTCUTS.some((s) => s.id === `toggle:${toggle.key}`)).toBe(true);
+    }
+  });
+
+  it('gives every row a label and a description', () => {
+    for (const shortcut of SHORTCUTS) {
+      expect(shortcutLabel(shortcut)).not.toBe('');
+      expect(shortcut.description).not.toBe('');
+    }
+  });
+});

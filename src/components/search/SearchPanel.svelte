@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { trace, tree, files, health } from '$lib/stores';
+  import { searchFocusRequested } from '$lib/stores/layout';
   import { contractSupports } from '$lib/utils/contractVersion';
+  import { isShortcut } from '$lib/utils/shortcuts';
   import {
     DEFAULT_SEARCH_TOGGLES,
     matchingFlagParams,
@@ -23,6 +25,15 @@
   let showAdvanced = false;
   let onlyOpenedFiles = false; // Search only in currently opened files
   let toggles: Toggles = { ...DEFAULT_SEARCH_TOGGLES };
+  let patternInputs: HTMLInputElement[] = [];
+
+  // Cmd/Ctrl+K asks for the pattern field, possibly before this panel
+  // existed; the request waits here until the field is there.
+  $: if ($searchFocusRequested && patternInputs[0]) {
+    patternInputs[0].focus();
+    patternInputs[0].select();
+    searchFocusRequested.set(false);
+  }
 
   // A backend on an older contract ignores the matching flags, so the
   // toggles are disabled there rather than shown doing nothing.
@@ -112,7 +123,7 @@
       toggles = { ...toggles, [toggle.key]: !toggles[toggle.key] };
       return;
     }
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (isShortcut('runSearch', event)) {
       event.preventDefault();
       handleSearch();
     }
@@ -133,6 +144,7 @@
             placeholder="Regex pattern {index + 1}..."
             aria-label="Regex pattern {index + 1}"
             value={pattern}
+            bind:this={patternInputs[index]}
             on:input={(e) => updatePattern(index, e.currentTarget.value)}
             on:keydown={(e) => handleKeydown(e, index)}
             disabled={!hasRoots}

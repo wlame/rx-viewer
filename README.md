@@ -45,13 +45,15 @@ The RX Viewer is a **standalone frontend** that:
 ## Features
 
 - 📁 Multi-file tab interface with drag-and-drop
-- 🔍 In-file search with match highlighting (Cmd/Ctrl+F)
+- 🔍 Find in the lines loaded in the editor (Cmd/Ctrl+F)
 - 🎨 Syntax highlighting with 20+ languages
 - 🔧 Regex filter with hide/show/highlight modes
 - 👁️ Invisible characters mode (spaces, tabs, newlines)
 - 📊 Virtual scrolling for large files
 - 🌲 File tree navigation
-- 🎯 Go to line (Cmd/Ctrl+G)
+- 🎯 Go to a line of the file (`:` in the open file)
+- ⌨️ Keyboard shortcuts: Cmd/Ctrl+K goes to the search field, Cmd/Ctrl+B
+  shows or hides the sidebar, and Cmd/Ctrl+/ lists every shortcut
 - 🌓 Dark/light/system themes
 - ⚡ URL state persistence
 

@@ -22,6 +22,7 @@
   } from '$lib/utils/editorDecorations';
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import { acceptsTyping } from '$lib/utils/keyTargets';
+  import { isShortcut } from '$lib/utils/shortcuts';
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
@@ -351,7 +352,7 @@
     // : - open goto line (vim style), also while the read-only editor
     // text has focus. The go-to box closes itself on Escape and when it
     // loses focus.
-    if (e.key === ':' && !acceptsTyping(e.target as HTMLElement)) {
+    if (isShortcut('gotoLine', e) && !acceptsTyping(e.target as HTMLElement)) {
       e.preventDefault();
       lineRangeNav?.openGoto();
     }
