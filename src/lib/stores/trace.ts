@@ -2,7 +2,15 @@ import { writable } from 'svelte/store';
 import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { TraceMatch, TraceMatchingFlags, TraceResponse } from '../types';
+import type { SearchState } from '../utils/urlState';
 import { files } from './files';
+
+/**
+ * The search the user last ran, as the search panel's form held it, or
+ * null for none. The URL carries it, and the panel reads its form from
+ * it, so a link or Back can bring a search back.
+ */
+export const searchRequest = writable<SearchState | null>(null);
 
 /** What a search asks the backend for besides paths and patterns. */
 export interface SearchQuery {

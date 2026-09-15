@@ -2,11 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { files } from './files';
 
-/**
- * The URL names the open file so a link or a reload restores it. Once
- * the last file is closed the URL has to stop naming one, or a reload
- * reopens the file the user just closed.
- */
+/** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
   vi.stubGlobal('window', {
     location: { href: `http://localhost:5173/${search}`, search },
@@ -21,48 +17,6 @@ function setLocation(search: string) {
     },
   });
 }
-
-describe('closing files', () => {
-  beforeEach(() => {
-    // The loads fail, which is enough: only opening and closing matter here.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        text: async () => '',
-      }),
-    );
-  });
-
-  afterEach(() => {
-    for (const file of get(files).openFiles) files.closeFile(file.path);
-    vi.unstubAllGlobals();
-  });
-
-  it('stops naming a file in the URL when the last one is closed', async () => {
-    setLocation('?file=%2Fvar%2Flog%2Fa.log&line=5&highlight=1');
-    await files.openFile('/var/log/a.log');
-
-    files.closeFile('/var/log/a.log');
-
-    const params = new URLSearchParams(window.location.search);
-    expect(params.has('file')).toBe(false);
-    expect(params.has('line')).toBe(false);
-    expect(params.has('highlight')).toBe(false);
-  });
-
-  it('leaves the URL to the remaining file while one is still open', async () => {
-    setLocation('?file=%2Fvar%2Flog%2Fb.log&line=5&highlight=0');
-    await files.openFile('/var/log/a.log');
-    await files.openFile('/var/log/b.log');
-
-    files.closeFile('/var/log/a.log');
-
-    expect(new URLSearchParams(window.location.search).get('file')).toBe('/var/log/b.log');
-  });
-});
 
 /**
  * Answers `/v1/samples` the way rx-go does for a file of `lineCount`
@@ -213,5 +167,68 @@ describe('the file window against samples answers', () => {
     expect(file.endLine).toBe(5_500);
     expect(file.reachedEnd).toBe(false);
     expect(everyLineReadsItsNumber('/logs/long.log')).toBe(true);
+  });
+});
+
+/**
+ * A file's anchor is the line the URL names for it. It is the line the
+ * user went to, and a line the file does not have is moved to the last
+ * line the backend's answer shows.
+ */
+describe('the anchor line', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  it('anchors a file opened without a line on line 1', async () => {
+    serveFileOf(1000);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(1);
+  });
+
+  it('anchors a file opened at a line on that line', async () => {
+    serveFileOf(1000);
+    await files.openFile('/logs/a.log', 169, null, undefined, false);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(169);
+  });
+
+  it('anchors a jump on its target, loaded or not', async () => {
+    serveFileOf(10_000);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+
+    await files.jumpToLine('/logs/a.log', 50);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(50);
+
+    await files.jumpToLine('/logs/a.log', 7_000);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(7_000);
+  });
+
+  it('anchors the end of the file on its last line', async () => {
+    serveFileOf(300);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.jumpToEnd('/logs/a.log');
+    expect(openedFile('/logs/a.log').anchorLine).toBe(300);
+  });
+
+  it.each([1_200, 10 ** 12])(
+    'moves a line %i past the end of a 1000-line file to line 1000',
+    async (line) => {
+      serveFileOf(1000);
+      await files.openFile('/logs/a.log', line, null, undefined, false);
+
+      const file = openedFile('/logs/a.log');
+      expect(file.anchorLine).toBe(1000);
+      expect(file.scrollToLine).toBe(1000);
+    },
+  );
+
+  it('takes an anchor the editor reports after a scroll', async () => {
+    serveFileOf(1000);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    files.setAnchorLine('/logs/a.log', 415);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(415);
   });
 });

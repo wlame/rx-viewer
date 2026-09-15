@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import type { OpenFile } from '$lib/types';
+  import type { OpenFile, RegexFilter } from '$lib/types';
   import { files, settings, resolvedTheme } from '$lib/stores';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -10,7 +10,8 @@
   import AnomalyCategoryNav from './AnomalyCategoryNav.svelte';
   import LineRangeNav from './LineRangeNav.svelte';
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
-  import { updateUrlState, debounce } from '$lib/utils/urlState';
+  import { debounce } from '$lib/utils/urlState';
+  import { anchorAfterScroll, type VisibleLines } from '$lib/utils/anchorLine';
   import { processContent } from '$lib/utils/processContent';
   import {
     anomalyCategoryDecorations,
@@ -50,6 +51,18 @@
 
   // Track scroll state for content loading
   let isScrollingToTarget = false;
+
+  // Whether the user moved the view since the last navigation. Only a
+  // scroll the user made may move the anchor: the editor's own scroll to
+  // a target can take longer than any timer (a throttled background tab
+  // runs few animation frames), and its halfway positions are not where
+  // the user went.
+  let hasUserScrolled = false;
+  const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'mousedown', 'keydown'] as const;
+
+  function noteUserScroll() {
+    hasUserScrolled = true;
+  }
   let lastContentLoadTime = 0; // Timestamp of last content load to prevent immediate loadMore
 
   // Settings
@@ -138,14 +151,21 @@
 
   function toggleSyntaxHighlighting() {
     files.toggleSyntaxHighlighting(file.path);
-    if (isActive) {
-      const centerLine = getCurrentViewportCenterLine();
-      updateUrlState({
-        path: file.path,
-        line: centerLine,
-        syntaxHighlighting: !file.syntaxHighlighting,
-      });
-    }
+  }
+
+  // A filter applied from outside the bar (a link, Back) opens the bar
+  // showing it. Only a new filter object counts: the file changes on
+  // every load, and a pattern the user is typing must survive that.
+  let shownFilter: RegexFilter | null = null;
+  $: showAppliedFilter(file.regexFilter);
+
+  function showAppliedFilter(filter: RegexFilter | null) {
+    if (filter === shownFilter) return;
+    shownFilter = filter;
+    if (!filter?.enabled || !filter.pattern) return;
+    filterPattern = filter.pattern;
+    filterMode = filter.mode;
+    filterPanelVisible = true;
   }
 
   function toggleFilterPanel() {
@@ -193,16 +213,6 @@
     filterPanelVisible = false;
   }
 
-  // Update URL when this file becomes active
-  $: if (isActive && file.lines.length > 0) {
-    const centerLine = getCurrentViewportCenterLine();
-    updateUrlState({
-      path: file.path,
-      line: centerLine,
-      syntaxHighlighting: file.syntaxHighlighting,
-    });
-  }
-
   // Track when content is loaded to prevent immediate loadMore calls
   $: if (file.lines.length > 0 && !file.loading) {
     lastContentLoadTime = Date.now();
@@ -217,24 +227,30 @@
     !file.loading
   ) {
     isScrollingToTarget = true;
+    hasUserScrolled = false;
     // Delay scroll to ensure content is rendered in Monaco
     setTimeout(() => {
       scrollToLine(file.scrollToLine!);
     }, 100);
   }
 
-  function getCurrentViewportCenterLine(): number {
-    if (!monacoEditor || file.lines.length === 0) return file.startLine;
+  /** The file lines on screen, or null when the editor shows none. */
+  function visibleFileLines(): VisibleLines | null {
+    if (!monacoEditor || file.lines.length === 0) return null;
 
     const visibleRanges = monacoEditor.getVisibleRanges();
-    if (visibleRanges.length === 0) return file.startLine;
+    if (visibleRanges.length === 0) return null;
 
-    const firstVisible = visibleRanges[0].startLineNumber;
-    const lastVisible = visibleRanges[visibleRanges.length - 1].endLineNumber;
-    const centerMonacoLine = Math.floor((firstVisible + lastVisible) / 2);
+    // Monaco counts from 1 at the first loaded line.
+    return {
+      first: file.startLine + visibleRanges[0].startLineNumber - 1,
+      last: file.startLine + visibleRanges[visibleRanges.length - 1].endLineNumber - 1,
+    };
+  }
 
-    // Convert Monaco line to file line number
-    return file.startLine + centerMonacoLine - 1;
+  function getCurrentViewportCenterLine(): number {
+    const visible = visibleFileLines();
+    return visible ? Math.floor((visible.first + visible.last) / 2) : file.startLine;
   }
 
   function scrollToLine(targetLine: number) {
@@ -261,6 +277,8 @@
   function jumpToLineNumber(lineNum: number) {
     if (lineNum >= file.startLine && lineNum <= file.endLine) {
       isScrollingToTarget = true;
+      hasUserScrolled = false;
+      files.setAnchorLine(file.path, lineNum);
       scrollToLine(lineNum);
 
       // If jumping to boundary lines, trigger loading more content after scroll completes
@@ -278,16 +296,18 @@
     }
   }
 
-  // Debounced URL update on scroll
-  const updateUrlOnScroll = debounce(() => {
-    if (isActive && file.lines.length > 0) {
-      const centerLine = getCurrentViewportCenterLine();
-      updateUrlState({
-        path: file.path,
-        line: centerLine,
-        syntaxHighlighting: file.syntaxHighlighting,
-      });
+  // Once a scroll the user made settles, the anchor follows the rule in
+  // anchorLine.ts: it stays on the line the user went to while that line
+  // is on screen. A scroll the editor makes itself, to reveal a target or
+  // while lines load, leaves the anchor alone.
+  const updateAnchorOnScroll = debounce(() => {
+    if (!isActive || !hasUserScrolled || file.scrollToLine !== undefined || file.loading) {
+      return;
     }
+    const visible = visibleFileLines();
+    if (!visible) return;
+    const anchor = anchorAfterScroll(file.anchorLine, visible);
+    if (anchor !== file.anchorLine) files.setAnchorLine(file.path, anchor);
   }, 500);
 
   function handleMonacoScroll(
@@ -295,7 +315,7 @@
   ) {
     const { scrollTop, scrollHeight, clientHeight } = e.detail;
 
-    updateUrlOnScroll();
+    updateAnchorOnScroll();
 
     // Don't trigger loadMore during programmatic scrolling or right after content load
     if (file.scrollToLine !== undefined || isScrollingToTarget) {
@@ -361,10 +381,14 @@
   onMount(() => {
     installPaletteStyles();
     paneEl?.addEventListener('keydown', handleKeyDown);
+    for (const type of USER_SCROLL_EVENTS) {
+      paneEl?.addEventListener(type, noteUserScroll, { passive: true });
+    }
   });
 
   onDestroy(() => {
     paneEl?.removeEventListener('keydown', handleKeyDown);
+    for (const type of USER_SCROLL_EVENTS) paneEl?.removeEventListener(type, noteUserScroll);
     if (decorationsCollection) {
       decorationsCollection.clear();
     }

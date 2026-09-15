@@ -1,10 +1,13 @@
 import { writable } from 'svelte/store';
+import type { SidebarTab } from '../utils/urlState';
 
-/** The sidebar's two tabs. */
-export type SidebarTab = 'tree' | 'search';
+export type { SidebarTab };
 
 /** Which sidebar tab is open. */
 export const sidebarTab = writable<SidebarTab>('tree');
+
+/** Whether the search results show byte offsets instead of line numbers. */
+export const searchShowsOffsets = writable(false);
 
 /** Whether the sidebar is shown. Hiding it keeps its state. */
 export const sidebarVisible = writable(true);

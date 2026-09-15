@@ -206,8 +206,14 @@ function createTreeStore() {
     selectPath(filePath);
   }
 
+  /** The tree's entry for a path, or null when the loaded tree does not list it. */
+  function nodeAt(path: string): TreeNode | null {
+    return findNode(get({ subscribe }).roots, path);
+  }
+
   return {
     subscribe,
+    nodeAt,
     loadRoots,
     loadDirectory,
     toggleExpanded,

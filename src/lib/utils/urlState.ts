@@ -1,58 +1,32 @@
 /**
- * Utility for managing application state in URL parameters
+ * The view state the address bar carries, and its one serialized form.
+ *
+ * The URL names what a user would bookmark, share or come back to: the
+ * active file, the line its view is anchored on, its highlighting,
+ * filter and anomaly category, the sidebar tab, the last search and
+ * whether its results show byte offsets. Each key has one row in
+ * `CODECS`, which reads it as untrusted input (a missing or invalid
+ * value gives that key's default) and writes it back, leaving a value at
+ * its default out of the link.
+ *
+ * This module is the only place that writes the view to `history`.
+ * Secrets stay out of it: the API token arrives in the hash and is moved
+ * to storage, and stripped from the address bar, before the app starts
+ * (`apiToken.ts`).
  */
 import type { TraceMatchingFlags } from '../types';
 import { SEARCH_TOGGLES } from './searchToggles';
 
-export interface FileState {
-  path: string;
-  line: number;
-  syntaxHighlighting: boolean;
-}
+/** The sidebar's two tabs. */
+export type SidebarTab = 'tree' | 'search';
 
-/**
- * Update URL with current file state without reloading the page
- */
-export function updateUrlState(state: FileState | null): void {
-  if (typeof window === 'undefined') return;
+/** What the editor's regex filter does with the lines it matches. */
+export type FilterMode = 'hide' | 'show' | 'highlight';
 
-  const url = new URL(window.location.href);
-
-  if (state) {
-    url.searchParams.set('file', state.path);
-    url.searchParams.set('line', state.line.toString());
-    url.searchParams.set('highlight', state.syntaxHighlighting ? '1' : '0');
-  } else {
-    // Clear file-related params
-    url.searchParams.delete('file');
-    url.searchParams.delete('line');
-    url.searchParams.delete('highlight');
-  }
-
-  window.history.replaceState({}, '', url.toString());
-}
-
-/**
- * Read file state from URL parameters
- */
-export function readUrlState(): FileState | null {
-  if (typeof window === 'undefined') return null;
-
-  const params = new URLSearchParams(window.location.search);
-  const path = params.get('file');
-  const lineStr = params.get('line');
-  const highlightStr = params.get('highlight');
-
-  if (!path) return null;
-
-  const line = lineStr ? parseInt(lineStr, 10) : 1;
-  const syntaxHighlighting = highlightStr === '1';
-
-  return {
-    path,
-    line: isNaN(line) ? 1 : line,
-    syntaxHighlighting,
-  };
+/** The editor's regex filter as the URL carries it. */
+export interface FilterState {
+  pattern: string;
+  mode: FilterMode;
 }
 
 /** The cap the search panel starts with. */
@@ -70,74 +44,252 @@ export interface SearchState {
   flags: TraceMatchingFlags;
 }
 
-/** The flag parameters the search panel can set, named as /v1/trace names them. */
-const SEARCH_FLAG_PARAMS = SEARCH_TOGGLES.map((spec) => spec.param);
+/** Everything the URL says about the view. */
+export interface ViewState {
+  /** The active file's path, or null when no file is open. */
+  file: string | null;
+  /**
+   * The line the active file's view is anchored on (see `anchorLine.ts`
+   * for the rule), or null to open the file at its start.
+   */
+  line: number | null;
+  /** Syntax highlighting on or off; null means the file's size-based default. */
+  highlight: boolean | null;
+  /** The active file's regex filter, or null for none. */
+  filter: FilterState | null;
+  /** The anomaly category highlighted in the active file, or null for none. */
+  category: string | null;
+  tab: SidebarTab;
+  /** The search results show byte offsets instead of line numbers. */
+  offsets: boolean;
+  /** The last search run, or null for none. */
+  search: SearchState | null;
+}
 
-/** Every parameter that belongs to the search, so a write can replace them all. */
-const SEARCH_PARAMS = ['regexp', 'max_results', 'only_opened', ...SEARCH_FLAG_PARAMS];
+/** The view of a link with no parameters. */
+export const DEFAULT_VIEW: ViewState = {
+  file: null,
+  line: null,
+  highlight: null,
+  filter: null,
+  category: null,
+  tab: 'tree',
+  offsets: false,
+  search: null,
+};
+
+/** One URL parameter written as name and value. */
+type Param = [string, string];
+
+/** How one key of the view reads from and writes to the URL. */
+interface ParamCodec<T> {
+  /** Every URL parameter this key owns; a write replaces all of them. */
+  names: readonly string[];
+  /** The value the parameters give, or the key's default when they give none. */
+  parse(params: URLSearchParams): T;
+  /** The parameters that say `value`; none when it is the default. */
+  serialize(value: T, view: ViewState): Param[];
+}
 
 /** A boolean URL parameter is on when it reads `1` or `true`. */
 function isOn(value: string | null): boolean {
   return value === '1' || value === 'true';
 }
 
-/** A cap from the URL, or the default when it is not a whole number in range. */
-function parseMaxResults(value: string | null): number {
-  if (value === null || !/^\d+$/.test(value)) return DEFAULT_MAX_RESULTS;
-  const cap = Number(value);
-  return cap >= 1 && cap <= MAX_RESULTS_LIMIT ? cap : DEFAULT_MAX_RESULTS;
+/** A boolean parameter that may be absent: absent or unreadable is null. */
+const OPTIONAL_BOOLEANS: Record<string, boolean> = {
+  '1': true,
+  true: true,
+  '0': false,
+  false: false,
+};
+
+/** A non-empty string, or null. */
+function nonEmpty(value: string | null): string | null {
+  return value !== null && value.trim() !== '' ? value : null;
 }
 
-/**
- * Put the search in the URL, replacing the one there, under the names
- * /v1/trace uses. Values at their default are left out, so a link shows
- * what makes this search differ from a plain one. Null removes the
- * search and keeps the rest of the URL.
- */
-export function updateSearchUrlState(search: SearchState | null): void {
-  if (typeof window === 'undefined') return;
-
-  const url = new URL(window.location.href);
-  for (const name of SEARCH_PARAMS) url.searchParams.delete(name);
-
-  if (search) {
-    for (const pattern of search.patterns) url.searchParams.append('regexp', pattern);
-    if (search.maxResults !== DEFAULT_MAX_RESULTS) {
-      url.searchParams.set('max_results', String(search.maxResults));
-    }
-    if (search.onlyOpenedFiles) url.searchParams.set('only_opened', '1');
-    for (const name of SEARCH_FLAG_PARAMS) {
-      if (search.flags[name]) url.searchParams.set(name, '1');
-    }
-  }
-
-  window.history.replaceState({}, '', url.toString());
+/** A whole number written in plain digits, from `min` up to the safe-integer limit, or null. */
+function wholeNumber(value: string | null, min: number): number | null {
+  if (value === null || !/^\d+$/.test(value)) return null;
+  const number = Number(value);
+  return number >= min && Number.isSafeInteger(number) ? number : null;
 }
 
-/**
- * Read the search from the URL, or null when it names no pattern. The URL
- * is input like any other: an empty pattern is dropped, a cap out of
- * range falls back to the default, and a parameter the panel cannot set
- * is ignored.
- */
-export function readSearchUrlState(): SearchState | null {
-  if (typeof window === 'undefined') return null;
+/** The search flag parameters the panel can set, named as /v1/trace names them. */
+const SEARCH_FLAG_PARAMS = SEARCH_TOGGLES.map((spec) => spec.param);
 
-  const params = new URLSearchParams(window.location.search);
-  const patterns = params.getAll('regexp').filter((pattern) => pattern.trim() !== '');
+/**
+ * The search a URL names, or null when it names no pattern. An empty
+ * pattern is dropped, a cap out of range falls back to the default, and
+ * a flag the panel cannot set is ignored.
+ */
+function parseSearch(params: URLSearchParams): SearchState | null {
+  const patterns = params.getAll('regexp').filter((pattern) => nonEmpty(pattern) !== null);
   if (patterns.length === 0) return null;
 
   const flags: TraceMatchingFlags = {};
   for (const name of SEARCH_FLAG_PARAMS) {
     if (isOn(params.get(name))) flags[name] = true;
   }
+  const cap = wholeNumber(params.get('max_results'), 1);
 
   return {
     patterns,
-    maxResults: parseMaxResults(params.get('max_results')),
+    maxResults: cap !== null && cap <= MAX_RESULTS_LIMIT ? cap : DEFAULT_MAX_RESULTS,
     onlyOpenedFiles: isOn(params.get('only_opened')),
     flags,
   };
+}
+
+function serializeSearch(search: SearchState | null): Param[] {
+  if (!search) return [];
+  const out: Param[] = search.patterns.map((pattern) => ['regexp', pattern]);
+  if (search.maxResults !== DEFAULT_MAX_RESULTS)
+    out.push(['max_results', String(search.maxResults)]);
+  if (search.onlyOpenedFiles) out.push(['only_opened', '1']);
+  for (const name of SEARCH_FLAG_PARAMS) {
+    if (search.flags[name]) out.push([name, '1']);
+  }
+  return out;
+}
+
+/** A tab's name in the URL, which is the label the user sees. */
+const TAB_PARAM_VALUES: Record<SidebarTab, string> = { tree: 'files', search: 'search' };
+
+/** The tab a link opens when it names none: a link with a search opens on its results. */
+function defaultTab(hasSearch: boolean): SidebarTab {
+  return hasSearch ? 'search' : 'tree';
+}
+
+const FILTER_MODES: readonly FilterMode[] = ['hide', 'show', 'highlight'];
+const DEFAULT_FILTER_MODE: FilterMode = 'highlight';
+
+/** The parse and serialize pair of every key, in the order a link lists them. */
+const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
+  file: {
+    names: ['file'],
+    parse: (params) => nonEmpty(params.get('file')),
+    serialize: (file) => (file === null ? [] : [['file', file]]),
+  },
+  line: {
+    names: ['line'],
+    parse: (params) => wholeNumber(params.get('line'), 1),
+    serialize: (line) => (line === null ? [] : [['line', String(line)]]),
+  },
+  highlight: {
+    names: ['highlight'],
+    parse: (params) => OPTIONAL_BOOLEANS[params.get('highlight') ?? ''] ?? null,
+    serialize: (on) => (on === null ? [] : [['highlight', on ? '1' : '0']]),
+  },
+  filter: {
+    names: ['filter', 'filter_mode'],
+    parse: (params) => {
+      const pattern = nonEmpty(params.get('filter'));
+      if (pattern === null) return null;
+      const mode = FILTER_MODES.find((m) => m === params.get('filter_mode'));
+      return { pattern, mode: mode ?? DEFAULT_FILTER_MODE };
+    },
+    serialize: (filter) => {
+      if (filter === null) return [];
+      const out: Param[] = [['filter', filter.pattern]];
+      if (filter.mode !== DEFAULT_FILTER_MODE) out.push(['filter_mode', filter.mode]);
+      return out;
+    },
+  },
+  category: {
+    names: ['category'],
+    parse: (params) => nonEmpty(params.get('category')),
+    serialize: (category) => (category === null ? [] : [['category', category]]),
+  },
+  tab: {
+    names: ['tab'],
+    parse: (params) => {
+      const named = (Object.keys(TAB_PARAM_VALUES) as SidebarTab[]).find(
+        (tab) => TAB_PARAM_VALUES[tab] === params.get('tab'),
+      );
+      return named ?? defaultTab(parseSearch(params) !== null);
+    },
+    serialize: (tab, view) =>
+      tab === defaultTab(view.search !== null) ? [] : [['tab', TAB_PARAM_VALUES[tab]]],
+  },
+  offsets: {
+    names: ['offsets'],
+    parse: (params) => isOn(params.get('offsets')),
+    serialize: (offsets) => (offsets ? [['offsets', '1']] : []),
+  },
+  search: {
+    names: ['regexp', 'max_results', 'only_opened', ...SEARCH_FLAG_PARAMS],
+    parse: parseSearch,
+    serialize: serializeSearch,
+  },
+};
+
+const VIEW_KEYS = Object.keys(CODECS) as (keyof ViewState)[];
+
+/** Read one key with its codec; a helper so the key's type flows through. */
+function parseKey<K extends keyof ViewState>(key: K, params: URLSearchParams): ViewState[K] {
+  return CODECS[key].parse(params);
+}
+
+function serializeKey<K extends keyof ViewState>(key: K, view: ViewState): Param[] {
+  return CODECS[key].serialize(view[key], view);
+}
+
+/** The view a query string (`?a=b…`, with or without the `?`) describes. */
+export function parseViewState(query: string): ViewState {
+  const params = new URLSearchParams(query);
+  const view = { ...DEFAULT_VIEW };
+  for (const key of VIEW_KEYS) Object.assign(view, { [key]: parseKey(key, params) });
+  return view;
+}
+
+/**
+ * The query string that says `view`, built on `current`: every parameter
+ * a key owns is replaced, and any other parameter is kept. Returns `''`
+ * when nothing is left.
+ */
+export function serializeViewState(view: ViewState, current: string): string {
+  const params = new URLSearchParams(current);
+  for (const key of VIEW_KEYS) {
+    for (const name of CODECS[key].names) params.delete(name);
+  }
+  for (const key of VIEW_KEYS) {
+    for (const [name, value] of serializeKey(key, view)) params.append(name, value);
+  }
+  const query = params.toString();
+  return query === '' ? '' : `?${query}`;
+}
+
+/** The view the address bar describes now. */
+export function readViewState(): ViewState {
+  if (typeof window === 'undefined') return { ...DEFAULT_VIEW };
+  return parseViewState(window.location.search);
+}
+
+/**
+ * How a change reaches the browser's history: `push` adds an entry that
+ * Back returns from, `replace` rewrites the current one.
+ */
+export type HistoryMode = 'push' | 'replace';
+
+/**
+ * Put `view` in the address bar. Nothing is written when the URL already
+ * says the same, and a URL that says the same view in other bytes (an
+ * encoding, an invalid value dropped) is replaced, never pushed, so an
+ * unchanged view never adds an entry.
+ */
+export function writeViewState(view: ViewState, mode: HistoryMode): void {
+  if (typeof window === 'undefined') return;
+
+  const { pathname, search, hash } = window.location;
+  const query = serializeViewState(view, search);
+  if (query === search) return;
+
+  const sameView = query === serializeViewState(parseViewState(search), search);
+  const url = `${pathname}${query}${hash}`;
+  if (mode === 'push' && !sameView) window.history.pushState(null, '', url);
+  else window.history.replaceState(null, '', url);
 }
 
 /**

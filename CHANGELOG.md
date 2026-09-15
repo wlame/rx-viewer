@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The URL carries the whole view a link should restore: besides the
+  file, its line, its highlighting and the search, it now names the
+  sidebar tab (`tab=files` or `tab=search`, left out when it is the tab
+  the link would open anyway), the editor filter (`filter` and
+  `filter_mode`), the highlighted anomaly category (`category`) and the
+  Offsets switch of the search results (`offsets=1`). One module,
+  `src/lib/utils/urlState.ts`, reads and writes every key from one
+  table, and the URL is written from the app's stores
+  (`src/lib/viewState.ts`) instead of from the editor pane.
+
 - The URL carries the search, under the names `/v1/trace` uses: each
   pattern as `regexp`, and `max_results`, `ignore_case`, `word_regexp`,
   `fixed_strings` and `only_opened` when they differ from the default.
@@ -211,6 +221,21 @@ typecheck lint test build` in the order CI runs them, and
   which nothing imported, went with them.
 
 ### Fixed
+
+- `line` in the URL names the line the user went to: the line a file
+  was opened at, a go-to-line target, a search match, an anomaly. It
+  named the line in the middle of the screen, so a file opened at
+  line 1 wrote `line=15` and a jump to line 169 wrote `line=168`. Once
+  the user scrolls that line out of view, `line` becomes the line in the
+  middle of the screen, where a link reopens the file. A line past the
+  end of the file becomes its last line, as the backend's answer shows.
+
+- A `line` that is not a whole number from 1 up (`-5`, `abc`, `0`) is
+  ignored and the file opens at its start. A negative line used to reach
+  `/v1/samples`, which reads it as counting from the end.
+
+- A link without `highlight` opens the file with the size-based
+  default (on below 1 MB, off from 1 MB up). It turned highlighting off.
 
 - A completed index task without an index result fails the analysis
   with "Task … completed without an index result". The viewer used to

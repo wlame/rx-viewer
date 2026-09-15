@@ -1,14 +1,11 @@
 <script lang="ts">
   import { settings } from '$lib/stores';
   import { sidebarTab as activeTab, sidebarVisible } from '$lib/stores/layout';
-  import { readSearchUrlState } from '$lib/utils/urlState';
   import FileTree from '../tree/FileTree.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
 
   export let width: number;
 
-  // A link that carries a search opens on its results.
-  if (readSearchUrlState()) activeTab.set('search');
   let isResizing = false;
   let startX = 0;
   let startWidth = 0;

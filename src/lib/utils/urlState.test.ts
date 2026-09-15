@@ -1,163 +1,238 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
-  updateUrlState,
-  readUrlState,
-  updateSearchUrlState,
-  readSearchUrlState,
+  parseViewState,
+  serializeViewState,
+  readViewState,
+  writeViewState,
   debounce,
   DEFAULT_MAX_RESULTS,
-  type FileState,
+  DEFAULT_VIEW,
   type SearchState,
+  type ViewState,
 } from './urlState';
 
 /**
- * The URL is how a viewer session is shared and restored. A path that
+ * The URL is how a viewer session is shared and restored. A value that
  * survives a write but not a read means a shared link opens the wrong
- * file, so the round trip is what these tests pin.
+ * view, so the round trip is what these tests pin; and the URL is input
+ * like any other, so a bad value must fall back to its default.
  */
-function setLocation(search: string) {
-  const url = `http://localhost:5173/${search}`;
+function setLocation(search: string, hash = '') {
+  const calls: { mode: 'push' | 'replace'; url: string }[] = [];
+  const move = (mode: 'push' | 'replace') => (_state: unknown, _title: string, next: string) => {
+    calls.push({ mode, url: next });
+    const parsed = new URL(next, 'http://localhost:5173');
+    Object.assign(window.location, {
+      href: parsed.toString(),
+      pathname: parsed.pathname,
+      search: parsed.search,
+      hash: parsed.hash,
+    });
+  };
   vi.stubGlobal('window', {
-    location: { href: url, search: search.startsWith('?') ? search : '' },
-    history: {
-      replaceState: (_state: unknown, _title: string, next: string) => {
-        const parsed = new URL(next);
-        (window as unknown as { location: { href: string; search: string } }).location = {
-          href: parsed.toString(),
-          search: parsed.search,
-        };
-      },
+    location: {
+      href: `http://localhost:5173/${search}${hash}`,
+      pathname: '/',
+      search,
+      hash,
     },
+    history: { replaceState: move('replace'), pushState: move('push') },
   });
+  return calls;
 }
 
-describe('readUrlState', () => {
-  afterEach(() => vi.unstubAllGlobals());
+const plainSearch: SearchState = {
+  patterns: ['error'],
+  maxResults: DEFAULT_MAX_RESULTS,
+  onlyOpenedFiles: false,
+  flags: {},
+};
 
-  it('returns null when no file is named', () => {
-    setLocation('?line=10');
-    expect(readUrlState()).toBeNull();
+function view(overrides: Partial<ViewState>): ViewState {
+  return { ...DEFAULT_VIEW, ...overrides };
+}
+
+describe('parseViewState', () => {
+  it('gives the default view for an empty query', () => {
+    expect(parseViewState('')).toEqual(DEFAULT_VIEW);
   });
 
-  it('defaults to line 1 when the line is absent', () => {
-    setLocation('?file=/var/log/app.log');
-    expect(readUrlState()).toEqual({
-      path: '/var/log/app.log',
-      line: 1,
-      syntaxHighlighting: false,
+  it('reads a line as a whole number from 1 up', () => {
+    expect(parseViewState('?file=/a.log&line=169').line).toBe(169);
+  });
+
+  // A negative line counts from the end in /v1/samples, so the URL must
+  // never pass one through.
+  it.each(['-5', 'abc', '0', '1.5', '', '1e3', '99999999999999999999'])(
+    'falls back to no line for line=%s',
+    (value) => {
+      expect(parseViewState(`?file=/a.log&line=${value}`).line).toBeNull();
+    },
+  );
+
+  it('leaves highlighting to the size-based default when the link has no highlight', () => {
+    expect(parseViewState('?file=/a.log').highlight).toBeNull();
+  });
+
+  it.each([
+    ['1', true],
+    ['true', true],
+    ['0', false],
+    ['false', false],
+    ['yes', null],
+  ])('reads highlight=%s as %s', (value, expected) => {
+    expect(parseViewState(`?file=/a.log&highlight=${value}`).highlight).toBe(expected);
+  });
+
+  it('opens the Search tab for a link that carries a search and names no tab', () => {
+    expect(parseViewState('?regexp=error').tab).toBe('search');
+    expect(parseViewState('?file=/a.log').tab).toBe('tree');
+  });
+
+  it('keeps the Files tab a link asks for even with a search', () => {
+    expect(parseViewState('?regexp=error&tab=files').tab).toBe('tree');
+  });
+
+  it('ignores a tab it does not know', () => {
+    expect(parseViewState('?tab=settings').tab).toBe('tree');
+  });
+
+  it('reads a filter mode it does not know as highlight', () => {
+    expect(parseViewState('?file=/a.log&filter=x&filter_mode=sparkle').filter).toEqual({
+      pattern: 'x',
+      mode: 'highlight',
     });
   });
 
-  it('falls back to line 1 rather than NaN when the line is not a number', () => {
-    setLocation('?file=/a.log&line=abc');
-    expect(readUrlState()?.line).toBe(1);
+  it('reads an empty filter or category as none', () => {
+    const parsed = parseViewState('?file=/a.log&filter=&filter_mode=hide&category=');
+    expect(parsed.filter).toBeNull();
+    expect(parsed.category).toBeNull();
   });
 
-  it('treats any highlight value other than 1 as off', () => {
-    setLocation('?file=/a.log&highlight=yes');
-    expect(readUrlState()?.syntaxHighlighting).toBe(false);
-  });
-});
-
-describe('updateUrlState and readUrlState', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  const cases: FileState[] = [
-    { path: '/var/log/app.log', line: 1, syntaxHighlighting: false },
-    { path: '/var/log/app.log', line: 351232, syntaxHighlighting: true },
-    { path: '/logs/with space/and&ersand.log', line: 7, syntaxHighlighting: false },
-    { path: '/logs/unicode-日本語.log', line: 2, syntaxHighlighting: true },
-    { path: '/logs/plus+sign.log', line: 3, syntaxHighlighting: false },
-  ];
-
-  it.each(cases)('survives a write then a read: $path line $line', (state) => {
-    setLocation('');
-    updateUrlState(state);
-    expect(readUrlState()).toEqual(state);
-  });
-
-  it('clears every file parameter when passed null', () => {
-    setLocation('');
-    updateUrlState({ path: '/a.log', line: 5, syntaxHighlighting: true });
-    updateUrlState(null);
-    expect(readUrlState()).toBeNull();
-    expect(window.location.search).not.toContain('line=');
-    expect(window.location.search).not.toContain('highlight=');
-  });
-});
-
-describe('updateSearchUrlState and readSearchUrlState', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  const plain: SearchState = {
-    patterns: ['error'],
-    maxResults: DEFAULT_MAX_RESULTS,
-    onlyOpenedFiles: false,
-    flags: {},
-  };
-
-  const cases: SearchState[] = [
-    plain,
-    { ...plain, patterns: ['timeout (\\d+)ms', 'a&b=c', 'naïve 日本語', 'x+y #1'] },
-    { ...plain, maxResults: 5000, onlyOpenedFiles: true },
-    { ...plain, flags: { ignore_case: true, word_regexp: true, fixed_strings: true } },
-  ];
-
-  it.each(cases)('survives a write then a read: %o', (search) => {
-    setLocation('');
-    updateSearchUrlState(search);
-    expect(readSearchUrlState()).toEqual(search);
-  });
-
-  // A link should carry what makes the search differ from a plain one and
-  // nothing else, under the names /v1/trace uses.
-  it('leaves the defaults out of the URL', () => {
-    setLocation('');
-    updateSearchUrlState(plain);
-    expect(window.location.search).toBe('?regexp=error');
-  });
-
-  it('writes a flag as 1 and reads true as well', () => {
-    setLocation('');
-    updateSearchUrlState({ ...plain, flags: { ignore_case: true } });
-    expect(window.location.search).toContain('ignore_case=1');
-
-    setLocation('?regexp=a&word_regexp=true');
-    expect(readSearchUrlState()?.flags).toEqual({ word_regexp: true });
-  });
-
-  it('keeps the file parameters when it writes the search', () => {
-    setLocation('?file=%2Fa.log&line=7&highlight=0');
-    updateSearchUrlState(plain);
-    expect(readUrlState()).toEqual({ path: '/a.log', line: 7, syntaxHighlighting: false });
-  });
-
-  it('clears the search parameters and nothing else when passed null', () => {
-    setLocation('?file=%2Fa.log&line=7&highlight=1');
-    updateSearchUrlState({ ...plain, onlyOpenedFiles: true, flags: { ignore_case: true } });
-    updateSearchUrlState(null);
-    expect(readSearchUrlState()).toBeNull();
-    expect(window.location.search).toBe('?file=%2Fa.log&line=7&highlight=1');
-  });
-
-  it('returns null when the URL names no pattern, or only empty ones', () => {
-    setLocation('?file=%2Fa.log');
-    expect(readSearchUrlState()).toBeNull();
-    setLocation('?regexp=&regexp=%20');
-    expect(readSearchUrlState()).toBeNull();
+  it('returns no search when the URL names no pattern, or only empty ones', () => {
+    expect(parseViewState('?file=%2Fa.log').search).toBeNull();
+    expect(parseViewState('?regexp=&regexp=%20').search).toBeNull();
   });
 
   it.each(['abc', '0', '-5', '1.5', '99999'])(
     'falls back to the default cap for max_results=%s',
     (value) => {
-      setLocation(`?regexp=a&max_results=${value}`);
-      expect(readSearchUrlState()?.maxResults).toBe(DEFAULT_MAX_RESULTS);
+      expect(parseViewState(`?regexp=a&max_results=${value}`).search?.maxResults).toBe(
+        DEFAULT_MAX_RESULTS,
+      );
     },
   );
 
-  it('ignores a parameter the search panel cannot set', () => {
-    setLocation('?regexp=a&pcre2=1&line_regexp=1');
-    expect(readSearchUrlState()?.flags).toEqual({});
+  it('reads a search flag written as true as well as 1', () => {
+    expect(parseViewState('?regexp=a&word_regexp=true').search?.flags).toEqual({
+      word_regexp: true,
+    });
+  });
+
+  it('ignores a search parameter the search panel cannot set', () => {
+    expect(parseViewState('?regexp=a&pcre2=1&line_regexp=1').search?.flags).toEqual({});
+  });
+});
+
+describe('serializeViewState and parseViewState', () => {
+  const cases: [string, ViewState][] = [
+    ['the default view', DEFAULT_VIEW],
+    ['a file at a line', view({ file: '/var/log/app.log', line: 351232 })],
+    ['a path with URL syntax', view({ file: '/logs/with space/and&amp+sign #1.log', line: 7 })],
+    ['a unicode path', view({ file: '/logs/unicode-日本語.log', highlight: true })],
+    ['highlighting off', view({ file: '/a.log', highlight: false })],
+    [
+      'a filter and a category',
+      view({
+        file: '/a.log',
+        filter: { pattern: '(\\w+)@(\\w+)\\.com', mode: 'hide' },
+        category: 'error',
+      }),
+    ],
+    ['a search on its tab', view({ search: plainSearch, tab: 'search' })],
+    ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
+    ['the Search tab with no search', view({ tab: 'search' })],
+    ['byte offsets', view({ offsets: true, search: plainSearch, tab: 'search' })],
+    [
+      'a search with every option',
+      view({
+        tab: 'search',
+        search: {
+          patterns: ['timeout (\\d+)ms', 'a&b=c', 'naïve 日本語', 'x+y #1'],
+          maxResults: 5000,
+          onlyOpenedFiles: true,
+          flags: { ignore_case: true, word_regexp: true, fixed_strings: true },
+        },
+      }),
+    ],
+  ];
+
+  it.each(cases)('survives a write then a read: %s', (_name, state) => {
+    expect(parseViewState(serializeViewState(state, ''))).toEqual(state);
+  });
+
+  // A link should carry what makes the view differ from a plain one and
+  // nothing else, under the names /v1/trace uses for the search.
+  it('leaves values at their default out of the link', () => {
+    expect(serializeViewState(view({ file: '/a.log' }), '')).toBe('?file=%2Fa.log');
+    expect(serializeViewState(view({ search: plainSearch, tab: 'search' }), '')).toBe(
+      '?regexp=error',
+    );
+    expect(serializeViewState(DEFAULT_VIEW, '')).toBe('');
+  });
+
+  it('writes a search flag as 1', () => {
+    const query = serializeViewState(
+      view({ search: { ...plainSearch, flags: { ignore_case: true } }, tab: 'search' }),
+      '',
+    );
+    expect(query).toContain('ignore_case=1');
+  });
+
+  it('keeps a parameter it does not own', () => {
+    expect(serializeViewState(view({ file: '/a.log' }), '?debug=1&line=4')).toBe(
+      '?debug=1&file=%2Fa.log',
+    );
+  });
+});
+
+describe('readViewState and writeViewState', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads the view from the address bar', () => {
+    setLocation('?file=%2Fa.log&line=12&highlight=0');
+    expect(readViewState()).toEqual(view({ file: '/a.log', line: 12, highlight: false }));
+  });
+
+  it('replaces the entry when asked to replace', () => {
+    const calls = setLocation('');
+    writeViewState(view({ file: '/a.log', line: 3 }), 'replace');
+    expect(calls).toEqual([{ mode: 'replace', url: '/?file=%2Fa.log&line=3' }]);
+  });
+
+  it('adds an entry when asked to push', () => {
+    const calls = setLocation('?file=%2Fa.log');
+    writeViewState(view({ file: '/b.log' }), 'push');
+    expect(calls).toEqual([{ mode: 'push', url: '/?file=%2Fb.log' }]);
+  });
+
+  it('writes nothing when the URL already says the same', () => {
+    const calls = setLocation('?file=%2Fa.log&line=3');
+    writeViewState(view({ file: '/a.log', line: 3 }), 'push');
+    expect(calls).toEqual([]);
+  });
+
+  it('replaces rather than pushes a URL that says the same view in other bytes', () => {
+    const calls = setLocation('?regexp=a%20b&line=-5');
+    writeViewState(view({ search: { ...plainSearch, patterns: ['a b'] }, tab: 'search' }), 'push');
+    expect(calls).toEqual([{ mode: 'replace', url: '/?regexp=a+b' }]);
+  });
+
+  it('keeps the hash it finds', () => {
+    const calls = setLocation('', '#section');
+    writeViewState(view({ file: '/a.log' }), 'replace');
+    expect(calls[0].url).toBe('/?file=%2Fa.log#section');
   });
 });
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { trace, tree, files } from '$lib/stores';
+  import { searchShowsOffsets } from '$lib/stores/layout';
   import {
     OffsetLineResolver,
     offsetKey,
@@ -13,8 +14,6 @@
   import { formatCount } from '$lib/utils/format';
   import type { TraceMatch } from '$lib/types';
   import FileBadges from '../common/FileBadges.svelte';
-
-  let showOffsets = false; // Toggle between line numbers and byte offsets
 
   // Byte offset -> absolute line number, for matches whose line the
   // backend could not report, keyed by offsetKey.
@@ -151,10 +150,10 @@
         </p>
         <button
           class="text-xs px-2 py-1 rounded bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle hover:bg-gh-canvas-default dark:hover:bg-gh-canvas-dark-default border border-gh-border-default dark:border-gh-border-dark-default"
-          on:click={() => (showOffsets = !showOffsets)}
-          title={showOffsets ? 'Show line numbers' : 'Show byte offsets'}
+          on:click={() => searchShowsOffsets.update((shown) => !shown)}
+          title={$searchShowsOffsets ? 'Show line numbers' : 'Show byte offsets'}
         >
-          {showOffsets ? 'Lines' : 'Offsets'}
+          {$searchShowsOffsets ? 'Lines' : 'Offsets'}
         </button>
       </div>
     </div>
@@ -182,7 +181,7 @@
                     isIndexed={fileMetadata.is_indexed}
                   />
                 {/if}
-                {#if showOffsets}
+                {#if $searchShowsOffsets}
                   <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
                     @{match.offset}
                   </span>

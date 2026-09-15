@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { trace, tree, files, health } from '$lib/stores';
+  import { searchRequest } from '$lib/stores/trace';
   import { searchFocusRequested } from '$lib/stores/layout';
   import { contractSupports } from '$lib/utils/contractVersion';
   import { isShortcut } from '$lib/utils/shortcuts';
@@ -11,11 +13,7 @@
     togglesFromFlags,
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
-  import {
-    DEFAULT_MAX_RESULTS,
-    readSearchUrlState,
-    updateSearchUrlState,
-  } from '$lib/utils/urlState';
+  import { DEFAULT_MAX_RESULTS } from '$lib/utils/urlState';
   import Spinner from '../common/Spinner.svelte';
   import SearchResults from './SearchResults.svelte';
   import SearchToggles from './SearchToggles.svelte';
@@ -46,13 +44,13 @@
   $: hasRoots = searchRoots.length > 0;
 
   // The panel is rebuilt each time its tab opens, so its form comes from
-  // the URL, which holds the last search. On page load that search has
-  // not run yet; it runs once the backend's health says which parameters
-  // it takes and the paths to search are known.
+  // the last search, which a link may have set. On page load that search
+  // has not run yet; it runs once the backend's health says which
+  // parameters it takes and the paths to search are known.
   let restorePending = false;
 
   onMount(() => {
-    const saved = readSearchUrlState();
+    const saved = get(searchRequest);
     if (!saved) return;
     searchPatterns = saved.patterns;
     maxResults = saved.maxResults;
@@ -102,7 +100,7 @@
       pathsToSearch = searchRoots;
     }
 
-    updateSearchUrlState({
+    searchRequest.set({
       patterns: validPatterns,
       maxResults,
       onlyOpenedFiles,

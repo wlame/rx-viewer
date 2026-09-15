@@ -191,6 +191,8 @@ export interface OpenFile {
   anomalies: AnomalyRangeResult[] | null; // Anomalies detected in the file
   anomalySummary: Record<string, number> | null; // Category -> count
   selectedAnomalyCategory: string | null; // Currently selected category for highlighting (null = none)
+  /** The line the URL names for this file; the rule is in `utils/anchorLine.ts`. */
+  anchorLine: number;
 }
 
 /** Match info for highlighting in file viewer */

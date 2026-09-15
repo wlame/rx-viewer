@@ -1,23 +1,15 @@
 <script lang="ts">
   import { files } from '$lib/stores';
+  import { activeOpenFile } from '$lib/stores/files';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
 
   let draggedIndex: number | null = null;
   let dragOverIndex: number | null = null;
 
-  // Derive active file index from the store's activeFilePath
-  $: activeFileIndex = $files.activeFilePath
-    ? $files.openFiles.findIndex((f) => f.path === $files.activeFilePath)
-    : 0;
-
-  // Ensure valid index (fallback to last file if current is invalid)
-  $: validActiveIndex =
-    activeFileIndex >= 0 && activeFileIndex < $files.openFiles.length
-      ? activeFileIndex
-      : Math.max(0, $files.openFiles.length - 1);
-
-  $: activeFile = $files.openFiles[validActiveIndex];
+  // The same rule picks the file the URL names, so the two cannot differ.
+  $: activeFile = activeOpenFile($files);
+  $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
   function selectTab(index: number) {
     const file = $files.openFiles[index];

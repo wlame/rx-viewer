@@ -2,7 +2,8 @@ import { writable, get } from 'svelte/store';
 import { api } from '../api';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
-import { updateUrlState } from '../utils/urlState';
+import { clampAnchor } from '../utils/anchorLine';
+import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
 import type { OpenFile, FileLine, FileMatch, IndexResponse, SamplesResponse } from '../types';
 import { notifications } from './notifications';
@@ -38,6 +39,38 @@ interface FilesState {
   openFiles: OpenFile[];
   matches: Map<string, FileMatch[]>; // path -> matches
   activeFilePath: string | null; // Currently active/focused file
+}
+
+/**
+ * The file the editor shows: the one `activeFilePath` names, or the last
+ * open file when it names none that is open.
+ */
+export function activeOpenFile(state: Pick<FilesState, 'openFiles' | 'activeFilePath'>) {
+  return state.openFiles.find((f) => f.path === state.activeFilePath) ?? state.openFiles.at(-1);
+}
+
+/** Files this size and larger open with syntax highlighting off. */
+const HIGHLIGHT_SIZE_LIMIT = 1024 * 1024;
+
+/**
+ * Whether a file opens with syntax highlighting: on below 1 MB, off from
+ * 1 MB up, on when the size is unknown.
+ */
+export function defaultSyntaxHighlighting(fileSize: number | null | undefined): boolean {
+  return fileSize === null || fileSize === undefined || fileSize < HIGHLIGHT_SIZE_LIMIT;
+}
+
+/** A filter pattern compiled the way the editor applies it, or the reason it does not compile. */
+function compileFilterPattern(pattern: string): {
+  compiledRegex: RegExp | null;
+  error: string | null;
+} {
+  if (!pattern.trim()) return { compiledRegex: null, error: null };
+  try {
+    return { compiledRegex: new RegExp(pattern, 'g'), error: null };
+  } catch (e) {
+    return { compiledRegex: null, error: e instanceof Error ? e.message : 'Invalid regex pattern' };
+  }
 }
 
 function createFilesStore() {
@@ -113,7 +146,9 @@ function createFilesStore() {
         activeFilePath: path,
         openFiles:
           scrollToLine !== undefined
-            ? s.openFiles.map((f, i) => (i === existingIndex ? { ...f, scrollToLine } : f))
+            ? s.openFiles.map((f, i) =>
+                i === existingIndex ? { ...f, scrollToLine, anchorLine: scrollToLine } : f,
+              )
             : s.openFiles,
       }));
       return;
@@ -122,15 +157,8 @@ function createFilesStore() {
     // Create placeholder file entry
     const name = path.split('/').pop() || path;
 
-    // Default syntax highlighting: enabled for files < 1MB, disabled for larger files
-    // Can be overridden by syntaxHighlightingOverride parameter (from URL state)
-    const ONE_MB = 1024 * 1024;
-    const defaultSyntaxHighlighting =
-      fileSize === null || fileSize === undefined || fileSize < ONE_MB;
-    const syntaxHighlighting =
-      syntaxHighlightingOverride !== undefined
-        ? syntaxHighlightingOverride
-        : defaultSyntaxHighlighting;
+    // The size-based default, unless the caller (a link) says otherwise.
+    const syntaxHighlighting = syntaxHighlightingOverride ?? defaultSyntaxHighlighting(fileSize);
 
     const newFile: OpenFile = {
       path,
@@ -156,6 +184,7 @@ function createFilesStore() {
       anomalies: null,
       anomalySummary: null,
       selectedAnomalyCategory: null,
+      anchorLine: scrollToLine ?? 1,
     };
 
     // Add file to the end and make it active
@@ -206,7 +235,8 @@ function createFilesStore() {
   /**
    * Replace a file's lines with a freshly loaded window. The window's own
    * ends decide whether paging may continue in either direction, and a
-   * window that shows where the file ends also gives its line count.
+   * window that shows where the file ends also gives its line count,
+   * and moves a target past that end onto the last line.
    * `extra` holds any other fields to set in the same update.
    */
   function showWindow(
@@ -215,17 +245,21 @@ function createFilesStore() {
     response: SamplesResponse,
     extra: Partial<OpenFile> = {},
   ) {
+    const bounds = windowBounds(window);
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
         f.path === path
           ? {
-              ...f, // Preserve all existing fields including scrollToLine
-              ...windowBounds(window),
+              ...f, // Preserve all existing fields
+              ...bounds,
               totalLines: window.lineCount ?? f.totalLines,
               loading: false,
               isCompressed: response.is_compressed,
               compressionFormat: response.compression_format,
+              anchorLine: clampAnchor(f.anchorLine, bounds),
+              scrollToLine:
+                f.scrollToLine === undefined ? undefined : clampAnchor(f.scrollToLine, bounds),
               ...extra,
             }
           : f,
@@ -405,7 +439,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber } : f,
+          f.path === path ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber } : f,
         ),
       }));
     } else {
@@ -414,7 +448,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber } : f,
+          f.path === path ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber } : f,
         ),
       }));
 
@@ -462,6 +496,7 @@ function createFilesStore() {
       const { endLine } = windowBounds(window);
       showWindow(path, { ...window, reachedEnd: true, lineCount: endLine }, response, {
         scrollToLine: endLine,
+        anchorLine: endLine,
       });
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
@@ -500,10 +535,6 @@ function createFilesStore() {
         return newMatches;
       })(),
     }));
-
-    // With a file still open its pane keeps the URL current. With none,
-    // the URL must stop naming the closed one, or a reload reopens it.
-    if (get({ subscribe }).openFiles.length === 0) updateUrlState(null);
   }
 
   /**
@@ -545,6 +576,22 @@ function createFilesStore() {
       newOpenFiles.splice(toIndex, 0, movedFile);
       return { ...s, openFiles: newOpenFiles };
     });
+  }
+
+  /** Turn syntax highlighting of a file on or off. */
+  function setSyntaxHighlighting(path: string, on: boolean) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, syntaxHighlighting: on } : f)),
+    }));
+  }
+
+  /** Set the line the URL names for a file; the editor reports it after a scroll. */
+  function setAnchorLine(path: string, line: number) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, anchorLine: line } : f)),
+    }));
   }
 
   /**
@@ -603,28 +650,29 @@ function createFilesStore() {
       ...s,
       openFiles: s.openFiles.map((f) => {
         if (f.path !== path || !f.regexFilter) return f;
+        return {
+          ...f,
+          regexFilter: { ...f.regexFilter, pattern, mode, ...compileFilterPattern(pattern) },
+        };
+      }),
+    }));
+  }
 
-        let compiledRegex: RegExp | null = null;
-        let error: string | null = null;
-
-        if (pattern.trim()) {
-          try {
-            compiledRegex = new RegExp(pattern, 'g');
-            // No longer require capturing groups - if no groups, treat whole match as one group
-          } catch (e) {
-            error = e instanceof Error ? e.message : 'Invalid regex pattern';
-            compiledRegex = null;
-          }
-        }
-
+  /** Apply a filter to a file, enabled, or remove its filter when given null. */
+  function setRegexFilter(path: string, filter: FilterState | null) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => {
+        if (f.path !== path) return f;
+        if (!filter) return { ...f, regexFilter: null };
         return {
           ...f,
           regexFilter: {
-            ...f.regexFilter,
-            pattern,
-            mode,
-            compiledRegex,
-            error,
+            enabled: true,
+            applying: false,
+            pattern: filter.pattern,
+            mode: filter.mode,
+            ...compileFilterPattern(filter.pattern),
           },
         };
       }),
@@ -730,8 +778,11 @@ function createFilesStore() {
     clearScrollPosition,
     reorderFiles,
     toggleSyntaxHighlighting,
+    setSyntaxHighlighting,
+    setAnchorLine,
     toggleRegexFilter,
     updateRegexFilter,
+    setRegexFilter,
     clearRegexFilter,
     toggleInvisibleChars,
     toggleWordWrap,
