@@ -71,6 +71,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Back and Forward step through the view. Opening a file or switching
+  to another, running a search and switching the sidebar tab each add a
+  history entry; a scroll, a jump inside the file, the highlighting, the
+  filter, the anomaly category and the Offsets switch rewrite the
+  current one, and typing in a field writes nothing until the search
+  runs. Back restores the entry's file at its line, its search (the
+  running one is cancelled and the entry's search runs again) and its
+  tab; Back to the entry before the first file closes the open files.
+  The viewer used `replaceState` only, so Back left the app.
+
 - The URL carries the whole view a link should restore: besides the
   file, its line, its highlighting and the search, it now names the
   sidebar tab (`tab=files` or `tab=search`, left out when it is the tab

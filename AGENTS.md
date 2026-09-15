@@ -127,7 +127,10 @@ separate comment above, or eslint reads every word as another rule.
   URL: `urlState.ts` reads and writes every key from one table and is the
   only module that writes the view to `history` (`apiToken.ts` only strips
   the token); `viewState.ts` writes the URL from the stores and restores
-  the stores from a URL. A component never writes the URL. `line` is the file's anchor line, whose rule is in
+  the stores from a URL. A component never writes the URL. A change of a
+  key that is a step (open a file, run a search, switch the sidebar tab)
+  is a `pushState`, every other change a `replaceState`, and `popstate`
+  restores the entry. `line` is the file's anchor line, whose rule is in
   `utils/anchorLine.ts`.
 - Every keyboard shortcut and mouse gesture is a row of one table,
   `src/lib/utils/shortcuts.ts`. The key handlers ask it whether a key is

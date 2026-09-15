@@ -4,7 +4,12 @@ import { files } from './stores/files';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { fileViewOf, restoreView, startViewSync } from './viewState';
-import { DEFAULT_MAX_RESULTS, DEFAULT_VIEW, type ViewState } from './utils/urlState';
+import {
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_VIEW,
+  type SearchState,
+  type ViewState,
+} from './utils/urlState';
 import type { OpenFile } from './types';
 
 const ONE_MB = 1024 * 1024;
@@ -157,6 +162,8 @@ function stubWindow(search = '') {
   vi.stubGlobal('window', {
     location: { pathname: '/', search, hash: '' },
     history: { replaceState: move('replace'), pushState: move('push') },
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
   return calls;
 }
@@ -295,5 +302,136 @@ describe('restoreView', () => {
     expect(get(sidebarTab)).toBe('search');
     expect(get(searchShowsOffsets)).toBe(true);
     expect(get(searchRequest)).toEqual(view.search);
+  });
+});
+
+/**
+ * A browser history: a stack of entries, push and replace as a browser
+ * does them, and Back and Forward that fire `popstate`.
+ */
+function stubBrowserHistory() {
+  const entries = [''];
+  const modes: ('push' | 'replace')[] = [];
+  const listeners = new Set<() => void>();
+  const location = { pathname: '/', search: '', hash: '' };
+  let index = 0;
+  const queryOf = (url: string) => new URL(url, 'http://localhost:5173').search;
+
+  vi.stubGlobal('window', {
+    location,
+    history: {
+      pushState: (_state: unknown, _title: string, url: string) => {
+        modes.push('push');
+        entries.splice(index + 1, entries.length, queryOf(url));
+        index += 1;
+        location.search = queryOf(url);
+      },
+      replaceState: (_state: unknown, _title: string, url: string) => {
+        modes.push('replace');
+        entries[index] = queryOf(url);
+        location.search = queryOf(url);
+      },
+    },
+    addEventListener: (type: string, listener: () => void) => {
+      if (type === 'popstate') listeners.add(listener);
+    },
+    removeEventListener: (type: string, listener: () => void) => {
+      if (type === 'popstate') listeners.delete(listener);
+    },
+  });
+
+  const go = (delta: number) => {
+    index += delta;
+    location.search = entries[index];
+    for (const listener of listeners) listener();
+  };
+  return { entries, modes, back: () => go(-1), forward: () => go(1) };
+}
+
+describe('Back and Forward', () => {
+  let stopSync: () => void = () => {};
+  let browser: ReturnType<typeof stubBrowserHistory>;
+
+  beforeEach(() => {
+    serveBackend();
+    browser = stubBrowserHistory();
+    stopSync = startViewSync();
+  });
+
+  afterEach(() => {
+    stopSync();
+    resetStores();
+    vi.unstubAllGlobals();
+  });
+
+  const activePath = () => get(files).activeFilePath;
+  const openPaths = () => get(files).openFiles.map((f) => f.path);
+  const search: SearchState = {
+    patterns: ['LINE 7'],
+    maxResults: DEFAULT_MAX_RESULTS,
+    onlyOpenedFiles: false,
+    flags: {},
+  };
+
+  it('adds an entry for each file opened, and none for a jump inside one', async () => {
+    await files.openFile('/logs/small.log', undefined, 1000);
+    await files.jumpToLine('/logs/small.log', 500);
+    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB);
+
+    expect(browser.entries).toEqual([
+      '',
+      '?file=%2Flogs%2Fsmall.log&line=500',
+      '?file=%2Flogs%2Fbig.log',
+    ]);
+  });
+
+  it('returns to the previous file, then to no file, and forward again', async () => {
+    await files.openFile('/logs/small.log', 300, 1000);
+    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB);
+
+    browser.back();
+    await vi.waitFor(() => expect(activePath()).toBe('/logs/small.log'));
+    expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log&line=300');
+
+    browser.back();
+    await vi.waitFor(() => expect(openPaths()).toEqual([]));
+
+    browser.forward();
+    await vi.waitFor(() => expect(openPaths()).toEqual(['/logs/small.log']));
+    expect(get(files).openFiles[0].anchorLine).toBe(300);
+  });
+
+  it('returns from a file to the search run before it, then to no search', async () => {
+    searchRequest.set(search);
+    await files.openFile('/logs/small.log', undefined, 1000);
+
+    browser.back();
+    await vi.waitFor(() => expect(openPaths()).toEqual([]));
+    expect(get(searchRequest)).toEqual(search);
+
+    browser.back();
+    await vi.waitFor(() => expect(get(searchRequest)).toBeNull());
+  });
+
+  it('returns to the sidebar tab of the previous step', async () => {
+    sidebarTab.set('search');
+    expect(browser.entries).toEqual(['', '?tab=search']);
+
+    browser.back();
+    await vi.waitFor(() => expect(get(sidebarTab)).toBe('tree'));
+  });
+
+  it('adds no entry while it restores a view', async () => {
+    await files.openFile('/logs/small.log', undefined, 1000);
+    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB);
+    const pushes = browser.modes.filter((mode) => mode === 'push').length;
+
+    browser.back();
+    await vi.waitFor(() => expect(activePath()).toBe('/logs/small.log'));
+    browser.back();
+    await vi.waitFor(() => expect(openPaths()).toEqual([]));
+
+    expect(browser.modes.filter((mode) => mode === 'push')).toHaveLength(pushes);
+    expect(browser.entries).toHaveLength(3);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
+  historyModeFor,
   parseViewState,
   serializeViewState,
   readViewState,
@@ -194,6 +195,86 @@ describe('serializeViewState and parseViewState', () => {
     expect(serializeViewState(view({ file: '/a.log' }), '?debug=1&line=4')).toBe(
       '?debug=1&file=%2Fa.log',
     );
+  });
+});
+
+/**
+ * Back must undo a step the user took (open a file, run a search, switch
+ * the sidebar tab) and skip the fine-grained changes in between (a
+ * scroll, a jump inside the file, a filter, a toggle).
+ */
+describe('historyModeFor', () => {
+  const fileA = view({ file: '/a.log' });
+
+  const steps: { name: string; previous: ViewState; next: ViewState; mode: 'push' | 'replace' }[] =
+    [
+      { name: 'opening the first file', previous: DEFAULT_VIEW, next: fileA, mode: 'push' },
+      {
+        name: 'switching to another file',
+        previous: fileA,
+        next: view({ file: '/b.log' }),
+        mode: 'push',
+      },
+      { name: 'closing the last file', previous: fileA, next: DEFAULT_VIEW, mode: 'replace' },
+      {
+        name: 'moving the line',
+        previous: fileA,
+        next: view({ file: '/a.log', line: 500 }),
+        mode: 'replace',
+      },
+      {
+        name: 'toggling highlighting',
+        previous: fileA,
+        next: view({ file: '/a.log', highlight: true }),
+        mode: 'replace',
+      },
+      {
+        name: 'applying a filter',
+        previous: fileA,
+        next: view({ file: '/a.log', filter: { pattern: 'x', mode: 'hide' } }),
+        mode: 'replace',
+      },
+      {
+        name: 'picking an anomaly category',
+        previous: fileA,
+        next: view({ file: '/a.log', category: 'error' }),
+        mode: 'replace',
+      },
+      {
+        name: 'switching the sidebar tab',
+        previous: DEFAULT_VIEW,
+        next: view({ tab: 'search' }),
+        mode: 'push',
+      },
+      {
+        name: 'switching the results to offsets',
+        previous: DEFAULT_VIEW,
+        next: view({ offsets: true }),
+        mode: 'replace',
+      },
+      {
+        name: 'running a search',
+        previous: DEFAULT_VIEW,
+        next: view({ search: plainSearch, tab: 'search' }),
+        mode: 'push',
+      },
+      {
+        name: 'running another search',
+        previous: view({ search: plainSearch, tab: 'search' }),
+        next: view({ search: { ...plainSearch, patterns: ['warn'] }, tab: 'search' }),
+        mode: 'push',
+      },
+      {
+        name: 'dropping the search',
+        previous: view({ search: plainSearch }),
+        next: DEFAULT_VIEW,
+        mode: 'replace',
+      },
+      { name: 'changing nothing', previous: fileA, next: fileA, mode: 'replace' },
+    ];
+
+  it.each(steps)('$name is a $mode', ({ previous, next, mode }) => {
+    expect(historyModeFor(previous, next)).toBe(mode);
   });
 });
 

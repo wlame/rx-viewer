@@ -89,6 +89,12 @@ interface ParamCodec<T> {
   parse(params: URLSearchParams): T;
   /** The parameters that say `value`; none when it is the default. */
   serialize(value: T, view: ViewState): Param[];
+  /**
+   * Whether changing the value from `previous` to `next` is a step the
+   * user expects Back to undo. A key without it never is: its changes
+   * rewrite the current entry.
+   */
+  isStep?: (previous: T, next: T) => boolean;
 }
 
 /** A boolean URL parameter is on when it reads `1` or `true`. */
@@ -171,6 +177,9 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     names: ['file'],
     parse: (params) => nonEmpty(params.get('file')),
     serialize: (file) => (file === null ? [] : [['file', file]]),
+    // Opening a file or switching to another is a step; closing the last
+    // one is not, or Back would reopen a file that failed to open.
+    isStep: (previous, next) => next !== null && next !== previous,
   },
   line: {
     names: ['line'],
@@ -212,6 +221,7 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     },
     serialize: (tab, view) =>
       tab === defaultTab(view.search !== null) ? [] : [['tab', TAB_PARAM_VALUES[tab]]],
+    isStep: (previous, next) => next !== previous,
   },
   offsets: {
     names: ['offsets'],
@@ -222,6 +232,10 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     names: ['regexp', 'max_results', 'only_opened', ...SEARCH_FLAG_PARAMS],
     parse: parseSearch,
     serialize: serializeSearch,
+    // Running a search is a step; dropping one is not.
+    isStep: (previous, next) =>
+      next !== null &&
+      JSON.stringify(serializeSearch(previous)) !== JSON.stringify(serializeSearch(next)),
   },
 };
 
@@ -272,6 +286,24 @@ export function readViewState(): ViewState {
  * Back returns from, `replace` rewrites the current one.
  */
 export type HistoryMode = 'push' | 'replace';
+
+function isStepKey<K extends keyof ViewState>(
+  key: K,
+  previous: ViewState,
+  next: ViewState,
+): boolean {
+  return CODECS[key].isStep?.(previous[key], next[key]) ?? false;
+}
+
+/**
+ * How the change from `previous` to `next` reaches history: a push when
+ * any key changed in a way that is a step (opening a file, running a
+ * search, switching the sidebar tab), otherwise a replace (the line, the
+ * highlighting, the filter, the category, the offsets switch).
+ */
+export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
+  return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';
+}
 
 /**
  * Put `view` in the address bar. Nothing is written when the URL already

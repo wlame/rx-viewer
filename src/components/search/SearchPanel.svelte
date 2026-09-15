@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { trace, tree, files, health } from '$lib/stores';
   import { searchRequest } from '$lib/stores/trace';
@@ -13,7 +12,7 @@
     togglesFromFlags,
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
-  import { DEFAULT_MAX_RESULTS } from '$lib/utils/urlState';
+  import { DEFAULT_MAX_RESULTS, type SearchState } from '$lib/utils/urlState';
   import Spinner from '../common/Spinner.svelte';
   import SearchResults from './SearchResults.svelte';
   import SearchToggles from './SearchToggles.svelte';
@@ -43,22 +42,33 @@
   $: searchRoots = $tree.roots.map((r) => r.path);
   $: hasRoots = searchRoots.length > 0;
 
-  // The panel is rebuilt each time its tab opens, so its form comes from
-  // the last search, which a link may have set. On page load that search
-  // has not run yet; it runs once the backend's health says which
-  // parameters it takes and the paths to search are known.
+  // The form shows the current search. The panel is rebuilt each time
+  // its tab opens, and a link or Back can set a search from outside it,
+  // so the form follows `searchRequest`. A search that has no answer yet
+  // (a link on page load, an entry Back moved to) runs once the
+  // backend's health says which parameters it takes and the paths to
+  // search are known.
   let restorePending = false;
+  let shownRequest: SearchState | null = null;
 
-  onMount(() => {
-    const saved = get(searchRequest);
-    if (!saved) return;
-    searchPatterns = saved.patterns;
-    maxResults = saved.maxResults;
-    onlyOpenedFiles = saved.onlyOpenedFiles;
-    toggles = togglesFromFlags(saved.flags);
-    showAdvanced = saved.onlyOpenedFiles || saved.maxResults !== DEFAULT_MAX_RESULTS;
-    restorePending = $trace.response === null && !$trace.searching;
-  });
+  $: showRequest($searchRequest);
+
+  function showRequest(request: SearchState | null) {
+    if (request === shownRequest) return;
+    shownRequest = request;
+    if (!request) {
+      searchPatterns = [''];
+      restorePending = false;
+      return;
+    }
+    searchPatterns = request.patterns;
+    maxResults = request.maxResults;
+    onlyOpenedFiles = request.onlyOpenedFiles;
+    toggles = togglesFromFlags(request.flags);
+    showAdvanced = request.onlyOpenedFiles || request.maxResults !== DEFAULT_MAX_RESULTS;
+    const { response, searching } = get(trace);
+    restorePending = response === null && !searching;
+  }
 
   function runRestoredSearch() {
     restorePending = false;
@@ -100,12 +110,14 @@
       pathsToSearch = searchRoots;
     }
 
-    searchRequest.set({
+    // The form already shows this search; only the URL needs it.
+    shownRequest = {
       patterns: validPatterns,
       maxResults,
       onlyOpenedFiles,
       flags: matchingFlagParams(toggles),
-    });
+    };
+    searchRequest.set(shownRequest);
 
     // Search with all patterns
     await trace.search(pathsToSearch, validPatterns, {

@@ -5,6 +5,8 @@ import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
 import {
   DEFAULT_VIEW,
+  historyModeFor,
+  readViewState,
   serializeViewState,
   writeViewState,
   type SearchState,
@@ -16,8 +18,12 @@ import type { OpenFile, TreeNode } from './types';
  * The URL and the app's state, kept equal in both directions.
  *
  * `startViewSync` writes the URL from the stores: the URL is a
- * projection of the view, so no component writes it. `restoreView` does
- * the reverse and brings the stores to the view a URL describes.
+ * projection of the view, so no component writes it. A change that is a
+ * step (opening a file, running a search, switching the sidebar tab)
+ * adds a history entry; any other change rewrites the current one.
+ * `restoreView` does the reverse and brings the stores to the view a URL
+ * describes, on page load and when Back or Forward moves through the
+ * entries.
  */
 
 /** The part of the view that belongs to the active file. */
@@ -55,9 +61,36 @@ const currentView = derived(
   }),
 );
 
-/** Keep the address bar equal to the view. Returns the function that stops it. */
+/** Restores in progress. While one runs, its changes rewrite the entry Back moved to. */
+let runningRestores = 0;
+
+/** Bumped by every restore, so an older one that is still waiting stops. */
+let restoreGeneration = 0;
+
+/**
+ * Keep the address bar equal to the view, and the view equal to the
+ * entry Back or Forward moves to. Returns the function that stops both.
+ */
 export function startViewSync(): () => void {
-  return currentView.subscribe((view) => writeViewState(view, 'replace'));
+  const stopWriting = currentView.subscribe((view) => {
+    const mode = runningRestores > 0 ? 'replace' : historyModeFor(readViewState(), view);
+    writeViewState(view, mode);
+  });
+
+  const restoreEntry = () => {
+    runningRestores += 1;
+    restoreView(readViewState())
+      .catch((e) => console.error('Failed to restore the view of a history entry:', e))
+      .finally(() => {
+        runningRestores -= 1;
+      });
+  };
+  window.addEventListener('popstate', restoreEntry);
+
+  return () => {
+    stopWriting();
+    window.removeEventListener('popstate', restoreEntry);
+  };
 }
 
 /** Two searches are the same when a link would say the same for both. */
@@ -87,20 +120,28 @@ async function locateInTree(path: string): Promise<TreeNode | null> {
  * the view's line and with its highlighting. The file is in the store
  * when this resolves; the returned load resolves when its lines arrive.
  */
-async function showFile(path: string, view: ViewState): Promise<{ loaded: Promise<void> }> {
+async function showFile(
+  path: string,
+  view: ViewState,
+  isCurrent: () => boolean,
+): Promise<{ loaded: Promise<void> } | null> {
   const open = get(files).openFiles.find((f) => f.path === path);
   const line = view.line ?? 1;
 
   if (open) {
+    // A file brought forward shows the top of its loaded lines, so its
+    // line is revealed again unless it is already on screen.
+    const isOnScreen = activeOpenFile(get(files))?.path === path && open.anchorLine === line;
     files.setActiveFile(path);
     files.setSyntaxHighlighting(path, view.highlight ?? defaultSyntaxHighlighting(open.fileSize));
-    return { loaded: open.anchorLine === line ? Promise.resolve() : files.jumpToLine(path, line) };
+    return { loaded: isOnScreen ? Promise.resolve() : files.jumpToLine(path, line) };
   }
 
   // The size-based default needs the file's size, which the tree lists.
   // With the highlighting given, the tree is revealed alongside the load.
   const located = locateInTree(path);
   const node = view.highlight === null ? await located : null;
+  if (!isCurrent()) return null;
   // openFile puts the file in the store before its first await.
   const loaded = files.openFile(
     path,
@@ -114,27 +155,30 @@ async function showFile(path: string, view: ViewState): Promise<{ loaded: Promis
 }
 
 /** Bring the open files to the view: its file active, with its filter and category. */
-async function restoreFile(view: ViewState): Promise<void> {
+async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<void> {
   const path = view.file;
   if (path === null) {
     for (const file of get(files).openFiles) files.closeFile(file.path);
     return;
   }
 
-  const { loaded } = await showFile(path, view);
+  const shown = await showFile(path, view, isCurrent);
+  if (!shown) return;
   files.setRegexFilter(path, view.filter);
   files.setSelectedAnomalyCategory(path, view.category);
-  await loaded;
+  await shown.loaded;
 }
 
 /**
  * Bring the app to the view a URL describes: the results switch, the
  * search, the sidebar tab and the file. Resolves when the file's lines
- * are loaded.
+ * are loaded. A later restore supersedes this one: Back pressed twice
+ * ends on the second entry even when the first one's file is slower.
  */
 export async function restoreView(view: ViewState): Promise<void> {
+  const generation = ++restoreGeneration;
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);
-  await restoreFile(view);
+  await restoreFile(view, () => generation === restoreGeneration);
 }
