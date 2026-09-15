@@ -1,5 +1,6 @@
 <script lang="ts">
   import { files, trace, health } from '$lib/stores';
+  import CommandLine from './CommandLine.svelte';
 
   $: openFileCount = $files.openFiles.length;
   $: searchRoots = $health.data?.search_roots || [];
@@ -8,12 +9,12 @@
 </script>
 
 <footer
-  class="h-6 flex-shrink-0 flex items-center justify-between px-3 text-xs
+  class="h-6 flex-shrink-0 flex items-center justify-between gap-4 px-3 text-xs
          bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
          border-t border-gh-border-default dark:border-gh-border-dark-default
          text-gh-fg-muted dark:text-gh-fg-dark-muted relative z-10"
 >
-  <div class="flex items-center gap-4">
+  <div class="flex items-center gap-4 shrink-0">
     {#if searchRoots.length > 0}
       <span>
         {searchRoots.length}
@@ -39,7 +40,9 @@
     {/if}
   </div>
 
-  <div class="flex items-center gap-4">
+  <CommandLine />
+
+  <div class="flex items-center gap-4 shrink-0">
     {#if $health.contract.kind === 'incompatible'}
       <span
         class="font-semibold text-gh-danger-fg dark:text-gh-danger-dark-fg"

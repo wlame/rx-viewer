@@ -132,6 +132,10 @@ separate comment above, or eslint reads every word as another rule.
   is a `pushState`, every other change a `replaceState`, and `popstate`
   restores the entry. `line` is the file's anchor line, whose rule is in
   `utils/anchorLine.ts`.
+- The status bar's equivalent command comes from `stores/commands.ts`,
+  which records the backend's `cli_command` of each answer to a user
+  action (search, file window, index, analysis). Record a new action's
+  command there; never build a command in the viewer.
 - Every keyboard shortcut and mouse gesture is a row of one table,
   `src/lib/utils/shortcuts.ts`. The key handlers ask it whether a key is
   theirs and the help dialog (Cmd/Ctrl+/) lists it, so add a shortcut

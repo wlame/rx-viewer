@@ -6,6 +6,7 @@ import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
 import type { OpenFile, FileLine, FileMatch, IndexResponse, SamplesResponse } from '../types';
+import { commandLog } from './commands';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -286,6 +287,7 @@ function createFilesStore() {
       );
       if (response === SUPERSEDED) return;
 
+      commandLog.record(response.cli_command, 'file');
       showWindow(path, readSamplesAnswer(response), response);
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
@@ -320,6 +322,7 @@ function createFilesStore() {
       );
       if (response === SUPERSEDED) return;
 
+      commandLog.record(response.cli_command, 'file');
       const window = readSamplesAnswer(response);
       if (window.lines.length === 0 && !window.reachedStart) {
         await jumpToEnd(path);
@@ -490,6 +493,7 @@ function createFilesStore() {
       );
       if (response === SUPERSEDED) return;
 
+      commandLog.record(response.cli_command, 'file');
       // rx-go answers -1 under the key of the last line, so the window
       // ends at the end of the file whatever context was asked for.
       const window = readSamplesAnswer(response);

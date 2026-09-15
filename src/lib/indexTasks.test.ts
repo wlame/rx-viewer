@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { files, tree } from './stores';
+import { commandLog } from './stores/commands';
 import { analyzeFile, conflictTaskId, indexFile, treeMenuItems } from './indexTasks';
 import { ApiError } from './api';
 import { isAbortError } from './utils/latestRequest';
@@ -103,6 +104,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const file of get(files).openFiles) files.closeFile(file.path);
+  commandLog.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -339,6 +341,40 @@ describe('a finished task', () => {
     expect(treeEntry()?.line_count ?? null).toBeNull();
     const open = get(files).openFiles.find((f) => f.path === PATH);
     expect(open).toMatchObject({ isIndexed: true, totalLines: linesBefore });
+  });
+});
+
+describe('the equivalent command of an index or an analysis', () => {
+  it('records the command of the analysis it shows', async () => {
+    stubBackend({
+      'GET /v1/index': [[200, indexData(false)]],
+      'POST /v1/index': [started('t1')],
+      'GET /v1/tasks/t1': [
+        completed('t1', indexData(true, { cli_command: `rx index ${PATH} --analyze` })),
+      ],
+    });
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    await settle();
+    await result;
+
+    expect(get(commandLog)[0]).toMatchObject({
+      command: `rx index ${PATH} --analyze`,
+      action: 'analysis',
+    });
+  });
+
+  it('records the command of the index it built', async () => {
+    stubBackend({
+      'POST /v1/index': [started('t1')],
+      'GET /v1/tasks/t1': [completed('t1', indexData(false, { cli_command: `rx index ${PATH}` }))],
+    });
+
+    const result = indexFile(PATH, { reindex: false });
+    await settle();
+    await result;
+
+    expect(get(commandLog)[0]).toMatchObject({ command: `rx index ${PATH}`, action: 'index' });
   });
 });
 

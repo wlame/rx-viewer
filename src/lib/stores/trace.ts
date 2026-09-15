@@ -3,6 +3,7 @@ import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import type { TraceMatch, TraceMatchingFlags, TraceResponse } from '../types';
 import type { SearchState } from '../utils/urlState';
+import { commandLog } from './commands';
 import { files } from './files';
 
 /**
@@ -60,6 +61,7 @@ function createTraceStore() {
       // than flashing this query's results on the way past.
       if (response === SUPERSEDED) return null;
 
+      commandLog.record(response.cli_command, 'search');
       update((s) => ({
         ...s,
         searching: false,

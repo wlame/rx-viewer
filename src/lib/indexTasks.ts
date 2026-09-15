@@ -1,5 +1,6 @@
 import { api, ApiError } from './api';
 import { files, tree } from './stores';
+import { commandLog, type CommandAction } from './stores/commands';
 import { taskPolls } from './utils/taskPolling';
 import type {
   IndexResponse,
@@ -111,10 +112,18 @@ async function runIndexTask(
   return taskPolls.join(path, taskId, { signal, onStatus });
 }
 
-/** Show a freshly built index in the tree and in the open file. */
-function publishIndex(path: string, indexData: IndexResponse): IndexResponse {
+/**
+ * Show a freshly built index in the tree and in the open file, and its
+ * equivalent command in the command line.
+ */
+function publishIndex(
+  path: string,
+  indexData: IndexResponse,
+  action: CommandAction,
+): IndexResponse {
   tree.markIndexed(path, indexData.line_count ?? null);
   files.applyIndex(path, indexData);
+  commandLog.record(indexData.cli_command, action);
   return indexData;
 }
 
@@ -139,16 +148,16 @@ export async function analyzeFile(path: string, options: AnalyzeOptions): Promis
   const followedTaskId = taskPolls.activeTask(path);
   if (followedTaskId) {
     const joined = await taskPolls.join(path, followedTaskId, { signal, onStatus });
-    if (joined.analysis_performed) return publishIndex(path, joined);
+    if (joined.analysis_performed) return publishIndex(path, joined, 'analysis');
   } else {
     const cached = await cachedIndex(path, signal);
-    if (cached?.analysis_performed) return publishIndex(path, cached);
+    if (cached?.analysis_performed) return publishIndex(path, cached, 'analysis');
   }
 
   const analysis = { force: false, analyze: true };
   const result = await runIndexTask(path, analysis, signal, onStatus);
-  if (result.analysis_performed) return publishIndex(path, result);
-  return publishIndex(path, await runIndexTask(path, analysis, signal, onStatus));
+  if (result.analysis_performed) return publishIndex(path, result, 'analysis');
+  return publishIndex(path, await runIndexTask(path, analysis, signal, onStatus), 'analysis');
 }
 
 export interface IndexOptions {
@@ -171,5 +180,5 @@ export async function indexFile(path: string, options: IndexOptions): Promise<In
     analyze: cached?.analysis_performed ?? false,
     threshold: 0,
   };
-  return publishIndex(path, await runIndexTask(path, request, NEVER_ABORTED));
+  return publishIndex(path, await runIndexTask(path, request, NEVER_ABORTED), 'index');
 }

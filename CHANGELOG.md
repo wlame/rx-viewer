@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The status bar shows the equivalent command: the `rx` command line
+  the backend sends as `cli_command` for the last answer to something
+  the user did (a search, a file opened, a jump, the end of a file, an
+  index, an analysis), with a Copy button. "Recent" opens a panel above
+  the status bar with the last 20 commands, each with what the user did,
+  the time and its own Copy button; Escape or Hide closes it. The viewer
+  shows only what the backend sends: an answer without a command adds
+  nothing, and the pages loaded while scrolling are not listed. Copy
+  works on a plain-http origin too, where the browser has no Clipboard
+  API.
+
 - Back and Forward step through the view. Opening a file or switching
   to another, running a search and switching the sidebar tab each add a
   history entry; a scroll, a jump inside the file, the highlighting, the

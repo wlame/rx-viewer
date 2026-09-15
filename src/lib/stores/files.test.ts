@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { commandLog } from './commands';
 import { files } from './files';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
@@ -26,7 +27,7 @@ function setLocation(search: string) {
  * `-1` is the last line, and the answer is keyed by that line. The
  * requested context is echoed back unchanged.
  */
-function serveFileOf(lineCount: number) {
+function serveFileOf(lineCount: number, { withCommand = false } = {}) {
   const spy = vi.fn(async (url: string) => {
     const params = new URL(url, 'http://localhost').searchParams;
     const lines = params.get('lines') ?? '';
@@ -58,7 +59,7 @@ function serveFileOf(lineCount: number) {
       offsets: {},
       is_compressed: false,
       compression_format: null,
-      cli_command: null,
+      cli_command: withCommand ? `rx samples ${params.get('path')} --lines=${lines}` : null,
     };
     return {
       ok: true,
@@ -230,5 +231,40 @@ describe('the anchor line', () => {
     await files.openFile('/logs/a.log', undefined, null, undefined, false);
     files.setAnchorLine('/logs/a.log', 415);
     expect(openedFile('/logs/a.log').anchorLine).toBe(415);
+  });
+});
+
+/** Opening, jumping and the end of the file are actions; paging while scrolling is not. */
+describe('the equivalent command of a file window', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    commandLog.clear();
+    vi.unstubAllGlobals();
+  });
+
+  const commands = () => get(commandLog).map((entry) => entry.command);
+
+  it('records the command of each window the user asked for', async () => {
+    serveFileOf(10_000, { withCommand: true });
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.jumpToLine('/logs/a.log', 5_000);
+    await files.jumpToEnd('/logs/a.log');
+
+    expect(commands()).toEqual([
+      'rx samples /logs/a.log --lines=-1',
+      'rx samples /logs/a.log --lines=5000',
+      'rx samples /logs/a.log --lines=1-1000',
+    ]);
+    expect(get(commandLog)[0].action).toBe('file');
+  });
+
+  it('records nothing for the pages loaded while scrolling', async () => {
+    serveFileOf(10_000, { withCommand: true });
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.loadMore('/logs/a.log', 'after');
+
+    expect(commands()).toEqual(['rx samples /logs/a.log --lines=1-1000']);
   });
 });

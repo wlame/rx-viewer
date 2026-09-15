@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { commandLog } from './commands';
 import { files } from './files';
 import { trace } from './trace';
 
@@ -35,5 +36,36 @@ describe('trace search and match highlights', () => {
     trace.clear();
 
     expect(get(files).matches.size).toBe(0);
+  });
+});
+
+describe('the equivalent command of a search', () => {
+  afterEach(() => {
+    trace.clear();
+    commandLog.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function answerWith(cliCommand: string | null) {
+    const body = { cli_command: cliCommand, matches: [], files: {}, patterns: {}, time: 0.1 };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }),
+    );
+  }
+
+  it('records the command the answer carries', async () => {
+    answerWith('rx trace /var/log --regexp=WARN --max-results=100');
+    await trace.search(['/var/log'], ['WARN']);
+    expect(get(commandLog)[0]).toMatchObject({
+      command: 'rx trace /var/log --regexp=WARN --max-results=100',
+      action: 'search',
+    });
+  });
+
+  it('records nothing for an answer without a command', async () => {
+    answerWith(null);
+    await trace.search(['/var/log'], ['WARN']);
+    expect(get(commandLog)).toEqual([]);
   });
 });

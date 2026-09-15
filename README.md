@@ -55,7 +55,12 @@ The RX Viewer is a **standalone frontend** that:
 - ⌨️ Keyboard shortcuts: Cmd/Ctrl+K goes to the search field, Cmd/Ctrl+B
   shows or hides the sidebar, and Cmd/Ctrl+/ lists every shortcut
 - 🌓 Dark/light/system themes
-- ⚡ URL state persistence
+- ⚡ The URL holds the view: a link or a reload reopens the file at its
+  line, with its highlighting, filter and anomaly category, the sidebar
+  tab and the search; Back and Forward step through the files opened,
+  the searches run and the tabs switched
+- 📋 The status bar shows the `rx` command that gives the last answer,
+  with a copy button and a hideable list of recent commands
 
 ## Development
 
