@@ -1,5 +1,5 @@
 import { api, ApiError } from '../api';
-import type { IndexData, TaskStatus } from '../types';
+import type { IndexTaskResult, TaskStatus } from '../types';
 
 /**
  * Following a background index task (`POST /v1/index`) to its end.
@@ -63,13 +63,28 @@ function isTaskGone(error: unknown): boolean {
 }
 
 /**
- * Poll one task until it completes, and resolve with its result.
+ * Whether a task result is an index task's: only an index has a line
+ * index, and a compress result has none.
+ */
+function isIndexTaskResult(result: TaskStatus['result']): result is IndexTaskResult {
+  return result !== null && 'line_index' in result;
+}
+
+/** The index a completed task built; a task that built none is an error, not an empty index. */
+function completedIndex(task: TaskStatus): IndexTaskResult {
+  if (isIndexTaskResult(task.result)) return task.result;
+  throw new Error(`Task ${task.task_id} completed without an index result`);
+}
+
+/**
+ * Poll one index task until it completes, and resolve with its result.
  *
- * Rejects with the task's own error when it fails, with the last request
+ * Rejects when the task completes without an index result, with the
+ * task's own error when it fails, with the last request
  * error after several failed requests in a row or a 404, and with an
  * `AbortError` when the signal aborts.
  */
-export async function pollTask(taskId: string, options: PollOptions): Promise<IndexData> {
+export async function pollTask(taskId: string, options: PollOptions): Promise<IndexTaskResult> {
   const { fetchStatus, signal, intervalMs = DEFAULT_INTERVAL_MS, onStatus } = options;
   let consecutiveErrors = 0;
 
@@ -89,7 +104,7 @@ export async function pollTask(taskId: string, options: PollOptions): Promise<In
     if (task) {
       onStatus?.(task);
       const outcome = TASK_OUTCOME[task.status];
-      if (outcome === 'completed') return task.result ?? ({} as IndexData);
+      if (outcome === 'completed') return completedIndex(task);
       if (outcome === 'failed') throw new Error(task.error || `Task ${taskId} failed`);
     }
 
@@ -106,7 +121,7 @@ interface JoinOptions {
 interface Poll {
   taskId: string;
   controller: AbortController;
-  result: Promise<IndexData>;
+  result: Promise<IndexTaskResult>;
   callers: number;
   listeners: Set<(task: TaskStatus) => void>;
 }
@@ -137,13 +152,13 @@ export class TaskPolls {
    * Rejects with an `AbortError` as soon as this caller's signal aborts,
    * whether or not other callers keep the poll alive.
    */
-  join(path: string, taskId: string, options: JoinOptions): Promise<IndexData> {
+  join(path: string, taskId: string, options: JoinOptions): Promise<IndexTaskResult> {
     const poll = this.pollFor(path, taskId);
     const { signal, onStatus } = options;
     poll.callers++;
     if (onStatus) poll.listeners.add(onStatus);
 
-    return new Promise<IndexData>((resolve, reject) => {
+    return new Promise<IndexTaskResult>((resolve, reject) => {
       let hasLeft = false;
       const leave = () => {
         if (hasLeft) return;

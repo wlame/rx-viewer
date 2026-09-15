@@ -4,7 +4,7 @@ import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { updateUrlState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
-import type { OpenFile, FileLine, FileMatch, IndexData, SamplesResponse } from '../types';
+import type { OpenFile, FileLine, FileMatch, IndexResponse, SamplesResponse } from '../types';
 import { notifications } from './notifications';
 import { settings } from './settings';
 
@@ -75,7 +75,7 @@ function createFilesStore() {
    * Take a file's line count and anomalies from its index. A file that is
    * not open is left alone.
    */
-  function applyIndex(path: string, indexData: IndexData) {
+  function applyIndex(path: string, indexData: IndexResponse) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {

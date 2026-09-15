@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { IndexData } from '$lib/types';
+  import type { IndexResponse } from '$lib/types';
   import { formatStatistic } from '$lib/utils/format';
   import AnomalyReport from './AnomalyReport.svelte';
 
   /** The index to describe, with or without an analysis. */
-  export let result: IndexData;
+  export let result: IndexResponse;
 
   // Helper to format file size
   function formatBytes(bytes: number | null | undefined): string {

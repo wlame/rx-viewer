@@ -71,67 +71,54 @@ export type TraceMatch = Schemas['Match'];
 
 export type TraceResponse = Schemas['TraceResponse'];
 
-/**
- * `GET /v1/tasks/{id}`. The contract types `result` as an open object;
- * it holds the index data of a finished index task, and is null until
- * the task completes.
- */
-export type TaskStatus = Omit<Schemas['TaskStatusResponse'], 'result'> & {
-  result: IndexData | null;
-};
-
 // Index endpoint types (GET /v1/index, POST /v1/index)
 
-/** Anomaly detected in a file */
-export interface Anomaly {
-  start_line: number;
-  end_line: number;
-  start_offset: number;
-  end_offset: number;
-  severity: number; // 0.0 to 1.0
-  category: string; // 'error', 'warning', 'security', 'format', 'timing', etc.
-  description: string;
-  detector: string; // 'traceback', 'error_keyword', 'high_entropy', 'line_length_spike', etc.
-}
+/**
+ * `GET /v1/index`: a file's cached index, with its analysis when one was
+ * performed. The result of an index task has the same fields and two
+ * more, so this type also holds what `POST /v1/index` builds.
+ *
+ * `line_length`, `longest_line`, `line_count` and the other statistics
+ * are null when the index was built without an analysis.
+ */
+export type IndexResponse = Schemas['IndexResponse'];
 
-/** Line length statistics */
-export interface LineLengthStats {
-  max: number;
-  avg: number;
-  median: number;
-  p95: number;
-  p99: number;
-  stddev: number;
-}
+/** The result of a completed index task: the index, where it is stored and `success`. */
+export type IndexTaskResult = Schemas['IndexTaskResult'];
 
-/** Longest line info */
-export interface LongestLineInfo {
-  line_number: number;
-  byte_offset: number;
-}
+/** The result of a completed compress task. */
+export type CompressTaskResult = Schemas['CompressTaskResult'];
 
-/** Index data returned by GET /v1/index or in task result */
-export interface IndexData {
-  path: string;
-  file_type: string; // 'text', 'binary', etc.
-  size_bytes: number;
-  created_at: string;
-  build_time_seconds: number;
-  analysis_performed: boolean;
-  line_index: [number, number][]; // Array of [line_number, byte_offset] tuples
-  index_entries: number;
-  line_count: number;
-  empty_line_count: number;
-  line_ending: string | null; // 'LF', 'CRLF', etc.
-  line_length: LineLengthStats | null;
-  longest_line: LongestLineInfo | null;
-  compression_format: string | null;
-  decompressed_size_bytes: number | null;
-  compression_ratio: number | null;
-  anomaly_count: number;
-  anomaly_summary: Record<string, number> | null; // keyed by category (rx-python) or detector (rx-go)
-  anomalies: Anomaly[] | null;
-}
+/**
+ * A line-index checkpoint: `[line_number, byte_offset]`, with a third
+ * element, the frame number, in a seekable-zstd index.
+ */
+export type LineIndexEntry = Schemas['LineIndexEntry'];
+
+/**
+ * Line-length statistics; null without an analysis. Only `max` is always
+ * there: the others are null when the backend cannot compute them.
+ */
+export type LineLengthStats = Schemas['LineLengthStats'];
+
+/** Where the longest line is; null without an analysis. */
+export type LongestLine = Schemas['LongestLine'];
+
+/** One anomaly an analysis found: a line range, its detector, category and severity. */
+export type AnomalyRangeResult = Schemas['AnomalyRangeResult'];
+
+/**
+ * The 409 body of `POST /v1/index` or `/v1/compress` while a task is
+ * already running for the path. `task_id` names that task.
+ */
+export type TaskConflictError = Schemas['TaskConflictError'];
+
+/**
+ * `GET /v1/tasks/{id}`. `result` is null until the task completes, then
+ * the result of its operation: an `IndexTaskResult` or a
+ * `CompressTaskResult`.
+ */
+export type TaskStatus = Schemas['TaskStatusResponse'];
 
 /** `POST /v1/index`: the task that builds the index. */
 export type IndexTaskResponse = Schemas['TaskResponse'];
@@ -201,7 +188,7 @@ export interface OpenFile {
   highlightedLines?: { start: number; end: number } | null; // Highlighted line range (e.g., from anomaly click)
   // Anomaly data from index
   isIndexed: boolean; // Whether the file has an index
-  anomalies: Anomaly[] | null; // Anomalies detected in the file
+  anomalies: AnomalyRangeResult[] | null; // Anomalies detected in the file
   anomalySummary: Record<string, number> | null; // Category -> count
   selectedAnomalyCategory: string | null; // Currently selected category for highlighting (null = none)
 }

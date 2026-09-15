@@ -1,7 +1,13 @@
 import { api, ApiError } from './api';
 import { files, tree } from './stores';
 import { taskPolls } from './utils/taskPolling';
-import type { IndexData, TaskStatus, TreeEntry } from './types';
+import type {
+  IndexResponse,
+  IndexTaskResult,
+  TaskConflictError,
+  TaskStatus,
+  TreeEntry,
+} from './types';
 
 /**
  * The tree's Analyze, Index and Re-index actions, from the request to
@@ -58,7 +64,8 @@ const TASK_ID_IN_PROSE = /task:\s*([^\s)]+)/i;
 export function conflictTaskId(error: unknown): string | null {
   if (!(error instanceof ApiError) || error.status !== HTTP_CONFLICT) return null;
   try {
-    const body = JSON.parse(error.body) as { task_id?: unknown };
+    // Parsed, not trusted: a backend older than the field sends only `detail`.
+    const body = JSON.parse(error.body) as Partial<TaskConflictError> | null;
     if (typeof body?.task_id === 'string' && body.task_id) return body.task_id;
   } catch {
     // Not JSON: only the prose can name the task.
@@ -77,7 +84,7 @@ interface IndexRequest {
 const NEVER_ABORTED = new AbortController().signal;
 
 /** The cached index of a file, or null when it has none. */
-async function cachedIndex(path: string, signal: AbortSignal): Promise<IndexData | null> {
+async function cachedIndex(path: string, signal: AbortSignal): Promise<IndexResponse | null> {
   try {
     return await api.getIndex(path, { signal });
   } catch (error) {
@@ -92,7 +99,7 @@ async function runIndexTask(
   request: IndexRequest,
   signal: AbortSignal,
   onStatus?: (task: TaskStatus) => void,
-): Promise<IndexData> {
+): Promise<IndexTaskResult> {
   let taskId: string;
   try {
     taskId = (await api.startIndex(path, request)).task_id;
@@ -105,7 +112,7 @@ async function runIndexTask(
 }
 
 /** Show a freshly built index in the tree and in the open file. */
-function publishIndex(path: string, indexData: IndexData): IndexData {
+function publishIndex(path: string, indexData: IndexResponse): IndexResponse {
   tree.markIndexed(path, indexData.line_count ?? null);
   files.applyIndex(path, indexData);
   return indexData;
@@ -126,7 +133,7 @@ export interface AnalyzeOptions {
  * is joined; when it was a plain index build and ends without an
  * analysis, the analysis is asked for once that task is out of the way.
  */
-export async function analyzeFile(path: string, options: AnalyzeOptions): Promise<IndexData> {
+export async function analyzeFile(path: string, options: AnalyzeOptions): Promise<IndexResponse> {
   const { signal, onStatus } = options;
 
   const followedTaskId = taskPolls.activeTask(path);
@@ -156,7 +163,7 @@ export interface IndexOptions {
  * A re-index keeps the analysis when the cached index has one, so the
  * open file does not lose its anomalies to a rebuild.
  */
-export async function indexFile(path: string, options: IndexOptions): Promise<IndexData> {
+export async function indexFile(path: string, options: IndexOptions): Promise<IndexResponse> {
   const { reindex } = options;
   const cached = reindex ? await cachedIndex(path, NEVER_ABORTED) : null;
   const request: IndexRequest = {

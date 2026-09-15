@@ -11,7 +11,7 @@
  * The class names here are styled in components/editor/editorDecorations.css.
  */
 import type * as Monaco from 'monaco-editor';
-import type { Anomaly } from '../types';
+import type { AnomalyRangeResult } from '../types';
 import type { CategoryStyle } from './categoryStyle';
 import { HIDDEN_MARKER } from './processContent';
 import { matchesIn } from './regexMatches';
@@ -111,7 +111,7 @@ export function highlightedRangeDecorations(
  * (see categoryStyle.ts) on the line and in the minimap.
  */
 export function anomalyCategoryDecorations(
-  anomalies: readonly Anomaly[],
+  anomalies: readonly AnomalyRangeResult[],
   category: string,
   style: Pick<CategoryStyle, 'color' | 'decorationClass'>,
   editorWindow: EditorWindow,

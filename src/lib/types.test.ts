@@ -1,14 +1,22 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type { components } from './types.generated';
 import type {
+  AnomalyRangeResult,
   CategoryInfo,
+  CompressTaskResult,
   DetectorInfo,
   DetectorsResponse,
   HealthResponse,
+  IndexResponse,
   IndexTaskResponse,
+  IndexTaskResult,
+  LineIndexEntry,
+  LineLengthStats,
+  LongestLine,
   SamplesResponse,
   SeverityLevel,
   SeverityRange,
+  TaskConflictError,
   TaskStatus,
   TreeEntry,
   TreeResponse,
@@ -36,11 +44,36 @@ describe('wire types', () => {
     expectTypeOf<SeverityLevel>().toEqualTypeOf<Schemas['SeverityScaleLevel']>();
   });
 
-  it('keep the task status generated apart from its untyped result', () => {
-    // The contract types a task's result as an open object; the viewer
-    // reads it as index data until the contract describes that shape.
-    expectTypeOf<Omit<TaskStatus, 'result'>>().toEqualTypeOf<
-      Omit<Schemas['TaskStatusResponse'], 'result'>
+  it('type the index answers with their named schemas', () => {
+    expectTypeOf<IndexResponse>().toEqualTypeOf<Schemas['IndexResponse']>();
+    expectTypeOf<IndexTaskResult>().toEqualTypeOf<Schemas['IndexTaskResult']>();
+    expectTypeOf<CompressTaskResult>().toEqualTypeOf<Schemas['CompressTaskResult']>();
+    expectTypeOf<LineIndexEntry>().toEqualTypeOf<Schemas['LineIndexEntry']>();
+    expectTypeOf<LineLengthStats>().toEqualTypeOf<Schemas['LineLengthStats']>();
+    expectTypeOf<LongestLine>().toEqualTypeOf<Schemas['LongestLine']>();
+    expectTypeOf<AnomalyRangeResult>().toEqualTypeOf<Schemas['AnomalyRangeResult']>();
+    expectTypeOf<TaskConflictError>().toEqualTypeOf<Schemas['TaskConflictError']>();
+  });
+
+  it('type a task result as the contract union, null until the task completes', () => {
+    expectTypeOf<TaskStatus>().toEqualTypeOf<Schemas['TaskStatusResponse']>();
+    expectTypeOf<TaskStatus['result']>().toEqualTypeOf<
+      IndexTaskResult | CompressTaskResult | null
     >();
+  });
+
+  // A seekable-zstd index adds the frame number to each checkpoint.
+  it('allow a line-index entry of two or three numbers', () => {
+    expectTypeOf<[number, number]>().toMatchTypeOf<LineIndexEntry>();
+    expectTypeOf<[number, number, number]>().toMatchTypeOf<LineIndexEntry>();
+  });
+
+  // Both are null when the index was built without an analysis.
+  it('keep the line statistics nullable, and every one but max', () => {
+    expectTypeOf<IndexResponse['line_length']>().toEqualTypeOf<LineLengthStats>();
+    expectTypeOf<null>().toMatchTypeOf<LineLengthStats>();
+    expectTypeOf<null>().toMatchTypeOf<LongestLine>();
+    expectTypeOf<NonNullable<LineLengthStats>['max']>().toEqualTypeOf<number>();
+    expectTypeOf<NonNullable<LineLengthStats>['p99']>().toEqualTypeOf<number | null>();
   });
 });

@@ -57,6 +57,7 @@ function indexData(analysisPerformed: boolean, extra: Record<string, unknown> = 
   return {
     path: PATH,
     analysis_performed: analysisPerformed,
+    line_index: [[1, 0]],
     line_count: 120,
     anomalies: analysisPerformed
       ? [
@@ -318,6 +319,26 @@ describe('a finished task', () => {
     await result;
 
     expect(treeEntry()).toMatchObject({ is_indexed: true, line_count: 80 });
+  });
+
+  // The contract leaves line_count null when the index holds no count.
+  it('marks the file indexed and keeps the known line count when the index has none', async () => {
+    await loadTreeWithFile();
+    stubBackend({
+      'POST /v1/index': [started('t1')],
+      'GET /v1/tasks/t1': [completed('t1', indexData(true, { line_count: null }))],
+    });
+    await files.openFile(PATH, undefined, 1000, undefined, false);
+    const linesBefore = get(files).openFiles.find((f) => f.path === PATH)?.totalLines;
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    await settle();
+    await result;
+
+    expect(treeEntry()?.is_indexed).toBe(true);
+    expect(treeEntry()?.line_count ?? null).toBeNull();
+    const open = get(files).openFiles.find((f) => f.path === PATH);
+    expect(open).toMatchObject({ isIndexed: true, totalLines: linesBefore });
   });
 });
 

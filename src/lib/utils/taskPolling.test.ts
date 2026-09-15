@@ -1,17 +1,57 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
-import type { IndexData, TaskStatus } from '../types';
+import type { CompressTaskResult, IndexTaskResult, TaskStatus } from '../types';
 import { TaskPolls, pollTask } from './taskPolling';
 import { isAbortError } from './latestRequest';
 
 const PATH = '/var/log/app.log';
 const INTERVAL = 1000;
 
-function task(
-  status: string,
-  result: Partial<IndexData> | null = null,
-  error?: string,
-): TaskStatus {
+/** The result of a finished index task, with the fields the poll does not read left minimal. */
+function indexResult(fields: Partial<IndexTaskResult> = {}): IndexTaskResult {
+  return {
+    path: PATH,
+    file_type: 'text',
+    size_bytes: 0,
+    created_at: '2026-10-03T00:00:00Z',
+    build_time_seconds: 0,
+    analysis_performed: false,
+    line_index: [[1, 0]],
+    index_entries: 1,
+    index_path: '/cache/index.json',
+    line_count: null,
+    empty_line_count: null,
+    line_ending: null,
+    line_length: null,
+    longest_line: null,
+    compression_format: null,
+    decompressed_size_bytes: null,
+    compression_ratio: null,
+    anomaly_count: 0,
+    anomaly_summary: null,
+    anomalies: null,
+    cli_command: `rx index ${PATH}`,
+    success: true,
+    ...fields,
+  };
+}
+
+const COMPRESS_RESULT: CompressTaskResult = {
+  input_path: PATH,
+  output_path: `${PATH}.zst`,
+  compressed_size: 10,
+  decompressed_size: 100,
+  compression_ratio: 10,
+  frame_count: 1,
+  index_built: false,
+  index_error: null,
+  total_lines: null,
+  time_seconds: 0.1,
+  cli_command: `rx compress ${PATH}`,
+  success: true,
+};
+
+function task(status: string, result: TaskStatus['result'] = null, error?: string): TaskStatus {
   return {
     task_id: 't1',
     status,
@@ -20,7 +60,7 @@ function task(
     started_at: null,
     completed_at: null,
     error: error ?? null,
-    result: result as IndexData | null,
+    result,
   };
 }
 
@@ -48,7 +88,7 @@ describe('pollTask', () => {
     const fetchStatus = statuses(
       task('queued'),
       task('running'),
-      task('completed', { line_count: 7 }),
+      task('completed', indexResult({ line_count: 7 })),
     );
     const result = pollTask('t1', {
       fetchStatus,
@@ -79,7 +119,10 @@ describe('pollTask', () => {
   // An analysis of a multi-gigabyte file runs longer than any fixed
   // number of attempts; a running task is still making progress.
   it('keeps polling past ten minutes while the task is running', async () => {
-    const answers = [...Array.from({ length: 900 }, () => task('running')), task('completed', {})];
+    const answers = [
+      ...Array.from({ length: 900 }, () => task('running')),
+      task('completed', indexResult()),
+    ];
     const fetchStatus = statuses(...answers);
     const result = pollTask('t1', {
       fetchStatus,
@@ -89,7 +132,37 @@ describe('pollTask', () => {
 
     await advance(901);
 
-    await expect(result).resolves.toEqual({});
+    await expect(result).resolves.toEqual(indexResult());
+  });
+
+  // The contract leaves a task's result null until it completes; a
+  // completed index task that still has none is not an index to show.
+  it('rejects when a completed task carries no result', async () => {
+    const fetchStatus = statuses(task('completed', null));
+    const result = pollTask('t1', {
+      fetchStatus,
+      signal: new AbortController().signal,
+      intervalMs: INTERVAL,
+    });
+    result.catch(() => {});
+
+    await advance(1);
+
+    await expect(result).rejects.toThrow('Task t1 completed without an index result');
+  });
+
+  it('rejects when a completed task carries a compress result', async () => {
+    const fetchStatus = statuses(task('completed', COMPRESS_RESULT));
+    const result = pollTask('t1', {
+      fetchStatus,
+      signal: new AbortController().signal,
+      intervalMs: INTERVAL,
+    });
+    result.catch(() => {});
+
+    await advance(1);
+
+    await expect(result).rejects.toThrow('Task t1 completed without an index result');
   });
 
   it('stops polling and rejects with an abort error when the signal aborts', async () => {
@@ -111,7 +184,7 @@ describe('pollTask', () => {
     const fetchStatus = statuses(
       task('running'),
       new TypeError('Failed to fetch'),
-      task('completed', { line_count: 3 }),
+      task('completed', indexResult({ line_count: 3 })),
     );
     const result = pollTask('t1', {
       fetchStatus,
@@ -155,7 +228,7 @@ describe('pollTask', () => {
   });
 
   it('reports every status it reads', async () => {
-    const fetchStatus = statuses(task('queued'), task('running'), task('completed', {}));
+    const fetchStatus = statuses(task('queued'), task('running'), task('completed', indexResult()));
     const seen: string[] = [];
     const result = pollTask('t1', {
       fetchStatus,
@@ -176,7 +249,7 @@ describe('TaskPolls', () => {
     const fetchStatus = statuses(
       task('running'),
       task('running'),
-      task('completed', { line_count: 9 }),
+      task('completed', indexResult({ line_count: 9 })),
     );
     const polls = new TaskPolls(fetchStatus, INTERVAL);
 
@@ -207,7 +280,11 @@ describe('TaskPolls', () => {
   });
 
   it('keeps polling for the caller that stays when another leaves', async () => {
-    const fetchStatus = statuses(task('running'), task('running'), task('completed', {}));
+    const fetchStatus = statuses(
+      task('running'),
+      task('running'),
+      task('completed', indexResult()),
+    );
     const polls = new TaskPolls(fetchStatus, INTERVAL);
     const leaving = new AbortController();
 
@@ -218,11 +295,11 @@ describe('TaskPolls', () => {
     await advance(3);
 
     await expect(left).rejects.toSatisfy(isAbortError);
-    await expect(stayed).resolves.toEqual({});
+    await expect(stayed).resolves.toEqual(indexResult());
   });
 
   it('names the running task of a path and forgets it once the task ends', async () => {
-    const fetchStatus = statuses(task('running'), task('completed', {}));
+    const fetchStatus = statuses(task('running'), task('completed', indexResult()));
     const polls = new TaskPolls(fetchStatus, INTERVAL);
 
     const result = polls.join(PATH, 't1', { signal: new AbortController().signal });
@@ -234,7 +311,7 @@ describe('TaskPolls', () => {
   });
 
   it('passes each status to every caller that asked for it', async () => {
-    const fetchStatus = statuses(task('running'), task('completed', {}));
+    const fetchStatus = statuses(task('running'), task('completed', indexResult()));
     const polls = new TaskPolls(fetchStatus, INTERVAL);
     const first: string[] = [];
     const second: string[] = [];

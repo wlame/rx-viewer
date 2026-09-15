@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
-  import type { Anomaly, IndexData, TaskStatus } from '$lib/types';
+  import type { AnomalyRangeResult, IndexResponse, TaskStatus } from '$lib/types';
   import { files, notifications } from '$lib/stores';
   import { analyzeFile } from '$lib/indexTasks';
   import { isAbortError } from '$lib/utils/latestRequest';
@@ -16,7 +16,7 @@
 
   let analyzeLoading = true;
   let analyzeStatusMessage = 'Checking for an analysis...';
-  let analyzeResult: IndexData | null = null;
+  let analyzeResult: IndexResponse | null = null;
 
   /** Cancels the analysis wait: its index request and its share of the task poll. */
   const run = new AbortController();
@@ -70,7 +70,7 @@
   }
 
   // Handle clicking on an anomaly row to navigate to the line
-  function handleAnomalySelect(event: CustomEvent<Anomaly>) {
+  function handleAnomalySelect(event: CustomEvent<AnomalyRangeResult>) {
     const anomaly = event.detail;
     close();
     // Set highlighted lines for the anomaly range

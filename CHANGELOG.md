@@ -14,9 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the generated contract types, like the trace types already were; ten
   were written by hand and claimed lists the contract allows to be null
   were never null. The tree and the detector list now read a null list
-  as empty. A task's `result` stays typed as index data until the
-  contract describes it. `src/lib/types.test.ts` checks each alias at
-  type-check time.
+  as empty. `src/lib/types.test.ts` checks each alias at type-check
+  time.
+
+- The index answers are typed by the contract's named schemas instead
+  of hand-written types: `IndexResponse` for `GET /v1/index` (it was
+  `IndexData`, which missed `cli_command`), `IndexTaskResult` and
+  `CompressTaskResult` for a task's `result`, `LineIndexEntry` (a pair,
+  or a triple with the frame number in a seekable-zstd index),
+  `LineLengthStats`, `LongestLine` (was `LongestLineInfo`),
+  `AnomalyRangeResult` (was `Anomaly`) and `TaskConflictError` for the
+  409 body whose `task_id` the viewer joins. `line_count`,
+  `empty_line_count` and five of the six line-length statistics are now
+  typed as possibly null, as the contract says.
 
 - The `just` recipes run bun from the `oven/bun` image when bun is not
   on the `PATH`, mounting the directory that holds this repo so
@@ -201,6 +211,10 @@ typecheck lint test build` in the order CI runs them, and
   which nothing imported, went with them.
 
 ### Fixed
+
+- A completed index task without an index result fails the analysis
+  with "Task … completed without an index result". The viewer used to
+  read it as an empty index.
 
 - The analysis report shows "—" for a line-length statistic the backend
   left null (average, median, 95th and 99th percentile, standard

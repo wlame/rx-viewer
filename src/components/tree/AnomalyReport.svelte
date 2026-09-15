@@ -1,18 +1,20 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { Anomaly, IndexData } from '$lib/types';
+  import type { AnomalyRangeResult, IndexResponse } from '$lib/types';
 
   /** An analysed index: its anomalies, their summary and their count. */
-  export let result: IndexData;
+  export let result: IndexResponse;
 
-  const dispatch = createEventDispatcher<{ select: Anomaly }>();
+  const dispatch = createEventDispatcher<{ select: AnomalyRangeResult }>();
 
   let selectedAnomalyDetector: string | null = null; // Selected tab for anomaly detector
 
   // Group anomalies by detector
-  function getAnomaliesByDetector(anomalies: Anomaly[]): Record<string, Anomaly[]> {
+  function getAnomaliesByDetector(
+    anomalies: AnomalyRangeResult[],
+  ): Record<string, AnomalyRangeResult[]> {
     if (!anomalies || !Array.isArray(anomalies)) return {};
-    const grouped: Record<string, Anomaly[]> = {};
+    const grouped: Record<string, AnomalyRangeResult[]> = {};
     for (const anomaly of anomalies) {
       const detector = anomaly.detector || 'unknown';
       if (!grouped[detector]) {

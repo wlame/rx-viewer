@@ -5,7 +5,7 @@ import type {
   TraceResponse,
   TraceMatchingFlags,
   TaskStatus,
-  IndexData,
+  IndexResponse,
   IndexTaskResponse,
   DetectorsResponse,
 } from './types';
@@ -196,9 +196,9 @@ export const api = {
    * @param path - File path to get index for
    * @returns Index data if exists, or throws 404 ApiError if not found
    */
-  async getIndex(path: string, options?: RequestOptions): Promise<IndexData> {
+  async getIndex(path: string, options?: RequestOptions): Promise<IndexResponse> {
     const params = new URLSearchParams({ path });
-    return fetchJson<IndexData>(`${API_BASE}/index?${params}`, options);
+    return fetchJson<IndexResponse>(`${API_BASE}/index?${params}`, options);
   },
 
   /**
