@@ -9,6 +9,7 @@ import { addPage, maxHeldLines } from '../utils/slidingWindow';
 import type { OpenFile, FileMatch, IndexResponse, SamplesResponse } from '../types';
 import { commandLog } from './commands';
 import { notifications } from './notifications';
+import { forgetPane } from './paneMemory';
 import { settings } from './settings';
 
 /**
@@ -527,6 +528,7 @@ function createFilesStore() {
   function closeFile(path: string) {
     // Cancel anything still loading for this file and drop its slot.
     fileLoads.forget(path);
+    forgetPane(path);
 
     update((s) => ({
       ...s,
@@ -645,16 +647,24 @@ function createFilesStore() {
   }
 
   /**
-   * Update regex filter configuration for a specific file
+   * Apply the filter bar's pattern and mode to a file. A file without a
+   * filter gets one, enabled; one with a filter keeps its enabled state.
    */
   function updateRegexFilter(path: string, pattern: string, mode: 'hide' | 'show' | 'highlight') {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
-        if (f.path !== path || !f.regexFilter) return f;
+        if (f.path !== path) return f;
+        const current = f.regexFilter ?? { enabled: true, applying: false };
         return {
           ...f,
-          regexFilter: { ...f.regexFilter, pattern, mode, ...compileFilterPattern(pattern) },
+          regexFilter: {
+            enabled: current.enabled,
+            applying: current.applying,
+            pattern,
+            mode,
+            ...compileFilterPattern(pattern),
+          },
         };
       }),
     }));

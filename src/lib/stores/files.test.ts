@@ -254,6 +254,40 @@ describe('the held window while paging', () => {
   });
 });
 
+describe('the filter of a file', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  it('applies a pattern to a file that has no filter yet', async () => {
+    serveFileOf(100);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+
+    files.updateRegexFilter('/logs/a.log', 'LINE 1\\d', 'show');
+
+    const filter = openedFile('/logs/a.log').regexFilter;
+    expect(filter?.enabled).toBe(true);
+    expect(filter?.pattern).toBe('LINE 1\\d');
+    expect(filter?.mode).toBe('show');
+    expect(filter?.compiledRegex).not.toBeNull();
+  });
+
+  it('keeps the filter of each file when another file gets one', async () => {
+    serveFileOf(100);
+    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/b.log', undefined, null, undefined, false);
+
+    files.updateRegexFilter('/logs/a.log', 'ERROR', 'hide');
+    files.updateRegexFilter('/logs/b.log', 'WARN', 'highlight');
+
+    expect(openedFile('/logs/a.log').regexFilter?.pattern).toBe('ERROR');
+    expect(openedFile('/logs/b.log').regexFilter?.pattern).toBe('WARN');
+  });
+});
+
 /**
  * A file's anchor is the line the URL names for it. It is the line the
  * user went to, and a line the file does not have is moved to the last

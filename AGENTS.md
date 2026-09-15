@@ -68,20 +68,20 @@ interchangeable backends, no vendoring.
 
 ## Quick orientation
 
-| Where                                                     | What                                                                                              |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `src/main.ts`, `src/App.svelte`                           | Entry point and root layout                                                                       |
-| `src/lib/api.ts`                                          | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                             |
-| `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                             |
-| `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                                     |
-| `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version`, `layout` |
-| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                                       |
-| `src/lib/utils/urlState.ts`, `src/lib/viewState.ts`       | The view in the URL (no router): one parse/serialize table per key; URL written from stores       |
-| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                  |
-| `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                             |
-| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                             |
-| `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                |
-| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                            |
+| Where                                                     | What                                                                                                                                               |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`, `src/App.svelte`                           | Entry point and root layout                                                                                                                        |
+| `src/lib/api.ts`                                          | The entire backend surface: one `api` object, `fetchJson`, `ApiError`                                                                              |
+| `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                                                                              |
+| `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                                                                                      |
+| `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version`, `layout`; `paneMemory` keeps each file tab's editor state |
+| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                                                                                        |
+| `src/lib/utils/urlState.ts`, `src/lib/viewState.ts`       | The view in the URL (no router): one parse/serialize table per key; URL written from stores                                                        |
+| `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                                                                   |
+| `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                                                                              |
+| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                                                                              |
+| `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                                                                 |
+| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                                                                             |
 
 ## Build, run, test
 

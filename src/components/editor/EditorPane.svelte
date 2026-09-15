@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import type { OpenFile, RegexFilter } from '$lib/types';
   import { files, settings, resolvedTheme } from '$lib/stores';
+  import { recallPane, rememberPane, scrollOnShow } from '$lib/stores/paneMemory';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import MonacoEditor from './MonacoEditor.svelte';
@@ -44,10 +46,14 @@
   // The header's line readout, whose go-to box the `:` shortcut opens.
   let lineRangeNav: LineRangeNav | undefined;
 
-  // Regex filter state
-  let filterPanelVisible = false;
-  let filterPattern = '';
-  let filterMode: 'hide' | 'show' | 'highlight' = 'highlight';
+  // The pane is built for one tab (MainContent keys it by path); what the
+  // tab had when it was last shown comes back from paneMemory.
+  const rememberedPane = recallPane(file.path);
+
+  // Regex filter bar state
+  let filterPanelVisible = rememberedPane.filterPanelVisible;
+  let filterPattern = rememberedPane.filterDraft.pattern;
+  let filterMode: 'hide' | 'show' | 'highlight' = rememberedPane.filterDraft.mode;
 
   // Track scroll state for content loading
   let isScrollingToTarget = false;
@@ -156,7 +162,7 @@
   // A filter applied from outside the bar (a link, Back) opens the bar
   // showing it. Only a new filter object counts: the file changes on
   // every load, and a pattern the user is typing must survive that.
-  let shownFilter: RegexFilter | null = null;
+  let shownFilter: RegexFilter | null = rememberedPane.shownFilter;
   $: showAppliedFilter(file.regexFilter);
 
   function showAppliedFilter(filter: RegexFilter | null) {
@@ -344,8 +350,37 @@
     }
   }
 
+  /** Put a tab shown again where it was, or on its anchor line; see scrollOnShow. */
+  function restoreTabView() {
+    const placement = scrollOnShow(file, rememberedPane);
+    if (placement.kind === 'restore') {
+      monacoComponent?.restoreScroll(placement.scrollTop, placement.scrollLeft);
+    } else if (placement.kind === 'reveal') {
+      monacoComponent?.revealLineAtOnce(placement.line);
+    }
+  }
+
+  /** Keep this tab's bar and view for when it is shown again, unless the file was closed. */
+  function rememberTab() {
+    const isStillOpen = get(files).openFiles.some((f) => f.path === file.path);
+    if (!isStillOpen) return;
+    rememberPane(file.path, {
+      filterPanelVisible,
+      filterDraft: { pattern: filterPattern, mode: filterMode },
+      shownFilter,
+      scroll: monacoEditor
+        ? {
+            startLine: file.startLine,
+            scrollTop: monacoEditor.getScrollTop(),
+            scrollLeft: monacoEditor.getScrollLeft(),
+          }
+        : null,
+    });
+  }
+
   function handleMonacoReady(e: CustomEvent<{ editor: Monaco.editor.IStandaloneCodeEditor }>) {
     monacoEditor = e.detail.editor;
+    restoreTabView();
 
     // Listen for content changes to apply decorations after content is set
     const model = monacoEditor.getModel();
@@ -387,6 +422,9 @@
   });
 
   onDestroy(() => {
+    // The editor is still there: a component's own onDestroy runs before
+    // its children are destroyed.
+    rememberTab();
     paneEl?.removeEventListener('keydown', handleKeyDown);
     for (const type of USER_SCROLL_EVENTS) paneEl?.removeEventListener(type, noteUserScroll);
     if (decorationsCollection) {

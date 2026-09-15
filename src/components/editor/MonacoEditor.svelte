@@ -289,13 +289,9 @@
       }
     });
 
+    // Ready once the content is in, so a view the listener sets up (a
+    // restored scroll) is not reset by setting the content afterwards.
     dispatch('ready', { editor });
-
-    // Ensure content is set after editor is ready
-    // (in case content prop was updated before editor was created)
-    if (content) {
-      editor.setValue(content);
-    }
   });
 
   onDestroy(() => {
@@ -413,6 +409,16 @@
       const monacoLine = lineNumber - lineNumbersStart + 1;
       editor.revealLineInCenter(monacoLine, scrollType);
     }
+  }
+
+  /** Show a file line in the center of the view at once, without the smooth scroll. */
+  export function revealLineAtOnce(lineNumber: number) {
+    revealLine(lineNumber, monaco.editor.ScrollType.Immediate);
+  }
+
+  /** Put the view back where it was: both scroll offsets, at once. */
+  export function restoreScroll(scrollTop: number, scrollLeft: number) {
+    editor?.setScrollPosition({ scrollTop, scrollLeft }, monaco.editor.ScrollType.Immediate);
   }
 
   export function setScrollTop(scrollTop: number) {

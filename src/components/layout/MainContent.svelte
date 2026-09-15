@@ -150,10 +150,13 @@
       {/each}
     </div>
 
-    <!-- Single active file editor -->
+    <!-- The active file's editor, built again for each tab so no state of one
+         tab reaches another; each tab's own state is kept in paneMemory. -->
     <div class="flex-1 min-h-0 overflow-hidden">
       {#if activeFile}
-        <EditorPane file={activeFile} hideHeader={false} isActive={true} />
+        {#key activeFile.path}
+          <EditorPane file={activeFile} hideHeader={false} isActive={true} />
+        {/key}
       {/if}
     </div>
   {/if}

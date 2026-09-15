@@ -243,6 +243,14 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Each file tab keeps its own editor state. One editor pane served
+  every tab, so the filter bar of one file showed on the next, where
+  Apply did nothing, and a tab could open at another tab's scroll
+  offset. The pane is now built for each tab: switching back restores
+  that tab's filter bar (pattern, mode, open or closed) and its exact
+  scroll, or shows its line when its lines were reloaded meanwhile.
+  Apply also works on a file that had no filter yet.
+
 - An open file holds at most five pages of lines (5,000 by default).
   Every page it loaded stayed in memory, and each new page passed all of
   them through the filter and into the editor again, so scrolling far
