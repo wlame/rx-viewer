@@ -6,11 +6,6 @@ const STORAGE_KEY = 'rx-settings';
 const defaultSettings: AppSettings = {
   theme: 'system',
   sidebarWidth: 280,
-  editorFontSize: 13,
-  showLineNumbers: true,
-  wrapLines: false,
-  linesPerPage: 1000,
-  showMinimap: true,
   monacoTheme: 'vs',
 };
 

@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { maxHeldLines } from '../utils/slidingWindow';
+import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import { commandLog } from './commands';
 import { files } from './files';
-import { settings } from './settings';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -180,7 +179,7 @@ describe('the file window against samples answers', () => {
  */
 describe('the held window while paging', () => {
   const path = '/logs/long.log';
-  const cap = maxHeldLines(get(settings).linesPerPage);
+  const cap = maxHeldLines(LINES_PER_PAGE);
 
   beforeEach(() => setLocation(''));
 

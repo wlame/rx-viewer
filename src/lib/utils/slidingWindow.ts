@@ -1,16 +1,18 @@
 import type { FileLine } from '../types';
 
+/** How many lines one paging request loads. */
+export const LINES_PER_PAGE = 1000;
+
 /**
  * How many pages of lines an open file holds at most.
  *
- * A page is what one paging request loads (`linesPerPage`, 1,000 lines
- * by default). Paging starts when the view comes within 200 px of an
+ * A page is what one paging request loads (`LINES_PER_PAGE`). Paging starts when the view comes within 200 px of an
  * edge of the held lines, so right after a page arrives the view sits
  * about one page from that edge. Five pages leave about four pages of
  * lines already seen behind the view, which the user can scroll back
  * through without a request, and they bound what every page costs: the
  * filter re-processes the held lines and Monaco receives all of them,
- * so both stay at 5,000 lines by default however far the user scrolls
+ * so both stay at 5,000 lines however far the user scrolls
  * through a file of any size.
  */
 export const HELD_PAGES = 5;

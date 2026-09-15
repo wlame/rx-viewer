@@ -5,12 +5,11 @@ import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestReque
 import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
-import { addPage, maxHeldLines } from '../utils/slidingWindow';
+import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import type { OpenFile, FileMatch, IndexResponse, SamplesResponse } from '../types';
 import { commandLog } from './commands';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
-import { settings } from './settings';
 
 /**
  * At most one window load per file may write to the store.
@@ -201,13 +200,12 @@ function createFilesStore() {
     fetchFileIndex(path, isIndexed);
 
     // Load initial content
-    const linesPerPage = get(settings).linesPerPage;
     if (scrollToLine) {
       // If scrolling to a specific line, load around that line with context of 500
       await loadLinesAroundCenter(path, scrollToLine, 500);
     } else {
       // When opening a file, always start from line 1
-      await loadLinesFromStart(path, linesPerPage);
+      await loadLinesFromStart(path, LINES_PER_PAGE);
     }
   }
 
@@ -350,8 +348,6 @@ function createFilesStore() {
     if (direction === 'before' && file.reachedStart) return;
     if (direction === 'after' && file.reachedEnd) return;
 
-    const linesPerPage = get(settings).linesPerPage;
-
     // Calculate the range to load based on direction
     let startLine: number;
     let endLine: number;
@@ -359,11 +355,11 @@ function createFilesStore() {
     if (direction === 'before') {
       // Load lines before the current start
       endLine = file.startLine - 1;
-      startLine = Math.max(1, endLine - linesPerPage + 1);
+      startLine = Math.max(1, endLine - LINES_PER_PAGE + 1);
     } else {
       // Load lines after the current end
       startLine = file.endLine + 1;
-      endLine = startLine + linesPerPage - 1;
+      endLine = startLine + LINES_PER_PAGE - 1;
     }
 
     update((s) => ({
@@ -379,7 +375,7 @@ function createFilesStore() {
       if (response === SUPERSEDED) return;
 
       const window = readSamplesAnswer(response);
-      const maxLines = maxHeldLines(linesPerPage);
+      const maxLines = maxHeldLines(LINES_PER_PAGE);
 
       update((s) => ({
         ...s,
@@ -483,8 +479,7 @@ function createFilesStore() {
     }));
 
     try {
-      const linesPerPage = get(settings).linesPerPage;
-      const context = Math.floor(linesPerPage / 2);
+      const context = Math.floor(LINES_PER_PAGE / 2);
 
       // Request line -1 with context to get the last lines
       const response = await fileLoads.run(path, (signal) =>

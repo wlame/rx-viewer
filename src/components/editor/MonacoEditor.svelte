@@ -20,11 +20,8 @@
   export let readonly: boolean = true;
   export let theme: 'light' | 'dark' = 'light';
   export let monacoTheme: MonacoTheme = 'vs';
-  export let fontSize: number = 13;
   export let lineNumbersStart: number = 1;
-  export let showLineNumbers: boolean = true;
   export let wordWrap: boolean = false;
-  export let showMinimap: boolean = false;
   export let showInvisibleChars: boolean = false;
 
   const dispatch = createEventDispatcher<{
@@ -244,9 +241,10 @@
       language,
       theme: effectiveTheme,
       readOnly: readonly,
-      fontSize,
-      lineNumbers: showLineNumbers ? getLineNumber : 'off',
-      minimap: { enabled: showMinimap },
+      fontSize: 13,
+      // Reads lineNumbersStart when Monaco draws, so a new window renumbers itself.
+      lineNumbers: getLineNumber,
+      minimap: { enabled: true },
       wordWrap: wordWrap ? 'on' : 'off',
       scrollBeyondLastLine: false,
       automaticLayout: true,
@@ -355,26 +353,9 @@
     monaco.editor.setTheme(effectiveTheme);
   }
 
-  // Update font size when it changes
-  $: if (editor) {
-    editor.updateOptions({ fontSize });
-  }
-
-  // Update line numbers when lineNumbersStart changes
-  $: if (editor) {
-    editor.updateOptions({
-      lineNumbers: showLineNumbers ? getLineNumber : 'off',
-    });
-  }
-
   // Update word wrap when it changes
   $: if (editor) {
     editor.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' });
-  }
-
-  // Update minimap when it changes
-  $: if (editor) {
-    editor.updateOptions({ minimap: { enabled: showMinimap } });
   }
 
   // Update invisible characters when it changes

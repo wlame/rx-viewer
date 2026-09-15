@@ -68,10 +68,6 @@
     hasUserScrolled = true;
   }
 
-  // Settings
-  $: fontSize = $settings.editorFontSize;
-  $: showLineNumbers = $settings.showLineNumbers;
-  $: showMinimap = $settings.showMinimap;
   $: monacoTheme = $settings.monacoTheme;
 
   // File matches from trace search
@@ -512,11 +508,8 @@
         readonly={true}
         {theme}
         {monacoTheme}
-        {fontSize}
         lineNumbersStart={file.startLine}
-        {showLineNumbers}
         wordWrap={file.wordWrap}
-        {showMinimap}
         showInvisibleChars={file.showInvisibleChars}
         on:scroll={handleMonacoScroll}
         on:ready={handleMonacoReady}

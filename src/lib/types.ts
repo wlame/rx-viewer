@@ -205,11 +205,6 @@ export interface FileMatch {
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   sidebarWidth: number;
-  editorFontSize: number;
-  showLineNumbers: boolean;
-  wrapLines: boolean;
-  linesPerPage: number;
-  showMinimap: boolean;
   monacoTheme: MonacoTheme;
 }
 
