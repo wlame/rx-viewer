@@ -9,6 +9,8 @@
    * previous one. The pane does the stepping, since it owns the view.
    */
   import { createEventDispatcher } from 'svelte';
+  import { detectors } from '$lib/stores';
+  import { categoryDescription } from '$lib/utils/anomalyLabels';
   import { categoryStyle } from '$lib/utils/categoryStyle';
 
   /** Anomaly count per category, or null when the file was not analyzed. */
@@ -36,12 +38,15 @@
   {#each Object.entries(summary) as [category, count] (category)}
     {@const categoryInfo = categoryStyle(category)}
     {@const isActive = selectedCategory === category}
+    {@const description = categoryDescription(category, $detectors.categories)}
     <button
       class="px-1.5 py-0.5 rounded flex-shrink-0 transition-colors text-xs font-medium flex items-center gap-1"
       style={isActive
         ? `background-color: ${categoryInfo.color}; color: white;`
         : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}
-      title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}"
+      title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}{description
+        ? ` — ${description}`
+        : ''}"
       on:click={(e) => handleChipClick(e, category)}
     >
       <span class="anomaly-icon" style="font-size: 10px;">{categoryInfo.symbol}</span>

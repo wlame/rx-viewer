@@ -243,6 +243,19 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The analysis report takes its detector names, categories, descriptions
+  and severity colours from the backend's `/v1/detectors` answer. A
+  detector tab shows the detector's name with its category beside it and
+  its description as the tooltip; a name the answer lacks shows as
+  itself, where a hard-coded list once renamed only rx-python's
+  detectors. The summary line is labelled by detector, with each
+  detector's category beside it; a key that names no detector shows as
+  itself. Severity colours follow the levels of `severity_scale` (a
+  value on a shared bound belongs to the higher level) instead of fixed
+  cut-offs at 0.3, 0.5 and 0.8, and the severity's level and its
+  description are the cell's tooltip. The editor's anomaly chips add the
+  category's description to their tooltip.
+
 - Paging no longer starts in the middle of a jump. Timers kept it off
   for a second after a load and half a second after a reveal, which a
   throttled background tab outlasts. Now only a scroll the user made,

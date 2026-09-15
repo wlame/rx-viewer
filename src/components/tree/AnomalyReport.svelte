@@ -1,6 +1,13 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { AnomalyRangeResult, IndexResponse } from '$lib/types';
+  import { detectors } from '$lib/stores';
+  import type { AnomalyRangeResult, IndexResponse, SeverityLevel } from '$lib/types';
+  import {
+    detectorLabel,
+    severityClass,
+    severityLevel,
+    summaryEntries,
+  } from '$lib/utils/anomalyLabels';
 
   /** An analysed index: its anomalies, their summary and their count. */
   export let result: IndexResponse;
@@ -25,33 +32,20 @@
     return grouped;
   }
 
-  // Get detector display name
-  function getDetectorDisplayName(detector: string): string {
-    const names: Record<string, string> = {
-      error: 'Errors',
-      traceback: 'Tracebacks',
-      format: 'Format Issues',
-      warning: 'Warnings',
-      exception: 'Exceptions',
-      unknown: 'Other',
-    };
-    return names[detector] || detector.charAt(0).toUpperCase() + detector.slice(1);
+  /** The severity's level on the backend's scale, as a tooltip. */
+  function severityTitle(severity: number, scale: SeverityLevel[]): string {
+    const level = severityLevel(severity, scale);
+    return level ? `${level.label}: ${level.description}` : '';
   }
 
-  // Get severity color class
-  function getSeverityColor(severity: number): string {
-    if (severity >= 0.8) return 'text-red-600 dark:text-red-400';
-    if (severity >= 0.5) return 'text-orange-500 dark:text-orange-400';
-    if (severity >= 0.3) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-gh-fg-muted dark:text-gh-fg-dark-muted';
-  }
+  $: summary = summaryEntries(result.anomaly_summary, $detectors.detectors);
 </script>
 
 <!-- Anomalies Detection -->
 {#if result.anomalies && result.anomalies.length > 0}
   {@const anomaliesByDetector = getAnomaliesByDetector(result.anomalies)}
-  {@const detectors = Object.keys(anomaliesByDetector)}
-  {@const activeDetector = selectedAnomalyDetector || detectors[0]}
+  {@const detectorNames = Object.keys(anomaliesByDetector)}
+  {@const activeDetector = selectedAnomalyDetector || detectorNames[0]}
   <div>
     <h3
       class="text-sm font-semibold text-gh-fg-default dark:text-gh-fg-dark-default mb-3 uppercase tracking-wide"
@@ -63,9 +57,14 @@
     {#if result.anomaly_summary}
       <div class="mb-3 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
         Found:
-        {#each Object.entries(result.anomaly_summary) as [category, count], i (category)}
-          <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span>
-          {category}{i < Object.entries(result.anomaly_summary).length - 1 ? ', ' : ''}
+        {#each summary as entry, i (entry.name)}
+          <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
+            >{entry.count}</span
+          >
+          <span class="whitespace-nowrap" title={entry.description}>{entry.name}</span
+          >{#if entry.category}&nbsp;<span class="text-xs whitespace-nowrap"
+              >({entry.category})</span
+            >{/if}{i < summary.length - 1 ? ', ' : ''}
         {/each}
       </div>
     {/if}
@@ -74,15 +73,22 @@
     <div
       class="flex flex-wrap border-b border-gh-border-default dark:border-gh-border-dark-default mb-3"
     >
-      {#each detectors as detector (detector)}
+      {#each detectorNames as detector (detector)}
+        {@const label = detectorLabel(detector, $detectors.detectors)}
         <button
+          title={label.description}
           class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors
                  {activeDetector === detector
             ? 'border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis text-gh-accent-fg dark:text-gh-accent-dark-fg'
             : 'border-transparent text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
           on:click={() => (selectedAnomalyDetector = detector)}
         >
-          {getDetectorDisplayName(detector)}
+          {label.name}
+          {#if label.category}
+            <span class="ml-1 text-xs font-normal text-gh-fg-muted dark:text-gh-fg-dark-muted"
+              >{label.category}</span
+            >
+          {/if}
           <span
             class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle"
           >
@@ -134,9 +140,11 @@
                   {anomaly.description}
                 </td>
                 <td
-                  class="px-3 py-2 text-right font-medium whitespace-nowrap {getSeverityColor(
+                  class="px-3 py-2 text-right font-medium whitespace-nowrap {severityClass(
                     anomaly.severity,
+                    $detectors.severityScale,
                   )}"
+                  title={severityTitle(anomaly.severity, $detectors.severityScale)}
                 >
                   {(anomaly.severity * 100).toFixed(0)}%
                 </td>
@@ -166,9 +174,13 @@
     </h3>
     <div class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted">
       Found:
-      {#each Object.entries(result.anomaly_summary) as [category, count], i (category)}
-        <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default">{count}</span>
-        {category}{i < Object.entries(result.anomaly_summary).length - 1 ? ', ' : ''}
+      {#each summary as entry, i (entry.name)}
+        <span class="font-medium text-gh-fg-default dark:text-gh-fg-dark-default"
+          >{entry.count}</span
+        >
+        <span class="whitespace-nowrap" title={entry.description}>{entry.name}</span
+        >{#if entry.category}&nbsp;<span class="text-xs whitespace-nowrap">({entry.category})</span
+          >{/if}{i < summary.length - 1 ? ', ' : ''}
       {/each}
     </div>
   </div>
