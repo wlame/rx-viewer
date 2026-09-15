@@ -243,6 +243,14 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- An open file holds at most five pages of lines (5,000 by default).
+  Every page it loaded stayed in memory, and each new page passed all of
+  them through the filter and into the editor again, so scrolling far
+  enough loaded the whole file. Paging one way now drops the lines at
+  the other end, and paging back loads them again with their own line
+  numbers. The screen does not move when lines are dropped or added
+  above the view, with wrapped lines too.
+
 - `line` in the URL names the line the user went to: the line a file
   was opened at, a go-to-line target, a search match, an anomaly. It
   named the line in the middle of the screen, so a file opened at

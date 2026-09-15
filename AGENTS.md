@@ -145,7 +145,10 @@ separate comment above, or eslint reads every word as another rule.
   bundle delta before adding Monaco features.
 - Large files are never loaded whole. The editor requests windows through
   `/v1/samples` by line range or byte offset. A feature that needs "the whole
-  file" is wrong by construction.
+  file" is wrong by construction. An open file holds at most `HELD_PAGES`
+  pages (`src/lib/utils/slidingWindow.ts`): a page loaded at one end drops
+  lines at the other, and the editor keeps the file line at the top of the
+  view in place when lines come or go above it.
 - Content is set with Monaco `setValue`, never `innerHTML` or `{@html}`. Log
   content is untrusted.
 - The app ships with no third-party runtime requests. Do not add a CDN script

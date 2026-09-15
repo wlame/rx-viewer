@@ -12,6 +12,7 @@
     getLogLanguageThemeRules,
     getLogLanguageThemeRulesDark,
   } from '$lib/utils/monacoLogLanguage';
+  import { editorLineAfterMove } from '$lib/utils/slidingWindow';
 
   // Props
   export let content: string = '';
@@ -308,38 +309,45 @@
     }
   });
 
-  // Track previous line start for scroll adjustment
+  // The file line the editor's line 1 showed before the last content change.
   let previousLineNumbersStart = lineNumbersStart;
-  let previousLineCount = 0;
 
-  // Update content when it changes
-  // Using a function to make the reactive dependency on 'content' explicit
+  /**
+   * Set new content without moving what is on screen.
+   *
+   * A page added at the start of the window, or lines dropped there,
+   * renumbers every editor line. The file line at the top of the view
+   * stays at the same height, measured with Monaco's own line positions
+   * so wrapped lines count right. When the new window does not hold that
+   * line (a jump elsewhere in the file), the scroll offset is kept and
+   * the jump reveals its target.
+   */
   function updateEditorContent(newContent: string) {
     if (!editor) return;
 
     const currentValue = editor.getValue();
     if (currentValue === newContent) return;
 
-    // Calculate if lines were added at the top
-    const newLineCount = newContent.split('\n').length;
-    const linesAddedAtTop = previousLineNumbersStart - lineNumbersStart;
-
-    // Save scroll position
     const scrollTop = editor.getScrollTop();
-    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+    const scrollLeft = editor.getScrollLeft();
+    const topLine = editor.getVisibleRanges()[0]?.startLineNumber ?? null;
+    const offsetInTopLine = topLine === null ? 0 : scrollTop - editor.getTopForLineNumber(topLine);
 
-    // Update content
     editor.setValue(newContent);
 
-    // Adjust scroll position if lines were added at top
-    if (linesAddedAtTop > 0 && previousLineCount > 0) {
-      const scrollAdjustment = linesAddedAtTop * lineHeight;
-      editor.setScrollTop(scrollTop + scrollAdjustment);
-    } else {
-      editor.setScrollTop(scrollTop);
-    }
+    const lineCount = editor.getModel()?.getLineCount() ?? 0;
+    const keptLine =
+      topLine === null
+        ? null
+        : editorLineAfterMove(topLine, previousLineNumbersStart, {
+            startLine: lineNumbersStart,
+            lineCount,
+          });
+    editor.setScrollTop(
+      keptLine === null ? scrollTop : editor.getTopForLineNumber(keptLine) + offsetInTopLine,
+    );
+    editor.setScrollLeft(scrollLeft);
 
-    previousLineCount = newLineCount;
     previousLineNumbersStart = lineNumbersStart;
   }
 

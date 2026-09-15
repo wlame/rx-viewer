@@ -5,7 +5,8 @@ import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestReque
 import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
-import type { OpenFile, FileLine, FileMatch, IndexResponse, SamplesResponse } from '../types';
+import { addPage, maxHeldLines } from '../utils/slidingWindow';
+import type { OpenFile, FileMatch, IndexResponse, SamplesResponse } from '../types';
 import { commandLog } from './commands';
 import { notifications } from './notifications';
 import { settings } from './settings';
@@ -377,32 +378,29 @@ function createFilesStore() {
       if (response === SUPERSEDED) return;
 
       const window = readSamplesAnswer(response);
+      const maxLines = maxHeldLines(linesPerPage);
 
       update((s) => ({
         ...s,
         openFiles: s.openFiles.map((f) => {
           if (f.path !== path) return f;
 
-          // Merge with existing lines
-          const lineMap = new Map<number, FileLine>();
-          for (const line of f.lines) lineMap.set(line.lineNumber, line);
-          for (const line of window.lines) lineMap.set(line.lineNumber, line);
-          const mergedLines = Array.from(lineMap.values()).sort(
-            (a, b) => a.lineNumber - b.lineNumber,
-          );
-
-          const newStartLine = mergedLines[0]?.lineNumber ?? 1;
-          const newEndLine = mergedLines.at(-1)?.lineNumber ?? 0;
+          // The page joins the held lines, and the cap drops lines at
+          // the other end; paging back loads them again.
+          const held = addPage(f.lines, window.lines, direction, maxLines);
+          const newStartLine = held.lines[0]?.lineNumber ?? 1;
+          const newEndLine = held.lines.at(-1)?.lineNumber ?? 0;
           // A range after the loaded lines that comes back short or null
-          // ends the file, and the loaded lines run up to that end.
+          // ends the file, and the loaded lines run up to that end. Lines
+          // dropped at the end mean the window stops short of it again.
           const reachedEnd = direction === 'after' ? window.reachedEnd : f.reachedEnd;
           return {
             ...f,
-            lines: mergedLines,
+            lines: held.lines,
             startLine: newStartLine,
             endLine: newEndLine,
             reachedStart: newStartLine === 1,
-            reachedEnd,
+            reachedEnd: reachedEnd && !held.droppedAfter,
             totalLines: direction === 'after' && reachedEnd ? newEndLine : f.totalLines,
             loading: false,
           };

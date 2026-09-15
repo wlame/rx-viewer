@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { maxHeldLines } from '../utils/slidingWindow';
 import { commandLog } from './commands';
 import { files } from './files';
+import { settings } from './settings';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -168,6 +170,87 @@ describe('the file window against samples answers', () => {
     expect(file.endLine).toBe(5_500);
     expect(file.reachedEnd).toBe(false);
     expect(everyLineReadsItsNumber('/logs/long.log')).toBe(true);
+  });
+});
+
+/**
+ * An open file holds a window of at most `maxHeldLines` lines: paging
+ * one way drops the lines at the other end, and paging back loads them
+ * again. The default page is 1,000 lines, so the cap is 5,000.
+ */
+describe('the held window while paging', () => {
+  const path = '/logs/long.log';
+  const cap = maxHeldLines(get(settings).linesPerPage);
+
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  async function page(direction: 'before' | 'after', times: number) {
+    for (let i = 0; i < times; i++) await files.loadMore(path, direction);
+  }
+
+  it('holds at most the cap after paging forward 50 times', async () => {
+    serveFileOf(100_000);
+    await files.openFile(path, undefined, null, undefined, false);
+
+    await page('after', 50);
+
+    const file = openedFile(path);
+    expect(file.lines.length).toBe(cap);
+    expect(file.endLine).toBe(51_000);
+    expect(file.startLine).toBe(51_000 - cap + 1);
+    expect(file.reachedStart).toBe(false);
+    expect(file.reachedEnd).toBe(false);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
+  });
+
+  it('reloads the dropped pages when paging back, with their numbers', async () => {
+    serveFileOf(100_000);
+    await files.openFile(path, undefined, null, undefined, false);
+    await page('after', 50);
+
+    await page('before', 10);
+
+    const file = openedFile(path);
+    expect(file.lines.length).toBe(cap);
+    expect(file.startLine).toBe(51_000 - cap + 1 - 10_000);
+    expect(file.endLine).toBe(file.startLine + cap - 1);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
+    // The pages after the window were dropped, so paging forward goes on.
+    expect(file.reachedEnd).toBe(false);
+  });
+
+  it('reaches the start again after paging back all the way', async () => {
+    serveFileOf(100_000);
+    await files.openFile(path, undefined, null, undefined, false);
+    await page('after', 20);
+
+    await page('before', 30);
+
+    const file = openedFile(path);
+    expect(file.startLine).toBe(1);
+    expect(file.reachedStart).toBe(true);
+    expect(file.lines.length).toBe(cap);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
+  });
+
+  it('keeps the end of the file known after dropping the lines near it', async () => {
+    serveFileOf(12_000);
+    await files.openFile(path, undefined, null, undefined, false);
+    await page('after', 20);
+    expect(openedFile(path).reachedEnd).toBe(true);
+
+    await page('before', 3);
+
+    const file = openedFile(path);
+    expect(file.reachedEnd).toBe(false);
+    expect(file.totalLines).toBe(12_000);
+    expect(file.lines.length).toBe(cap);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
   });
 });
 
