@@ -14,7 +14,7 @@
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { debounce } from '$lib/utils/urlState';
   import { anchorAfterScroll, type VisibleLines } from '$lib/utils/anchorLine';
-  import { pagingDirection } from '$lib/utils/paging';
+  import { pagingDirection, watchUserInput } from '$lib/utils/paging';
   import { processContent } from '$lib/utils/processContent';
   import {
     anomalyCategoryDecorations,
@@ -62,7 +62,7 @@
   // while lines arrive and to restore a tab, and those positions are not
   // where the user went. The rule for paging is in utils/paging.ts.
   let hasUserScrolled = false;
-  const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'mousedown', 'keydown'] as const;
+  let stopWatchingUserInput: (() => void) | null = null;
 
   function noteUserScroll() {
     hasUserScrolled = true;
@@ -386,9 +386,7 @@
   onMount(() => {
     installPaletteStyles();
     paneEl?.addEventListener('keydown', handleKeyDown);
-    for (const type of USER_SCROLL_EVENTS) {
-      paneEl?.addEventListener(type, noteUserScroll, { passive: true });
-    }
+    if (paneEl) stopWatchingUserInput = watchUserInput(paneEl, noteUserScroll);
   });
 
   onDestroy(() => {
@@ -396,7 +394,7 @@
     // its children are destroyed.
     rememberTab();
     paneEl?.removeEventListener('keydown', handleKeyDown);
-    for (const type of USER_SCROLL_EVENTS) paneEl?.removeEventListener(type, noteUserScroll);
+    stopWatchingUserInput?.();
     if (decorationsCollection) {
       decorationsCollection.clear();
     }

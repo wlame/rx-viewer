@@ -13,6 +13,27 @@
 /** How close to an edge of the held lines, in pixels, the view must come to page. */
 export const PAGING_EDGE_PX = 200;
 
+/** The input by which a user moves the editor's view: wheel, touch, scrollbar drag, keys. */
+export const USER_INPUT_EVENTS = ['wheel', 'touchmove', 'mousedown', 'keydown'] as const;
+
+/**
+ * Call `onInput` on every user input inside `element`, and return the
+ * function that stops listening.
+ *
+ * The listeners run in the capture phase, on the way down to the
+ * editor: Monaco stops the propagation of a wheel event it scrolled by,
+ * so a listener in the bubble phase would never hear a wheel scroll.
+ */
+export function watchUserInput(element: HTMLElement, onInput: () => void): () => void {
+  const options = { capture: true, passive: true };
+  for (const type of USER_INPUT_EVENTS) element.addEventListener(type, onInput, options);
+  return () => {
+    for (const type of USER_INPUT_EVENTS) {
+      element.removeEventListener(type, onInput, { capture: true });
+    }
+  };
+}
+
 export interface PagingState {
   /** A jump or a search match has not revealed its target yet. */
   isNavigationPending: boolean;

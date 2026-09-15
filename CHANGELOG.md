@@ -249,7 +249,8 @@ typecheck lint test build` in the order CI runs them, and
   after the jump revealed its target and with no window loading, loads
   a page. A jump's target is shown at once rather than with a smooth
   scroll, so a page that arrives right after it cannot stop the view
-  halfway.
+  halfway. The viewer now hears a wheel scroll before the editor stops
+  the event; until now a wheel scroll never moved `line` in the URL.
 
 - Switching the sidebar from Search back to Files keeps the tree as it
   was. The tree was destroyed with the tab and loaded its roots again
