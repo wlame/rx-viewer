@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
   import type { OpenFile, RegexFilter } from '$lib/types';
   import { files, settings, resolvedTheme } from '$lib/stores';
@@ -14,6 +14,7 @@
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { debounce } from '$lib/utils/urlState';
   import { anchorAfterScroll, type VisibleLines } from '$lib/utils/anchorLine';
+  import { pagingDirection } from '$lib/utils/paging';
   import { processContent } from '$lib/utils/processContent';
   import {
     anomalyCategoryDecorations,
@@ -55,21 +56,17 @@
   let filterPattern = rememberedPane.filterDraft.pattern;
   let filterMode: 'hide' | 'show' | 'highlight' = rememberedPane.filterDraft.mode;
 
-  // Track scroll state for content loading
-  let isScrollingToTarget = false;
-
   // Whether the user moved the view since the last navigation. Only a
-  // scroll the user made may move the anchor: the editor's own scroll to
-  // a target can take longer than any timer (a throttled background tab
-  // runs few animation frames), and its halfway positions are not where
-  // the user went.
+  // scroll the user made may move the anchor or load a page: the editor
+  // moves the view itself to reveal a target, to keep the screen still
+  // while lines arrive and to restore a tab, and those positions are not
+  // where the user went. The rule for paging is in utils/paging.ts.
   let hasUserScrolled = false;
   const USER_SCROLL_EVENTS = ['wheel', 'touchmove', 'mousedown', 'keydown'] as const;
 
   function noteUserScroll() {
     hasUserScrolled = true;
   }
-  let lastContentLoadTime = 0; // Timestamp of last content load to prevent immediate loadMore
 
   // Settings
   $: fontSize = $settings.editorFontSize;
@@ -219,25 +216,27 @@
     filterPanelVisible = false;
   }
 
-  // Track when content is loaded to prevent immediate loadMore calls
-  $: if (file.lines.length > 0 && !file.loading) {
-    lastContentLoadTime = Date.now();
-  }
-
-  // Scroll to target line when requested
-  // Use a longer delay to ensure Monaco has fully rendered the content
+  // A navigation's target is revealed once its lines are loaded. Until
+  // then `scrollToLine` stays set, and no scroll pages.
   $: if (
     file.scrollToLine !== undefined &&
     monacoComponent &&
     file.lines.length > 0 &&
     !file.loading
   ) {
-    isScrollingToTarget = true;
+    revealPendingTarget(file.scrollToLine);
+  }
+
+  /**
+   * Reveal the target of a navigation and mark it done. The editor gets
+   * the new lines later in this same update, so the reveal waits for
+   * the update to finish (`tick`), not for a time.
+   */
+  async function revealPendingTarget(targetLine: number) {
     hasUserScrolled = false;
-    // Delay scroll to ensure content is rendered in Monaco
-    setTimeout(() => {
-      scrollToLine(file.scrollToLine!);
-    }, 100);
+    await tick();
+    revealFileLine(targetLine);
+    files.clearScrollPosition(file.path);
   }
 
   /** The file lines on screen, or null when the editor shows none. */
@@ -259,46 +258,32 @@
     return visible ? Math.floor((visible.first + visible.last) / 2) : file.startLine;
   }
 
-  function scrollToLine(targetLine: number) {
-    if (!monacoComponent) return;
-
-    // Convert file line number to Monaco line number
-    const monacoLine = targetLine - file.startLine + 1;
-
-    if (monacoLine >= 1 && monacoLine <= file.lines.length) {
-      monacoComponent.revealLine(targetLine);
-      // Keep isScrollingToTarget true for longer to prevent scroll handlers from triggering loadMore
-      setTimeout(() => {
-        files.clearScrollPosition(file.path);
-        // Delay clearing isScrollingToTarget to prevent immediate loadMore calls
-        setTimeout(() => {
-          isScrollingToTarget = false;
-        }, 200);
-      }, 300);
-    } else {
-      isScrollingToTarget = false;
-    }
+  /**
+   * Show a held file line in the center of the view. At once, not with a
+   * smooth scroll: a page that arrives during the animation would stop
+   * the view halfway, where the user did not go.
+   */
+  function revealFileLine(targetLine: number) {
+    const isHeld = targetLine >= file.startLine && targetLine <= file.endLine;
+    if (isHeld) monacoComponent?.revealLineAtOnce(targetLine);
   }
 
   function jumpToLineNumber(lineNum: number) {
-    if (lineNum >= file.startLine && lineNum <= file.endLine) {
-      isScrollingToTarget = true;
-      hasUserScrolled = false;
-      files.setAnchorLine(file.path, lineNum);
-      scrollToLine(lineNum);
-
-      // If jumping to boundary lines, trigger loading more content after scroll completes
-      if (lineNum === file.startLine && file.startLine > 1 && !file.reachedStart) {
-        setTimeout(() => {
-          files.loadMore(file.path, 'before');
-        }, 400);
-      } else if (lineNum === file.endLine && !file.reachedEnd) {
-        setTimeout(() => {
-          files.loadMore(file.path, 'after');
-        }, 400);
-      }
-    } else {
+    if (lineNum < file.startLine || lineNum > file.endLine) {
       files.jumpToLine(file.path, lineNum);
+      return;
+    }
+
+    hasUserScrolled = false;
+    files.setAnchorLine(file.path, lineNum);
+    revealFileLine(lineNum);
+
+    // A jump to the first or last held line loads the page beyond it;
+    // the editor keeps the line in place while the page arrives.
+    if (lineNum === file.startLine && !file.reachedStart) {
+      files.loadMore(file.path, 'before');
+    } else if (lineNum === file.endLine && !file.reachedEnd) {
+      files.loadMore(file.path, 'after');
     }
   }
 
@@ -323,31 +308,16 @@
 
     updateAnchorOnScroll();
 
-    // Don't trigger loadMore during programmatic scrolling or right after content load
-    if (file.scrollToLine !== undefined || isScrollingToTarget) {
-      return;
-    }
-
-    // Skip loadMore for 1 second after content was loaded (prevents extra calls after jumpToLine)
-    const timeSinceLoad = Date.now() - lastContentLoadTime;
-    if (timeSinceLoad < 1000) {
-      return;
-    }
-
-    if (file.loading) {
-      return;
-    }
-
-    // Load more when near top
-    if (scrollTop < 200 && file.startLine > 1 && !file.reachedStart) {
-      files.loadMore(file.path, 'before');
-    }
-
-    // Load more when near bottom
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    if (distanceFromBottom < 200 && !file.reachedEnd) {
-      files.loadMore(file.path, 'after');
-    }
+    const direction = pagingDirection({
+      isNavigationPending: file.scrollToLine !== undefined,
+      isLoading: file.loading,
+      hasUserScrolled,
+      reachedStart: file.reachedStart,
+      reachedEnd: file.reachedEnd,
+      scrollTop,
+      distanceFromBottom: scrollHeight - scrollTop - clientHeight,
+    });
+    if (direction) files.loadMore(file.path, direction);
   }
 
   /** Put a tab shown again where it was, or on its anchor line; see scrollOnShow. */

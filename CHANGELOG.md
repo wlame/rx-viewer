@@ -243,6 +243,14 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Paging no longer starts in the middle of a jump. Timers kept it off
+  for a second after a load and half a second after a reveal, which a
+  throttled background tab outlasts. Now only a scroll the user made,
+  after the jump revealed its target and with no window loading, loads
+  a page. A jump's target is shown at once rather than with a smooth
+  scroll, so a page that arrives right after it cannot stop the view
+  halfway.
+
 - Switching the sidebar from Search back to Files keeps the tree as it
   was. The tree was destroyed with the tab and loaded its roots again
   when it came back, which collapsed every folder and closed an open
