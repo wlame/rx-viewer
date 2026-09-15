@@ -9,7 +9,7 @@
 set shell := ["bash", "-uc"]
 
 bun_image := "oven/bun:1"
-docker_bun := 'docker run --rm -i -e RX_VIEWER_VERSION -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" ' + bun_image + ' bun'
+docker_bun := 'docker run --rm -i -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" ' + bun_image + ' bun'
 bun := if `command -v bun >/dev/null 2>&1 && echo found || echo missing` == "found" { "bun" } else { docker_bun }
 
 # The version a release stamps. Tags are the source of truth; package.json
@@ -136,7 +136,7 @@ test-watch:
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    RX_VIEWER_VERSION={{version}} {{bun}} run build
+    {{bun}} run build
     # Backends read dist/version.json to name the cached bundle, so it is
     # part of the build rather than of the release workflow.
     printf '{\n  "version": "%s",\n  "buildDate": "%s",\n  "commit": "%s"\n}\n' \

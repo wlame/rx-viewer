@@ -75,7 +75,7 @@ interchangeable backends, no vendoring.
 | `src/lib/types.generated.ts`                              | Generated from rx-go's OpenAPI document — do not edit                                                                                              |
 | `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                                                                                      |
 | `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version`, `layout`; `paneMemory` keeps each file tab's editor state |
-| `src/lib/utils/regexFilter.ts`                            | Regex filter engine (hide, show, highlight)                                                                                                        |
+| `src/lib/utils/processContent.ts`, `editorDecorations.ts` | The editor's regex filter: hide and show rewrite the text, highlight draws decorations                                                             |
 | `src/lib/utils/urlState.ts`, `src/lib/viewState.ts`       | The view in the URL (no router): one parse/serialize table per key; URL written from stores                                                        |
 | `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                                                                   |
 | `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing)                                                                              |
@@ -175,7 +175,7 @@ separate comment above, or eslint reads every word as another rule.
 
 ## Testing
 
-- Unit tests with `vitest` for the pure modules: `regexFilter.ts`,
+- Unit tests with `vitest` for the pure modules: `processContent.ts`,
   `urlState.ts`, `format.ts`, `monacoLogLanguage.ts`, `api.ts` with a stubbed
   `fetch`, and the line-number resolution logic in the search flow.
 - Names: `describe(unit) / it("scenario returns expected")`.
@@ -193,8 +193,8 @@ Paste the output.
 
 - Commit: one imperative sentence, capital, full stop, no prefix, no body.
 - Version comes from the git tag. `package.json` stays at `0.0.0`; the build
-  stamps `git describe` into `dist/version.json` and into the
-  `__RX_VIEWER_VERSION__` define. Do not commit a real version.
+  stamps `git describe` into `dist/version.json`, which the header reads.
+  Do not commit a real version.
 - Release: `just release-dry patch` previews, `just release patch` runs the
   gates, promotes the changelog, commits and tags, then prints the push
   commands rather than running them. Pushing the tag runs `release.yml`,

@@ -168,10 +168,6 @@ function createTreeStore() {
     }));
   }
 
-  function clearError() {
-    update((s) => ({ ...s, error: null }));
-  }
-
   /**
    * Expand all parent directories to reveal a file path and select it
    */
@@ -231,7 +227,6 @@ function createTreeStore() {
     toggleExpanded,
     selectPath,
     markIndexed,
-    clearError,
     expandToPath,
   };
 }

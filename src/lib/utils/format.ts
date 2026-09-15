@@ -19,31 +19,6 @@ export function formatSize(bytes: number): string {
 }
 
 /**
- * Format a date string to relative time
- */
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  const diffHours = Math.floor(diffMinutes / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSeconds < 60) {
-    return 'just now';
-  } else if (diffMinutes < 60) {
-    return `${diffMinutes}m ago`;
-  } else if (diffHours < 24) {
-    return `${diffHours}h ago`;
-  } else if (diffDays < 7) {
-    return `${diffDays}d ago`;
-  } else {
-    return date.toLocaleDateString();
-  }
-}
-
-/**
  * Format a number with thousands separator
  */
 export function formatNumber(num: number): string {
@@ -67,15 +42,4 @@ export const ABSENT_STATISTIC = '—';
  */
 export function formatStatistic(value: number | null): string {
   return value === null ? ABSENT_STATISTIC : value.toFixed(1);
-}
-
-/**
- * Truncate a path to show the last N segments
- */
-export function truncatePath(path: string, maxSegments: number = 3): string {
-  const segments = path.split('/').filter(Boolean);
-  if (segments.length <= maxSegments) {
-    return path;
-  }
-  return '.../' + segments.slice(-maxSegments).join('/');
 }

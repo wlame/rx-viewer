@@ -395,57 +395,16 @@
     });
   }
 
-  // Public methods accessible via bind:this
-  export function getEditor(): monaco.editor.IStandaloneCodeEditor | null {
-    return editor;
-  }
-
-  export function revealLine(
-    lineNumber: number,
-    scrollType: monaco.editor.ScrollType = monaco.editor.ScrollType.Smooth,
-  ) {
-    if (editor) {
-      // Adjust for our line number offset
-      const monacoLine = lineNumber - lineNumbersStart + 1;
-      editor.revealLineInCenter(monacoLine, scrollType);
-    }
-  }
-
   /** Show a file line in the center of the view at once, without the smooth scroll. */
   export function revealLineAtOnce(lineNumber: number) {
-    revealLine(lineNumber, monaco.editor.ScrollType.Immediate);
+    // Monaco counts from 1 at the first loaded line.
+    const monacoLine = lineNumber - lineNumbersStart + 1;
+    editor?.revealLineInCenter(monacoLine, monaco.editor.ScrollType.Immediate);
   }
 
   /** Put the view back where it was: both scroll offsets, at once. */
   export function restoreScroll(scrollTop: number, scrollLeft: number) {
     editor?.setScrollPosition({ scrollTop, scrollLeft }, monaco.editor.ScrollType.Immediate);
-  }
-
-  export function setScrollTop(scrollTop: number) {
-    if (editor) {
-      editor.setScrollTop(scrollTop);
-    }
-  }
-
-  export function getScrollTop(): number {
-    return editor?.getScrollTop() ?? 0;
-  }
-
-  export function getScrollHeight(): number {
-    return editor?.getScrollHeight() ?? 0;
-  }
-
-  export function setDecorations(
-    decorations: monaco.editor.IModelDeltaDecoration[],
-  ): monaco.editor.IEditorDecorationsCollection | null {
-    if (editor) {
-      return editor.createDecorationsCollection(decorations);
-    }
-    return null;
-  }
-
-  export function clearDecorations(collection: monaco.editor.IEditorDecorationsCollection) {
-    collection.clear();
   }
 </script>
 

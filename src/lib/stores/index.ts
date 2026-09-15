@@ -5,4 +5,4 @@ export { trace } from './trace';
 export { settings, resolvedTheme } from './settings';
 export { notifications } from './notifications';
 export { version } from './version';
-export { detectors, categoryNames } from './detectors';
+export { detectors } from './detectors';

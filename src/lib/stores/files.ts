@@ -744,13 +744,6 @@ function createFilesStore() {
   }
 
   /**
-   * Clear highlighted lines for a file
-   */
-  function clearHighlightedLines(path: string) {
-    setHighlightedLines(path, null);
-  }
-
-  /**
    * Set the selected anomaly category for highlighting
    * @param path - File path
    * @param category - Category name to highlight, or null to clear
@@ -800,7 +793,6 @@ function createFilesStore() {
     toggleWordWrap,
     setActiveFile,
     setHighlightedLines,
-    clearHighlightedLines,
     setSelectedAnomalyCategory,
     toggleAnomalyCategory,
   };

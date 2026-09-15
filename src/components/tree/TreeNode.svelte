@@ -2,6 +2,7 @@
   import type { TreeNode as TreeNodeType } from '$lib/types';
   import { tree, files, notifications } from '$lib/stores';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
+  import { formatSize } from '$lib/utils/format';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -39,14 +40,6 @@
       event.preventDefault();
       handleClick();
     }
-  }
-
-  function formatSize(size: number | null): string {
-    if (size === null) return '';
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-    if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-    return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
   }
 
   $: menuItems = treeMenuItems(node);

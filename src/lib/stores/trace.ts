@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
-import type { TraceMatch, TraceMatchingFlags, TraceResponse } from '../types';
+import type { TraceMatchingFlags, TraceResponse } from '../types';
 import type { SearchState } from '../utils/urlState';
 import { commandLog } from './commands';
 import { files } from './files';
@@ -20,7 +20,6 @@ export interface SearchQuery {
 }
 
 interface TraceState {
-  query: string;
   searching: boolean;
   response: TraceResponse | null;
   error: string | null;
@@ -28,7 +27,6 @@ interface TraceState {
 
 function createTraceStore() {
   const { subscribe, set, update } = writable<TraceState>({
-    query: '',
     searching: false,
     response: null,
     error: null,
@@ -46,7 +44,6 @@ function createTraceStore() {
     files.clearMatches();
     update((s) => ({
       ...s,
-      query: patterns.join(' | '),
       searching: true,
       error: null,
       response: null,
@@ -82,52 +79,20 @@ function createTraceStore() {
     }
   }
 
-  function setQuery(query: string) {
-    update((s) => ({ ...s, query }));
-  }
-
   function clear() {
     latestSearch.abort();
     files.clearMatches();
     set({
-      query: '',
       searching: false,
       response: null,
       error: null,
     });
   }
 
-  /**
-   * Get matches for a specific file path from the last search
-   */
-  function getMatchesForFile(filePath: string): TraceMatch[] {
-    const matches: TraceMatch[] = [];
-
-    const state = getState();
-    if (!state.response) return matches;
-
-    // Find the file ID for this path
-    const fileId = Object.entries(state.response.files).find(([, path]) => path === filePath)?.[0];
-
-    if (!fileId) return matches;
-
-    // Filter matches for this file
-    return state.response.matches.filter((m) => m.file === fileId);
-  }
-
-  // Helper to get current state synchronously
-  function getState(): TraceState {
-    let state: TraceState;
-    subscribe((s) => (state = s))();
-    return state!;
-  }
-
   return {
     subscribe,
     search,
-    setQuery,
     clear,
-    getMatchesForFile,
   };
 }
 

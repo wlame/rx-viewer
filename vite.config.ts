@@ -3,18 +3,12 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { resolve } from 'path';
 import { devProxy } from './src/lib/backendRoutes';
 
-// The release stamps the tag through this env var; a local build says "dev".
-const viewerVersion = process.env.RX_VIEWER_VERSION || 'dev';
-
 // Where the dev server sends /v1 and /health (src/lib/backendRoutes.ts).
 // Inside a container the backend on the host is not localhost, so
 // `just dev` sets this to host.docker.internal.
 const devProxyTarget = process.env.RX_DEV_PROXY_TARGET || 'http://localhost:8080';
 
 export default defineConfig({
-  define: {
-    __RX_VIEWER_VERSION__: JSON.stringify(viewerVersion),
-  },
   plugins: [svelte()],
   resolve: {
     alias: {
