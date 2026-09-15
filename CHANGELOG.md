@@ -243,6 +243,12 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Switching the sidebar from Search back to Files keeps the tree as it
+  was. The tree was destroyed with the tab and loaded its roots again
+  when it came back, which collapsed every folder and closed an open
+  Analyze dialog. It is now hidden instead, the roots load once, and a
+  hidden Analyze dialog leaves Escape to what is on screen.
+
 - Each file tab keeps its own editor state. One editor pane served
   every tab, so the filter bar of one file showed on the next, where
   Apply did nothing, and a tab could open at another tab's scroll

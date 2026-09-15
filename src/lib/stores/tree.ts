@@ -84,6 +84,17 @@ function createTreeStore() {
     }
   }
 
+  /**
+   * Load the roots unless they are loaded or loading. Loading them again
+   * replaces every node, which collapses the expanded folders; Retry and
+   * a first load are the only reasons to do that.
+   */
+  async function ensureRoots() {
+    const state = get({ subscribe });
+    if (state.roots.length > 0 || state.loading) return;
+    await loadRoots();
+  }
+
   async function loadDirectory(path: string) {
     const state = get({ subscribe });
     const node = findNode(state.roots, path);
@@ -215,6 +226,7 @@ function createTreeStore() {
     subscribe,
     nodeAt,
     loadRoots,
+    ensureRoots,
     loadDirectory,
     toggleExpanded,
     selectPath,

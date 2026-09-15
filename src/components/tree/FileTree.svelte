@@ -4,8 +4,10 @@
   import TreeNode from './TreeNode.svelte';
   import Spinner from '../common/Spinner.svelte';
 
+  // The tree stays mounted while the Search tab is shown, and a link may
+  // have loaded the roots already; either way the expanded folders stay.
   onMount(() => {
-    tree.loadRoots();
+    tree.ensureRoots();
   });
 </script>
 

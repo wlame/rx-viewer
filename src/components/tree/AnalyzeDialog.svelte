@@ -22,8 +22,8 @@
   const run = new AbortController();
 
   // The dialog goes away when it is closed, and with its tree row when
-  // the folder collapses or the sidebar switches to Search; a poll
-  // nobody can see stops with it.
+  // the folder collapses; a poll nobody can see stops with it. Switching
+  // the sidebar to Search only hides the tree, so the dialog stays.
   onDestroy(() => run.abort());
 
   onMount(async () => {
@@ -51,10 +51,16 @@
     dispatch('close');
   }
 
+  // The backdrop, which takes no space while the tree is hidden.
+  let backdropEl: HTMLDivElement;
+
   /** Escape closes the dialog. Without it the only way out is a click,
-   *  which leaves a keyboard user trapped behind the overlay. */
+   *  which leaves a keyboard user trapped behind the overlay. A dialog
+   *  hidden with the tree (the Search tab is shown) ignores Escape, which
+   *  belongs to what is on screen. */
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
+    const isOnScreen = backdropEl?.getClientRects().length > 0;
+    if (event.key === 'Escape' && isOnScreen) {
       close();
     }
   }
@@ -87,6 +93,7 @@
      closes the dialog (handleKeydown), so the backdrop
      click is a mouse convenience, not the only way out. -->
 <div
+  bind:this={backdropEl}
   class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
   role="presentation"
   on:click={handleBackdropClick}

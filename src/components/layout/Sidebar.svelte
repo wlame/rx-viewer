@@ -66,11 +66,13 @@
     </button>
   </div>
 
-  <!-- Content -->
+  <!-- Content. The tree is hidden rather than destroyed while Search is
+       shown, so its expanded folders and an open Analyze dialog stay. -->
   <div class="flex-1 overflow-hidden">
-    {#if $activeTab === 'tree'}
+    <div class="h-full" hidden={$activeTab !== 'tree'}>
       <FileTree />
-    {:else}
+    </div>
+    {#if $activeTab === 'search'}
       <SearchPanel />
     {/if}
   </div>
