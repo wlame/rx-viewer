@@ -234,6 +234,9 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Removed
 
+- The `client` query parameter on every `/health` request. No backend
+  reads it, and making it kept an identifier in `localStorage`.
+
 - The highlight.js script and two stylesheets loaded from
   `cdnjs.cloudflare.com` on every page load. Nothing imported the module
   that used them — Monaco does the highlighting — so they were three

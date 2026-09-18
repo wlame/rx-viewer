@@ -146,12 +146,6 @@ describe('request shape', () => {
     expect(spy.mock.calls[0][0]).toBe('/v1/tree');
   });
 
-  it('encodes the client id on the health check', async () => {
-    const spy = stubFetch({});
-    await api.getHealth('client/with slash');
-    expect(spy.mock.calls[0][0]).toBe('/health?client=client%2Fwith%20slash');
-  });
-
   it('calls /health outside the versioned prefix', async () => {
     const spy = stubFetch({});
     await api.getHealth();

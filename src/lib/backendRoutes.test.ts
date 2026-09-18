@@ -31,7 +31,7 @@ describe('devProxy', () => {
 
   it('forwards every path the API client requests', async () => {
     const paths = recordRequests();
-    await api.getHealth('client-1');
+    await api.getHealth();
     await api.getTree();
     await api.getDetectors();
 

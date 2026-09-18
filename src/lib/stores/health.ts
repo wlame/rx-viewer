@@ -3,7 +3,6 @@ import { api } from '../api';
 import { contractGate } from '../contractGate';
 import type { HealthResponse } from '../types';
 import { checkContractVersion, type ContractCompatibility } from '../utils/contractVersion';
-import { getFullClientId } from '../utils/clientId';
 
 /**
  * How often `/health` is asked while the backend's contract is refused.
@@ -46,9 +45,6 @@ function createHealthStore() {
     return contract.kind === 'incompatible' ? BLOCKED_RECHECK_MS : pollingIntervalMs;
   }
 
-  // Get client ID once (stable across checks)
-  const clientId = typeof window !== 'undefined' ? getFullClientId() : undefined;
-
   /** Whether the page is in a hidden tab, where polling pauses. */
   function isTabHidden(): boolean {
     return typeof document !== 'undefined' && document.visibilityState === 'hidden';
@@ -65,7 +61,7 @@ function createHealthStore() {
     update((s) => ({ ...s, loading: true }));
     let contract: ContractCompatibility;
     try {
-      const data = await api.getHealth(clientId);
+      const data = await api.getHealth();
       contract = checkContractVersion(data.contract_version);
       set({ connected: true, loading: false, error: null, data, contract });
     } catch (e) {

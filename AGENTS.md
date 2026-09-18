@@ -225,7 +225,6 @@ Paste the output.
 - `dist/` and `dist.tar.gz` are gitignored; the workflow produces them.
 - Relative asset paths must stay relative; backends serve the app from a cache
   directory with an SPA fallback.
-- `/health` accepts a `client` query parameter; `clientId.ts` generates it.
 - On the macOS host the recipes run in Docker, and right after a file is
   written on the host the container can still read the old copy:
   prettier has reported a just-formatted file as unformatted, and vitest
