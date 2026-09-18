@@ -246,6 +246,12 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A file opened from a search result gets the size-based highlighting
+  default (off from 1 MB). Its size was unknown, so it always opened
+  with highlighting; the viewer now takes the size from the file tree,
+  or from one listing of the file's directory when the tree has not
+  loaded it.
+
 - The analysis report's "Indexed At" reads the backend's time by its
   zone. rx-go's UTC time shows in the browser's zone as before; a time
   without a zone, which rx-python writes in the server's local time, is

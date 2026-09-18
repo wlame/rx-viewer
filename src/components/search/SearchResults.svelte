@@ -12,6 +12,7 @@
   import { resolveMatchLine } from '$lib/utils/matchLine';
   import { searchedFileCount } from '$lib/utils/traceSummary';
   import { formatCount } from '$lib/utils/format';
+  import { openFileAtLine } from '$lib/fileOpening';
   import type { TraceMatch } from '$lib/types';
   import FileBadges from '../common/FileBadges.svelte';
 
@@ -94,7 +95,7 @@
     }
     if (line === null) return;
 
-    files.jumpToLine(filePath, line);
+    await openFileAtLine(filePath, line);
   }
 
   // Get file path from file ID
