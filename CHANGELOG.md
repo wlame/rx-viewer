@@ -246,6 +246,18 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The analysis report's "Indexed At" reads the backend's time by its
+  zone. rx-go's UTC time shows in the browser's zone as before; a time
+  without a zone, which rx-python writes in the server's local time, is
+  shown as written and marked "(server time)" instead of being read as
+  the browser's local time.
+- The editor filter puts a captured group where it matched. It searched
+  for the group's text from the start of the match, so in `a.(a)` on
+  `aba` it hid or highlighted the first `a` instead of the last. Whether
+  a pattern has groups is read from its matches, replacing two copies of
+  a pattern check that took an escaped paren or a paren in a class for
+  a group.
+
 - The header's theme button steps through System, Light and Dark, so
   the system theme can be chosen again; its tooltip names the setting
   and the next one. It used to switch between light and dark only.

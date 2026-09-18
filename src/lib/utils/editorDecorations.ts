@@ -14,7 +14,7 @@ import type * as Monaco from 'monaco-editor';
 import type { AnomalyRangeResult } from '../types';
 import type { CategoryStyle } from './categoryStyle';
 import { HIDDEN_MARKER } from './processContent';
-import { matchesIn } from './regexMatches';
+import { matchedSpans } from './regexMatches';
 
 type Decoration = Monaco.editor.IModelDeltaDecoration;
 type DecorationOptions = Monaco.editor.IModelDecorationOptions;
@@ -151,29 +151,11 @@ export function regexHighlightDecorations(pattern: string, source: LineSource): 
     return [];
   }
   const options = { inlineClassName: 'monaco-regex-highlight' };
-  const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
   const out: Decoration[] = [];
 
   for (let lineNumber = 1; lineNumber <= source.getLineCount(); lineNumber++) {
-    const lineContent = source.getLineContent(lineNumber);
-    for (const match of matchesIn(lineContent, regex)) {
-      if (hasGroups && match.length > 1) {
-        let searchStart = match.index;
-        for (let group = 1; group < match.length; group++) {
-          const groupText = match[group];
-          if (groupText === undefined) continue;
-          const groupStart = lineContent.indexOf(groupText, searchStart);
-          if (groupStart === -1) continue;
-          out.push(
-            inlineSpan(lineNumber, groupStart + 1, groupStart + groupText.length + 1, options),
-          );
-          searchStart = groupStart + groupText.length;
-        }
-      } else {
-        out.push(
-          inlineSpan(lineNumber, match.index + 1, match.index + match[0].length + 1, options),
-        );
-      }
+    for (const span of matchedSpans(source.getLineContent(lineNumber), regex)) {
+      out.push(inlineSpan(lineNumber, span.start + 1, span.end + 1, options));
     }
   }
   return out;

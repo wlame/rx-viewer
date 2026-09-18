@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { IndexResponse } from '$lib/types';
-  import { formatStatistic } from '$lib/utils/format';
+  import { formatServerTime, formatStatistic } from '$lib/utils/format';
   import AnomalyReport from './AnomalyReport.svelte';
 
   /** The index to describe, with or without an analysis. */
@@ -46,7 +46,7 @@
       <div>
         <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Indexed At</div>
         <div class="text-sm font-medium">
-          {new Date(result.created_at).toLocaleString()}
+          {formatServerTime(result.created_at)}
         </div>
       </div>
       <div>

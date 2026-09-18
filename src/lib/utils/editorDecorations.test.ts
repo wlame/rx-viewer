@@ -99,6 +99,14 @@ describe('regexHighlightDecorations', () => {
     ]);
   });
 
+  it('highlights a captured group at its own position in the match', () => {
+    expect(spans(regexHighlightDecorations('a.(a)', lines('aba')))).toEqual([[3, 4]]);
+  });
+
+  it('highlights the whole match of a pattern whose only paren is escaped', () => {
+    expect(spans(regexHighlightDecorations('\\(x\\)', lines('f(x)')))).toEqual([[2, 5]]);
+  });
+
   it('highlights only the captured groups when the pattern has them', () => {
     expect(spans(regexHighlightDecorations('user=(u\\d+)', lines('a user=u42 b')))).toEqual([
       [8, 11],

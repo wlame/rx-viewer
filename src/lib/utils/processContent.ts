@@ -22,7 +22,7 @@
  */
 
 import type { RegexFilter } from '$lib/types';
-import { matchesIn } from './regexMatches';
+import { matchedSpans, type MatchedSpan } from './regexMatches';
 
 /** A line as the editor holds it. Only `content` is read here. */
 export interface EditorLine {
@@ -42,13 +42,6 @@ export const HIDDEN_MARKER = '\u200A';
 /** Monaco renders a lone \r as a line break; U+240D shows it instead. */
 const CR_SYMBOL = '\u240D';
 
-/** A span of one line that a filter mode hides or shows. */
-interface MatchedRange {
-  start: number;
-  end: number;
-  text: string;
-}
-
 /**
  * The spans of `lineContent` a hide or show filter acts on: each captured
  * group when the pattern has groups, each whole match otherwise.
@@ -58,25 +51,8 @@ interface MatchedRange {
  * nothing; a line whose only matches are empty reads as a line without a
  * match.
  */
-function matchedRanges(lineContent: string, regex: RegExp, hasGroups: boolean): MatchedRange[] {
-  const ranges: MatchedRange[] = [];
-  for (const match of matchesIn(lineContent, regex)) {
-    if (hasGroups && match.length > 1) {
-      // Locate each captured group in the line, left to right within the match.
-      let searchStart = match.index;
-      for (let i = 1; i < match.length; i++) {
-        const groupText = match[i];
-        if (!groupText) continue;
-        const groupStart = lineContent.indexOf(groupText, searchStart);
-        if (groupStart === -1) continue;
-        ranges.push({ start: groupStart, end: groupStart + groupText.length, text: groupText });
-        searchStart = groupStart + groupText.length;
-      }
-    } else if (match[0].length > 0) {
-      ranges.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
-    }
-  }
-  return ranges;
+function matchedRanges(lineContent: string, regex: RegExp): MatchedSpan[] {
+  return matchedSpans(lineContent, regex).filter((span) => span.end > span.start);
 }
 
 export function processContent(
@@ -97,9 +73,6 @@ export function processContent(
     const mode = regexFilter.mode;
     const pattern = regexFilter.pattern;
 
-    // Check if regex has capturing groups
-    const hasGroups = /\([^?]/.test(pattern) || /\(\?</.test(pattern);
-
     if (mode === 'hide') {
       // Hide matching groups (or entire match if no groups) - replace with marker
       try {
@@ -108,7 +81,7 @@ export function processContent(
 
         processedLines.forEach((lineContent, lineIdx) => {
           const monacoLine = lineIdx + 1;
-          const replacements = matchedRanges(lineContent, regex, hasGroups);
+          const replacements = matchedRanges(lineContent, regex);
 
           // Sort by position and apply replacements from end to start
           replacements.sort((a, b) => b.start - a.start);
@@ -143,7 +116,7 @@ export function processContent(
 
         processedLines.forEach((lineContent, lineIdx) => {
           const monacoLine = lineIdx + 1;
-          const showRanges = matchedRanges(lineContent, regex, hasGroups);
+          const showRanges = matchedRanges(lineContent, regex);
 
           // Build segments: alternating between hidden and shown parts
           const segments: Array<{ isMatch: boolean; text: string }> = [];

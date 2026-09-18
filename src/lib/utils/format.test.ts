@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSize, formatNumber, formatCount, formatStatistic } from './format';
+import { formatSize, formatNumber, formatCount, formatServerTime, formatStatistic } from './format';
 
 describe('formatSize', () => {
   it.each([
@@ -61,5 +61,32 @@ describe('formatStatistic', () => {
   // example the spread of a file with no lines.
   it('shows a dash for a statistic the backend left null', () => {
     expect(formatStatistic(null)).toBe('—');
+  });
+});
+
+describe('formatServerTime', () => {
+  // rx-go writes UTC with a Z: the browser can show it in its own zone.
+  it('shows a time with a zone in the browser zone', () => {
+    const value = '2026-10-03T02:01:16.953961Z';
+    expect(formatServerTime(value)).toBe(new Date(value).toLocaleString());
+  });
+
+  it.each(['2026-10-03T04:01:16+02:00', '2026-10-03T02:01:16-0000'])(
+    'reads the offset of %s',
+    (value) => {
+      expect(formatServerTime(value)).toBe(new Date(value).toLocaleString());
+    },
+  );
+
+  // rx-python writes the server's local time without a zone; the
+  // browser cannot know that zone, so the time is shown as written.
+  it('shows a time without a zone as the server wrote it', () => {
+    expect(formatServerTime('2026-10-03T04:01:16.953961')).toBe(
+      '2026-10-03 04:01:16 (server time)',
+    );
+  });
+
+  it('shows text that is not a time unchanged', () => {
+    expect(formatServerTime('yesterday')).toBe('yesterday');
   });
 });

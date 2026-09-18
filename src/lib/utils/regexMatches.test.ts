@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesIn } from './regexMatches';
+import { matchedSpans, matchesIn } from './regexMatches';
 
 function positions(text: string, regex: RegExp): Array<[number, string]> {
   return [...matchesIn(text, regex)].map((m) => [m.index, m[0]]);
@@ -44,5 +44,18 @@ describe('matchesIn', () => {
       [1, 'a'],
     ]);
     expect(regex.lastIndex).toBe(1);
+  });
+});
+
+describe('matchedSpans', () => {
+  const at = (text: string, pattern: string) =>
+    matchedSpans(text, new RegExp(pattern, 'g')).map((s) => [s.start, s.end, s.text]);
+
+  it('takes the outer group and leaves out a group nested in it', () => {
+    expect(at('xab', '((a)b)')).toEqual([[1, 3, 'ab']]);
+  });
+
+  it('gives no span to a group that took no part in the match', () => {
+    expect(at('ac', 'a(b)?(c)')).toEqual([[1, 2, 'c']]);
   });
 });

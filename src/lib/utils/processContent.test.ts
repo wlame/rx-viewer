@@ -103,6 +103,21 @@ describe('no filter', () => {
 });
 
 describe('hide mode', () => {
+  // The group's text also occurs earlier inside the match; the marker
+  // goes where the group matched, not where its text first appears.
+  it('hides a captured group at its own position in the match', () => {
+    const { content, hiddenContent } = processContent(lines('aba'), filter('a.(a)', 'hide'), false);
+    expect(content).toBe(`ab${HIDDEN_MARKER}`);
+    expect(hiddenContent.get('1:0')).toBe('a');
+  });
+
+  it.each([
+    ['an escaped paren', '\\(x\\)', 'f(x)', `f${HIDDEN_MARKER}`],
+    ['a paren in a class', '[(]x', 'f(x)', `f${HIDDEN_MARKER})`],
+  ])('reads %s as no group and hides the whole match', (_case, pattern, line, expected) => {
+    expect(processContent(lines(line), filter(pattern, 'hide'), false).content).toBe(expected);
+  });
+
   it('replaces the captured group with a marker and keeps the rest', () => {
     const { content } = processContent(
       lines('user=alice id=42'),
