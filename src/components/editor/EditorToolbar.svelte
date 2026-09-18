@@ -27,6 +27,13 @@
 
   let themeDropdownVisible = false;
 
+  /** The swatch of each kind of editor theme; "app" is half light, half dark. */
+  const SWATCH_CLASS: Record<(typeof MONACO_THEMES)[number]['base'], string> = {
+    vs: 'bg-white border-gray-300',
+    'vs-dark': 'bg-gray-800 border-gray-600',
+    app: 'bg-gradient-to-r from-white from-50% to-gray-800 to-50% border-gray-400',
+  };
+
   function toggleThemeDropdown() {
     themeDropdownVisible = !themeDropdownVisible;
   }
@@ -152,12 +159,7 @@
               : 'text-gh-fg-default dark:text-gh-fg-dark-default'}"
             on:click={() => selectTheme(themeOption.id)}
           >
-            <span
-              class="w-3 h-3 rounded-full border
-                       {themeOption.base === 'vs'
-                ? 'bg-white border-gray-300'
-                : 'bg-gray-800 border-gray-600'}"
-            ></span>
+            <span class="w-3 h-3 rounded-full border {SWATCH_CLASS[themeOption.base]}"></span>
             {themeOption.name}
             {#if monacoTheme === themeOption.id}
               <svg

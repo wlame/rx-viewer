@@ -246,6 +246,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The header's theme button steps through System, Light and Dark, so
+  the system theme can be chosen again; its tooltip names the setting
+  and the next one. It used to switch between light and dark only.
+- The editor theme picker listed "Dark (VS)", which looked exactly like
+  "Light (VS)": both followed the app theme. One entry, "VS (follows the
+  app theme)", replaces the two; a stored "Dark (VS)" reads as it. Stored
+  settings are now read key by key: a value of the wrong kind takes its
+  default, and keys of settings that no longer exist are dropped.
+
 - A file the tree marks as not text opens no tab; a notification says
   it is binary. rx-go answers a binary file's bytes as lines, so the
   viewer showed noise; only rx-python's refusal was recognised before.
@@ -524,13 +533,4 @@ typecheck lint test build` in the order CI runs them, and
   match's `relative_line_number` counts from the start of its chunk, and
   the viewer used it as a file line whenever `absolute_line_number` was
   `-1`. On a 60 MB file that put the cursor 351,232 lines away from the
-  match. The line is now resolved through `/v1/samples` by byte offset,
-  which is always absolute, and the result list shows "resolving line…"
-  while the lookup is in flight.
-- `TraceResponse` was missing `file_chunks`, `context_lines`,
-  `before_context`, `after_context` and `cli_command`, and `TraceMatch` was
-  missing `submatches`. All are declared now, matching the golden OpenAPI
-  document.
-- The committed `bun.lock` did not contain `monaco-editor`, which
-  `package.json` declares, so `bun install --frozen-lockfile` failed and a
-  fresh checkout could not run `bun run check`.
+  match. The line is now res

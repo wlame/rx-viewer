@@ -211,17 +211,14 @@ export interface AppSettings {
 export type Theme = 'light' | 'dark';
 
 export type MonacoTheme =
-  | 'vs'
-  | 'vs-dark'
-  | 'github-light'
-  | 'github-dark'
-  | 'monokai'
-  | 'solarized-light'
-  | 'solarized-dark';
+  'vs' | 'github-light' | 'github-dark' | 'monokai' | 'solarized-light' | 'solarized-dark';
 
-export const MONACO_THEMES: { id: MonacoTheme; name: string; base: 'vs' | 'vs-dark' }[] = [
-  { id: 'vs', name: 'Light (VS)', base: 'vs' },
-  { id: 'vs-dark', name: 'Dark (VS)', base: 'vs-dark' },
+/**
+ * The editor themes the picker lists. `base` is the look of the swatch;
+ * "app" is Monaco's light or dark VS theme, whichever the app shows.
+ */
+export const MONACO_THEMES: { id: MonacoTheme; name: string; base: 'vs' | 'vs-dark' | 'app' }[] = [
+  { id: 'vs', name: 'VS (follows the app theme)', base: 'app' },
   { id: 'github-light', name: 'GitHub Light', base: 'vs' },
   { id: 'github-dark', name: 'GitHub Dark', base: 'vs-dark' },
   { id: 'monokai', name: 'Monokai', base: 'vs-dark' },

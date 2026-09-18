@@ -13,6 +13,7 @@
     getLogLanguageThemeRulesDark,
   } from '$lib/utils/monacoLogLanguage';
   import { editorLineAfterMove } from '$lib/utils/slidingWindow';
+  import { editorThemeFor } from '$lib/utils/appSettings';
 
   // Props
   export let content: string = '';
@@ -216,15 +217,7 @@
     });
   }
 
-  // Compute effective theme based on monacoTheme prop and system theme
-  // If monacoTheme is 'vs' or 'vs-dark', follow the system/resolved theme
-  // Otherwise use the selected custom theme
-  $: effectiveTheme = (() => {
-    if (monacoTheme === 'vs' || monacoTheme === 'vs-dark') {
-      return theme === 'dark' ? 'vs-dark' : 'vs';
-    }
-    return monacoTheme;
-  })();
+  $: effectiveTheme = editorThemeFor(monacoTheme, theme);
 
   // Custom line numbers function - maps Monaco line 1 to lineNumbersStart
   function getLineNumber(lineNumber: number): string {

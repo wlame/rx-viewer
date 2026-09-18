@@ -3,17 +3,21 @@
   import { sidebarVisible, toggleSidebar } from '$lib/stores/layout';
   import { formatVersionTag } from '$lib/utils/versionTag';
   import { shortcutById, shortcutLabel } from '$lib/utils/shortcuts';
+  import { THEME_SETTINGS, nextThemeSetting } from '$lib/utils/appSettings';
 
   const sidebarShortcut = shortcutLabel(shortcutById('toggleSidebar'));
 
   const GITHUB_REPO = 'https://github.com/wlame/rx-viewer';
 
+  /** Step to the next theme setting: system, light, dark, then system again. */
   function toggleTheme() {
-    settings.update((s) => ({
-      ...s,
-      theme: $resolvedTheme === 'dark' ? 'light' : 'dark',
-    }));
+    settings.update((s) => ({ ...s, theme: nextThemeSetting(s.theme) }));
   }
+
+  $: themeTitle =
+    `Theme: ${THEME_SETTINGS[$settings.theme].label}` +
+    ($settings.theme === 'system' ? ` (${$resolvedTheme})` : '') +
+    `. Click for ${THEME_SETTINGS[nextThemeSetting($settings.theme)].label}.`;
 </script>
 
 <header
@@ -82,10 +86,16 @@
     <button
       class="p-1.5 rounded-md hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
              text-gh-fg-muted dark:text-gh-fg-dark-muted"
-      title="Toggle theme"
+      title={themeTitle}
+      aria-label={themeTitle}
       on:click={toggleTheme}
     >
-      {#if $resolvedTheme === 'dark'}
+      {#if $settings.theme === 'system'}
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="13" rx="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
+      {:else if $settings.theme === 'dark'}
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
           <path
             d="M12 3a9 9 0 109 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 01-4.4 2.26 5.403 5.403 0 01-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"

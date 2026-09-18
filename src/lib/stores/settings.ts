@@ -1,22 +1,17 @@
 import { writable, derived } from 'svelte/store';
 import type { AppSettings, Theme } from '../types';
+import { DEFAULT_SETTINGS, parseSettings, resolveTheme } from '../utils/appSettings';
 
 const STORAGE_KEY = 'rx-settings';
 
-const defaultSettings: AppSettings = {
-  theme: 'system',
-  sidebarWidth: 280,
-  monacoTheme: 'vs',
-};
-
 function loadSettings(): AppSettings {
-  if (typeof localStorage === 'undefined') return defaultSettings;
+  if (typeof localStorage === 'undefined') return DEFAULT_SETTINGS;
   const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return defaultSettings;
+  if (!stored) return DEFAULT_SETTINGS;
   try {
-    return { ...defaultSettings, ...JSON.parse(stored) };
+    return parseSettings(JSON.parse(stored));
   } catch {
-    return defaultSettings;
+    return DEFAULT_SETTINGS;
   }
 }
 
@@ -38,7 +33,7 @@ function createSettingsStore() {
     },
     reset() {
       localStorage.removeItem(STORAGE_KEY);
-      set(defaultSettings);
+      set(DEFAULT_SETTINGS);
     },
   };
 }
@@ -47,11 +42,9 @@ export const settings = createSettingsStore();
 
 // Derived store for actual theme (resolves 'system' to 'light' or 'dark')
 export const resolvedTheme = derived(settings, ($settings): Theme => {
-  if ($settings.theme === 'system') {
-    if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  return $settings.theme;
+  const prefersDark =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return resolveTheme($settings.theme, prefersDark);
 });
 
 // Apply theme to document
