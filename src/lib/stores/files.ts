@@ -210,8 +210,9 @@ function createFilesStore() {
   }
 
   /**
-   * Report a window load that failed. A binary file is refused with a
-   * notification and closed; anything else shows in the file's tab.
+   * Report a window load that failed. A backend that refuses a binary
+   * file with an error naming it (rx-python's 400) gets a notification
+   * and the tab closes; anything else shows in the file's tab.
    */
   function showLoadError(path: string, e: unknown) {
     const errorMessage = e instanceof Error ? e.message : 'Failed to load file';

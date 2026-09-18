@@ -246,6 +246,10 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A file the tree marks as not text opens no tab; a notification says
+  it is binary. rx-go answers a binary file's bytes as lines, so the
+  viewer showed noise; only rx-python's refusal was recognised before.
+
 - The analysis report takes its detector names, categories, descriptions
   and severity colours from the backend's `/v1/detectors` answer. A
   detector tab shows the detector's name with its category beside it and

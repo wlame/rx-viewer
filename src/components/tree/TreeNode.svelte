@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { TreeNode as TreeNodeType } from '$lib/types';
-  import { tree, files, notifications } from '$lib/stores';
+  import { tree, notifications } from '$lib/stores';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
+  import { openTreeFile } from '$lib/fileOpening';
   import { formatSize } from '$lib/utils/format';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
@@ -24,14 +25,7 @@
       tree.toggleExpanded(node.path);
     } else {
       tree.selectPath(node.path);
-      files.openFile(
-        node.path,
-        undefined,
-        node.size,
-        undefined,
-        node.is_indexed ?? undefined,
-        node.line_count ?? undefined,
-      );
+      openTreeFile(node);
     }
   }
 
