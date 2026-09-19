@@ -228,16 +228,20 @@ Paste the output.
 - On the macOS host the recipes run bun in Docker, in a colima VM that
   shares the host's files over sshfs and caches each file's size for up
   to 20 seconds. In that time a file the host made longer reads in the
-  container cut off at its old size. `just fmt` and `just fmt-check` do
-  not read through the mount: `scripts/bun-on-snapshot.sh` pipes them a
-  snapshot of the repo and writes back only the files prettier changed,
-  and only when the host's copy still equals the snapshot (otherwise it
-  prints `not written:` and fails; run it again). Every other recipe
-  still reads through the mount, so for 20 seconds after an edit
-  `typecheck`, `lint`, `test` and `build` can check the old text: a
-  failure, or a pass, right after an edit may be about the previous
-  version. Wait or run again before you believe it, and chain a commit
-  on the checks with `&&`, never `;`.
+  container cut off at its old size. So no gate reads the sources
+  through the mount: every gate (`fmt-check`, `types-check`,
+  `typecheck`, `lint`, `test`, `build`), `fmt` and `gen-types` run on a
+  snapshot of the repo that `scripts/bun-on-snapshot.sh` pipes to the
+  container, with rx-go's OpenAPI document in it and `node_modules`
+  mounted read-only. `just ci` runs all six gates in one container on
+  one snapshot. A gate's commands live in `scripts/gates.sh`, which
+  the recipes call directly where bun is on the `PATH`; add or change a
+  gate there. The script writes back only the files the command
+  changed, and only when the host's copy still equals the snapshot
+  (otherwise it prints `not written:` and fails; run it again), and
+  `build` replaces the host's `dist/` when it succeeds. `dev`,
+  `test-watch`, `preview`, `install` and `just bun` still use the
+  mount, so right after an edit they can see the old text.
 - Backend responses use `file` and `pattern` IDs (`f1`, `p1`) with lookup maps
   in the response, not paths, to keep payloads small.
 

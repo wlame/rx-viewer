@@ -262,6 +262,17 @@ typecheck lint test build` in the order CI runs them, and
   stdin, and `just fmt` writes back only the files prettier changed
   that the host did not change meanwhile.
 
+- `just ci`, `just typecheck`, `just lint`, `just test`, `just build`
+  and `just gen-types` read the files as they are on the host. Where
+  bun runs in Docker, they read through the VM's file sharing, which
+  can give a file cut at its old size for up to 20 seconds after an
+  edit, so a gate could pass on text it never read. They now run on
+  the same snapshot as `just fmt`, which also holds rx-go's OpenAPI
+  document, and `just ci` runs every gate in one container. `build`
+  copies `dist/` back to the host. The gates' commands are in
+  `scripts/gates.sh`, and the recipes run that script directly where
+  bun is on the `PATH`.
+
 - `just dev` runs where stdin is not a terminal (a script, an agent).
   It always passed `-it` to Docker, which refuses `-t` without a
   terminal; `-t` is now added only when there is one.
