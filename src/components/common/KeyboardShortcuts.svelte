@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { focusSearch, toggleSidebar } from '$lib/stores/layout';
+  import { contractRefused } from '$lib/stores/health';
   import {
     handleGlobalKey,
     shortcutLabel,
@@ -33,7 +35,10 @@
     },
   };
 
+  // Under the cover of a refused contract the app is blocked; its
+  // shortcuts would act on panels the user cannot see or reach.
   function handleKeydown(event: KeyboardEvent) {
+    if (get(contractRefused)) return;
     handleGlobalKey(event, actions);
   }
 

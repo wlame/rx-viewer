@@ -5,11 +5,19 @@
    * the health store keeps asking `/health`, and the cover goes away by
    * itself once the backend reports a supported contract.
    */
+  import { tick } from 'svelte';
   import { health } from '$lib/stores';
-  import { BLOCKED_RECHECK_MS } from '$lib/stores/health';
+  import { BLOCKED_RECHECK_MS, contractRefused } from '$lib/stores/health';
   import { SUPPORTED_CONTRACT_MAJOR } from '$lib/utils/contractVersion';
 
   const recheckSeconds = BLOCKED_RECHECK_MS / 1000;
+
+  let checkButton: HTMLButtonElement | undefined;
+
+  // The app behind the cover is inert, so focus goes to the cover's button.
+  $: if ($contractRefused) {
+    tick().then(() => checkButton?.focus());
+  }
 </script>
 
 {#if $health.contract.kind === 'incompatible'}
@@ -37,7 +45,11 @@
         Nothing is requested from this backend. The viewer asks it again every {recheckSeconds} seconds
         and continues by itself once the contract matches.
       </p>
-      <button class="btn btn-primary w-full mt-4" on:click={() => health.check()}>
+      <button
+        bind:this={checkButton}
+        class="btn btn-primary w-full mt-4"
+        on:click={() => health.check()}
+      >
         Check now
       </button>
     </div>

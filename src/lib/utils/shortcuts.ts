@@ -43,6 +43,8 @@ export interface Shortcut {
   scope: ShortcutScope;
   description: string;
   chord?: KeyChord;
+  /** Further key presses that do the same, listed after `chord`. */
+  otherChords?: readonly KeyChord[];
   /** The label of a mouse gesture, or of a key the editor itself handles. */
   gesture?: string;
 }
@@ -61,9 +63,15 @@ export function chordLabel(chord: KeyChord): string {
   return parts.join('+');
 }
 
-/** The label of any row: its chord's, or its gesture. */
+/** Every key press of a row, its main chord first. */
+function chordsOf(shortcut: Shortcut): KeyChord[] {
+  return shortcut.chord ? [shortcut.chord, ...(shortcut.otherChords ?? [])] : [];
+}
+
+/** The label of any row: its chords', or its gesture. */
 export function shortcutLabel(shortcut: Shortcut): string {
-  return shortcut.chord ? chordLabel(shortcut.chord) : (shortcut.gesture ?? '');
+  const chords = chordsOf(shortcut);
+  return chords.length > 0 ? chords.map(chordLabel).join(' or ') : (shortcut.gesture ?? '');
 }
 
 /** The parts of a KeyboardEvent a chord is matched against. */
@@ -128,6 +136,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'filePane',
     description: 'Go to a line of the file (Enter jumps, Esc closes)',
     chord: { key: ':' },
+    // Monaco's own Cmd/Ctrl+G counts the loaded editor lines, not the file's.
+    otherChords: [{ key: 'g', mod: true }],
   },
   {
     id: 'findInEditor',
@@ -152,8 +162,7 @@ export function shortcutById(id: ShortcutId): Shortcut {
 
 /** Whether `event` is the key press of the row `id`. */
 export function isShortcut(id: ShortcutId, event: KeyPress): boolean {
-  const chord = shortcutById(id).chord;
-  return chord !== undefined && matchesChord(chord, event);
+  return chordsOf(shortcutById(id)).some((chord) => matchesChord(chord, event));
 }
 
 /** The rows of each scope, in table order, for the help dialog. */

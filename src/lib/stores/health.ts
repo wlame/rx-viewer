@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 import { api } from '../api';
 import { contractGate } from '../contractGate';
 import type { HealthResponse } from '../types';
@@ -143,3 +143,12 @@ function createHealthStore() {
 }
 
 export const health = createHealthStore();
+
+/**
+ * True while the backend speaks a contract major this viewer cannot read.
+ * A cover then blocks the app, and no window-wide shortcut acts under it.
+ */
+export const contractRefused = derived(
+  health,
+  ($health) => $health.contract.kind === 'incompatible',
+);

@@ -369,19 +369,23 @@
     files.closeFile(file.path);
   }
 
+  // `:` or Cmd/Ctrl+G opens the go-to box, also while the read-only
+  // editor text has focus. The pane hears keys in the capture phase and
+  // stops the ones it acts on, so Monaco's own Cmd/Ctrl+G, which would
+  // count the loaded lines instead of the file's, never sees them. The
+  // go-to box closes itself on Escape and when it loses focus.
   function handleKeyDown(e: KeyboardEvent) {
-    // : - open goto line (vim style), also while the read-only editor
-    // text has focus. The go-to box closes itself on Escape and when it
-    // loses focus.
-    if (isShortcut('gotoLine', e) && !acceptsTyping(e.target as HTMLElement)) {
-      e.preventDefault();
-      lineRangeNav?.openGoto();
+    if (!lineRangeNav || !isShortcut('gotoLine', e) || acceptsTyping(e.target as HTMLElement)) {
+      return;
     }
+    e.preventDefault();
+    e.stopPropagation();
+    lineRangeNav.openGoto();
   }
 
   onMount(() => {
     installPaletteStyles();
-    paneEl?.addEventListener('keydown', handleKeyDown);
+    paneEl?.addEventListener('keydown', handleKeyDown, true);
     if (paneEl) stopWatchingUserInput = watchUserInput(paneEl, noteUserScroll);
   });
 
@@ -389,7 +393,7 @@
     // The editor is still there: a component's own onDestroy runs before
     // its children are destroyed.
     rememberTab();
-    paneEl?.removeEventListener('keydown', handleKeyDown);
+    paneEl?.removeEventListener('keydown', handleKeyDown, true);
     stopWatchingUserInput?.();
     if (decorationsCollection) {
       decorationsCollection.clear();

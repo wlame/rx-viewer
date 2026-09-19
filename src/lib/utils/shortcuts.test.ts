@@ -85,6 +85,14 @@ describe('isShortcut', () => {
     expect(isShortcut('gotoLine', press(':', { metaKey: true }))).toBe(false);
   });
 
+  // Monaco binds Cmd/Ctrl+G to its own go-to-line, which counts the
+  // loaded editor lines; the pane takes the key for the file-line jump.
+  it('matches Cmd+G and Ctrl+G as the go-to-line key too', () => {
+    expect(isShortcut('gotoLine', press('g', { metaKey: true }))).toBe(true);
+    expect(isShortcut('gotoLine', press('G', { ctrlKey: true }))).toBe(true);
+    expect(isShortcut('gotoLine', press('g'))).toBe(false);
+  });
+
   it('matches Enter without Shift as the search key', () => {
     expect(isShortcut('runSearch', press('Enter'))).toBe(true);
     expect(isShortcut('runSearch', press('Enter', { shiftKey: true }))).toBe(false);
@@ -114,7 +122,7 @@ describe('the shortcut list', () => {
         '⌘/Ctrl+/',
         'Esc',
         'Enter',
-        ':',
+        ': or ⌘/Ctrl+G',
         'Alt+C',
         'Alt+W',
         'Alt+R',

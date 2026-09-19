@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { get } from 'svelte/store';
 
-/** A `fetch` that answers `/health` for a backend on contract 1.3. */
-function serveHealth() {
+/** A `fetch` that answers `/health` for a backend on `contractVersion`. */
+function serveHealth(contractVersion = '1.3') {
   const spy = vi.fn(async (_url: string) => ({
     ok: true,
     status: 200,
     statusText: 'OK',
-    json: async () => ({ status: 'ok', contract_version: '1.3' }),
+    json: async () => ({ status: 'ok', contract_version: contractVersion }),
     text: async () => '',
   }));
   vi.stubGlobal('fetch', spy);
@@ -40,5 +41,18 @@ describe('health', () => {
     await health.check();
 
     expect(fetchSpy.mock.calls[0][0]).toBe('/health');
+  });
+
+  // The cover over the app and the window-wide shortcuts read this.
+  it.each([
+    ['2.0', true],
+    ['1.3', false],
+  ])('says the contract is refused for a backend on %s: %s', async (version, refused) => {
+    serveHealth(version);
+    const { contractRefused, health } = await import('./health');
+
+    await health.check();
+
+    expect(get(contractRefused)).toBe(refused);
   });
 });

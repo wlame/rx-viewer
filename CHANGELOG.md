@@ -246,6 +246,14 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Cmd/Ctrl+G in the open file opens the viewer's go-to box, the same
+  as `:`. It opened Monaco's own go-to-line, which counts the lines
+  loaded in the editor rather than the file's lines. The shortcut list
+  shows both keys.
+- While the blocking message for an unsupported contract is up, the app
+  behind it takes no focus and no input, and the window-wide shortcuts
+  do nothing; focus starts on the message's button.
+
 - Files whose extension mapped to a language Monaco does not have
   (Erlang, Haskell, Groovy, LaTeX, Makefile, CMake, diff, ignore files)
   rendered as plain text; they now get the log grammar, like any file of

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { health, settings, detectors } from '$lib/stores';
+  import { contractRefused } from '$lib/stores/health';
   import { readViewState } from '$lib/utils/urlState';
   import { restoreView, startViewSync } from '$lib/viewState';
   import Header from './components/layout/Header.svelte';
@@ -36,7 +37,9 @@
   });
 </script>
 
-<div class="h-screen flex flex-col">
+<!-- While the contract is refused the app behind the cover takes no
+     focus and no input: the cover is the only thing to act on. -->
+<div class="h-screen flex flex-col" inert={$contractRefused}>
   <Header />
 
   <div class="flex-1 flex min-h-0">
@@ -48,5 +51,5 @@
   <KeyboardShortcuts />
   <Notifications />
   <TokenPrompt />
-  <ContractRefused />
 </div>
+<ContractRefused />
