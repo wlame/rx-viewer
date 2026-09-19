@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An anomaly category takes the palette color at its position in the
+  backend's `/v1/detectors` category list, so the listed categories never
+  share a color (up to the palette's thirteen) and keep it from session
+  to session. Hashing the name alone put two categories on one color
+  whenever the hash met; a category the list does not name still gets a
+  color by its name, among those no listed category has.
+
 - Every anomaly category takes its color from the palette by its name.
   Seven of rx-python's category names (`error`, `warning`, `traceback`,
   `format`, `security`, `timing`, `multiline`) had hand-picked colors,

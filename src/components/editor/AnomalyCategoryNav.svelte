@@ -36,7 +36,7 @@
 <!-- Anomaly category toggles (only shown if file has anomalies) -->
 {#if summary && Object.keys(summary).length > 0}
   {#each Object.entries(summary) as [category, count] (category)}
-    {@const categoryInfo = categoryStyle(category)}
+    {@const categoryInfo = categoryStyle(category, $detectors.categories)}
     {@const isActive = selectedCategory === category}
     {@const description = categoryDescription(category, $detectors.categories)}
     <button

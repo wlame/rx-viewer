@@ -3,10 +3,15 @@
  * header and in the minimap, and the class of its line highlights.
  *
  * Category names come from the backend's live /v1/detectors, and the two
- * backends name theirs differently, so no name is written here. Every
- * category gets a color from a fixed palette chosen by hashing its name:
- * the same category has the same color in every view and every session.
+ * backends name theirs differently, so no name is written here. A
+ * category takes the palette color at its position in that list, which
+ * a backend keeps the same from run to run: as many listed categories as
+ * the palette has colors get different colors. A category the list does
+ * not name, or any category before the list loads, gets a color chosen
+ * by hashing its name, among the colors no listed category has while
+ * any are left.
  */
+import type { CategoryInfo } from '../types';
 
 export interface CategoryStyle {
   /** Chip and minimap color. */
@@ -18,10 +23,7 @@ export interface CategoryStyle {
   decorationClass: string;
 }
 
-/**
- * The category colors. Thirteen: the smallest count from ten up at which
- * the hash puts rx-go's five category names on five different colors.
- */
+/** The category colors, in the order the listed categories take them. */
 export const CATEGORY_PALETTE = [
   '#0ea5e9', // sky
   '#22c55e', // green
@@ -48,9 +50,30 @@ function hashName(name: string): number {
   return hash;
 }
 
-/** The style of one category. */
-export function categoryStyle(category: string): CategoryStyle {
-  const index = hashName(category) % CATEGORY_PALETTE.length;
+/**
+ * The palette index of a category the list does not name: by its name's
+ * hash, among the colors after the listed categories' ones when the list
+ * leaves any free, over the whole palette when it does not.
+ */
+function unlistedPaletteIndex(category: string, listedCount: number): number {
+  const freeCount = CATEGORY_PALETTE.length - listedCount;
+  if (freeCount <= 0) return hashName(category) % CATEGORY_PALETTE.length;
+  return listedCount + (hashName(category) % freeCount);
+}
+
+/**
+ * The style of one category, given the backend's category list in the
+ * order /v1/detectors gives it.
+ */
+export function categoryStyle(
+  category: string,
+  categories: readonly CategoryInfo[],
+): CategoryStyle {
+  const position = categories.findIndex((c) => c.name === category);
+  const index =
+    position >= 0
+      ? position % CATEGORY_PALETTE.length
+      : unlistedPaletteIndex(category, categories.length);
   return { color: CATEGORY_PALETTE[index], decorationClass: `palette-${index}` };
 }
 

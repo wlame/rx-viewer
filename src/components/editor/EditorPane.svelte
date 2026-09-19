@@ -2,7 +2,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
   import type { OpenFile, RegexFilter } from '$lib/types';
-  import { files, settings, resolvedTheme } from '$lib/stores';
+  import { detectors, files, settings, resolvedTheme } from '$lib/stores';
   import { recallPane, rememberPane, scrollOnShow } from '$lib/stores/paneMemory';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -112,6 +112,15 @@
     updateDecorations();
   }
 
+  // The selected category's color is its place in the detector list,
+  // which can arrive after the anomalies.
+  $: selectedCategoryStyle = file.selectedAnomalyCategory
+    ? categoryStyle(file.selectedAnomalyCategory, $detectors.categories)
+    : null;
+  $: if (monacoEditor && selectedCategoryStyle) {
+    updateDecorations();
+  }
+
   function updateDecorations() {
     if (!monacoEditor) return;
     decorationsCollection?.clear();
@@ -128,13 +137,8 @@
         editorWindow,
       ),
       ...highlightedRangeDecorations(file.highlightedLines, editorWindow),
-      ...(category && file.anomalies
-        ? anomalyCategoryDecorations(
-            file.anomalies,
-            category,
-            categoryStyle(category),
-            editorWindow,
-          )
+      ...(category && selectedCategoryStyle && file.anomalies
+        ? anomalyCategoryDecorations(file.anomalies, category, selectedCategoryStyle, editorWindow)
         : []),
       ...(model && filter && filterActive && filter.mode === 'highlight'
         ? regexHighlightDecorations(filter.pattern, model)
