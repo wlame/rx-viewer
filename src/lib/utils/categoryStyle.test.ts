@@ -2,23 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { CATEGORY_PALETTE, categoryStyle, paletteStyleSheet } from './categoryStyle';
 
 describe('categoryStyle', () => {
-  it('keeps the hand-picked style of a known category', () => {
-    expect(categoryStyle('format')).toMatchObject({
-      color: '#8b5cf6',
-      label: 'Format',
-      decorationClass: 'format',
-    });
-  });
-
-  // rx-go's categories (log-traceback, secrets, log-crash, repetition)
-  // are not in the hand-picked table; each still needs a color of its
-  // own, or every chip and highlight is the same gray.
-  it('gives any other category a palette color, by name', () => {
-    const style = categoryStyle('log-traceback');
+  // Category names come from the backend's /v1/detectors; none is
+  // written into the viewer, so every one takes a palette color by name.
+  it.each(['format', 'error', 'log-traceback'])('gives %s a palette color by name', (name) => {
+    const style = categoryStyle(name);
 
     expect(CATEGORY_PALETTE).toContain(style.color);
     expect(style.decorationClass).toMatch(/^palette-\d+$/);
-    expect(style.label).toBe('log-traceback');
   });
 
   it('gives a category the same color every time', () => {
@@ -26,7 +16,7 @@ describe('categoryStyle', () => {
   });
 
   it('spreads the categories rx-go reports over different colors', () => {
-    const colors = ['log-traceback', 'log-crash', 'secrets', 'repetition'].map(
+    const colors = ['format', 'log-traceback', 'log-crash', 'secrets', 'repetition'].map(
       (name) => categoryStyle(name).color,
     );
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Every anomaly category takes its color from the palette by its name.
+  Seven of rx-python's category names (`error`, `warning`, `traceback`,
+  `format`, `security`, `timing`, `multiline`) had hand-picked colors,
+  labels and symbols written into the viewer, against the rule that
+  category names come only from `/v1/detectors`; rx-go's `format` was
+  one of them. A chip shows a bullet and its count, and its tooltip
+  names the category as the backend does.
+
 - The wire types of `/health`, `/v1/tree`, `/v1/samples`,
   `/v1/tasks/{id}`, `POST /v1/index` and `/v1/detectors` are aliases of
   the generated contract types, like the trace types already were; ten

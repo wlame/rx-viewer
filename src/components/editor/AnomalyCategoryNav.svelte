@@ -44,12 +44,12 @@
       style={isActive
         ? `background-color: ${categoryInfo.color}; color: white;`
         : `background-color: transparent; color: ${categoryInfo.color}; border: 1px solid ${categoryInfo.color};`}
-      title="{categoryInfo.label}: {count} anomal{count === 1 ? 'y' : 'ies'}{description
+      title="{category}: {count} anomal{count === 1 ? 'y' : 'ies'}{description
         ? ` — ${description}`
         : ''}"
       on:click={(e) => handleChipClick(e, category)}
     >
-      <span class="anomaly-icon" style="font-size: 10px;">{categoryInfo.symbol}</span>
+      <span class="anomaly-icon" style="font-size: 10px;">•</span>
       <span>{count}</span>
     </button>
     {#if isActive}
@@ -57,7 +57,7 @@
         <button
           class="px-0.5 rounded-t flex-shrink-0 transition-colors hover:opacity-80"
           style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-          title="Previous {categoryInfo.label.toLowerCase()}"
+          title="Previous {category} anomaly"
           on:click={() => dispatch('navigate', { category, direction: 'previous' })}
         >
           <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">
@@ -67,7 +67,7 @@
         <button
           class="px-0.5 rounded-b flex-shrink-0 transition-colors hover:opacity-80"
           style="background-color: {categoryInfo.color}; color: white; line-height: 0;"
-          title="Next {categoryInfo.label.toLowerCase()}"
+          title="Next {category} anomaly"
           on:click={() => dispatch('navigate', { category, direction: 'next' })}
         >
           <svg class="w-2.5 h-2" viewBox="0 0 10 8" fill="currentColor">

@@ -1,21 +1,16 @@
 /**
- * How an anomaly category looks: its color, label and symbol on the
- * editor's chips, and the class of its line highlights.
+ * How an anomaly category looks: the color of its chip in the editor's
+ * header and in the minimap, and the class of its line highlights.
  *
- * A handful of categories have a hand-picked style. Every other one —
- * all of rx-go's, whose names come from its live /v1/detectors — gets a
- * color from a fixed palette chosen by hashing the name, so the same
- * category has the same color in every view and every session, and no
- * category name has to be written into the viewer.
+ * Category names come from the backend's live /v1/detectors, and the two
+ * backends name theirs differently, so no name is written here. Every
+ * category gets a color from a fixed palette chosen by hashing its name:
+ * the same category has the same color in every view and every session.
  */
 
 export interface CategoryStyle {
   /** Chip and minimap color. */
   color: string;
-  /** Name shown in the chip's title. */
-  label: string;
-  /** A symbol, so chips differ by more than color. */
-  symbol: string;
   /**
    * Suffix of the editor's decoration classes:
    * `monaco-anomaly-<suffix>` for the line, `…-glyph` for the gutter.
@@ -23,20 +18,9 @@ export interface CategoryStyle {
   decorationClass: string;
 }
 
-/** Categories with a hand-picked style; their classes live in editorDecorations.css. */
-const KNOWN_CATEGORIES: Record<string, Omit<CategoryStyle, 'decorationClass'>> = {
-  error: { color: '#ef4444', label: 'Errors', symbol: '✖' }, // ✖
-  warning: { color: '#f59e0b', label: 'Warnings', symbol: '⚠' }, // ⚠
-  traceback: { color: '#dc2626', label: 'Tracebacks', symbol: '≡' }, // ≡
-  format: { color: '#8b5cf6', label: 'Format', symbol: '¶' }, // ¶
-  security: { color: '#ec4899', label: 'Security', symbol: '☢' }, // ☢
-  timing: { color: '#06b6d4', label: 'Timing', symbol: '⏱' }, // ⏱
-  multiline: { color: '#6366f1', label: 'Multiline', symbol: '☰' }, // ☰
-};
-
 /**
- * Colors for every other category. Ten, because with fewer two of
- * rx-go's five category names land on one color.
+ * The category colors. Thirteen: the smallest count from ten up at which
+ * the hash puts rx-go's five category names on five different colors.
  */
 export const CATEGORY_PALETTE = [
   '#0ea5e9', // sky
@@ -49,10 +33,10 @@ export const CATEGORY_PALETTE = [
   '#eab308', // yellow
   '#3b82f6', // blue
   '#d946ef', // fuchsia
+  '#6366f1', // indigo
+  '#ec4899', // pink
+  '#06b6d4', // cyan
 ];
-
-/** Symbol for a category without a hand-picked one. */
-const DEFAULT_SYMBOL = '•'; // •
 
 /** FNV-1a over the name's UTF-16 code units: stable, and spreads short names well. */
 function hashName(name: string): number {
@@ -66,15 +50,8 @@ function hashName(name: string): number {
 
 /** The style of one category. */
 export function categoryStyle(category: string): CategoryStyle {
-  const known = KNOWN_CATEGORIES[category];
-  if (known) return { ...known, decorationClass: category };
   const index = hashName(category) % CATEGORY_PALETTE.length;
-  return {
-    color: CATEGORY_PALETTE[index],
-    label: category,
-    symbol: DEFAULT_SYMBOL,
-    decorationClass: `palette-${index}`,
-  };
+  return { color: CATEGORY_PALETTE[index], decorationClass: `palette-${index}` };
 }
 
 /** `#rrggbb` as `rgba(r, g, b, alpha)`. */
