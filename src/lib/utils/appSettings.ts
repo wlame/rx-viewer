@@ -7,14 +7,11 @@ import { MONACO_THEMES, type AppSettings, type MonacoTheme, type Theme } from '.
 
 export type ThemeSetting = AppSettings['theme'];
 
-/**
- * Every app theme setting, in the order the header toggle steps through
- * them: each click goes to `next`, so "system" can be chosen again.
- */
-export const THEME_SETTINGS: Record<ThemeSetting, { label: string; next: ThemeSetting }> = {
-  system: { label: 'System', next: 'light' },
-  light: { label: 'Light', next: 'dark' },
-  dark: { label: 'Dark', next: 'system' },
+/** Every app theme setting, with the name the header toggle shows for it. */
+export const THEME_SETTINGS: Record<ThemeSetting, { label: string }> = {
+  system: { label: 'System' },
+  light: { label: 'Light' },
+  dark: { label: 'Dark' },
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -23,9 +20,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
   monacoTheme: 'vs',
 };
 
-/** The setting the header toggle goes to from `current`. */
-export function nextThemeSetting(current: ThemeSetting): ThemeSetting {
-  return THEME_SETTINGS[current].next;
+/** The other of the two looks. */
+const OPPOSITE_THEME: Record<Theme, Theme> = { light: 'dark', dark: 'light' };
+
+/**
+ * The setting the header toggle goes to from `current`, on a system that
+ * shows `systemTheme`. Every click changes the look: the new look is
+ * "system" when the system shows it, so a second click returns to
+ * "system", and the fixed theme otherwise. The fixed theme that looks
+ * like "system" is skipped, since a step to it would change nothing on
+ * screen.
+ */
+export function nextThemeSetting(current: ThemeSetting, systemTheme: Theme): ThemeSetting {
+  const currentLook = resolveTheme(current, systemTheme === 'dark');
+  const nextLook = OPPOSITE_THEME[currentLook];
+  return nextLook === systemTheme ? 'system' : nextLook;
 }
 
 /** The theme a setting shows: "system" follows the operating system's preference. */

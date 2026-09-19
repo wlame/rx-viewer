@@ -53,12 +53,23 @@ function createSettingsStore() {
 
 export const settings = createSettingsStore();
 
+/** Whether the operating system asks for a dark theme. */
+function systemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/**
+ * The theme the operating system shows. Read again whenever the settings
+ * change, which the system's change listener below triggers.
+ */
+export const systemTheme = derived(settings, (): Theme =>
+  resolveTheme('system', systemPrefersDark()),
+);
+
 // Derived store for actual theme (resolves 'system' to 'light' or 'dark')
-export const resolvedTheme = derived(settings, ($settings): Theme => {
-  const prefersDark =
-    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  return resolveTheme($settings.theme, prefersDark);
-});
+export const resolvedTheme = derived(settings, ($settings): Theme =>
+  resolveTheme($settings.theme, systemPrefersDark()),
+);
 
 // Apply theme to document
 if (typeof window !== 'undefined') {

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Every click on the header's theme button changes the look. It
+  switches between System and the fixed theme the system does not
+  show (Dark on a light system, Light on a dark one); from System
+  (light) the next step was Light, which looked the same. A stored
+  Light or Dark setting still loads, and its next click goes to the
+  other look.
+
 - The analysis report writes a file's size and decompressed size the
   way the tree does (`1.5 MB`, one decimal, up to TB) with the shared
   formatter, instead of its own copy with two decimals that stopped at

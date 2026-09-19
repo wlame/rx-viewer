@@ -10,23 +10,37 @@ import {
 } from './appSettings';
 
 describe('nextThemeSetting', () => {
-  it('steps from system to light to dark and back to system', () => {
-    expect(nextThemeSetting('system')).toBe('light');
-    expect(nextThemeSetting('light')).toBe('dark');
-    expect(nextThemeSetting('dark')).toBe('system');
+  it.each([
+    ['system', 'light', 'dark'],
+    ['dark', 'light', 'system'],
+    ['light', 'light', 'dark'],
+    ['system', 'dark', 'light'],
+    ['light', 'dark', 'system'],
+    ['dark', 'dark', 'light'],
+  ] as const)('steps from %s on a %s system to %s', (current, systemTheme, expected) => {
+    expect(nextThemeSetting(current, systemTheme)).toBe(expected);
   });
 
-  it('reaches every setting from any setting, system included', () => {
-    for (const start of Object.keys(THEME_SETTINGS) as (keyof typeof THEME_SETTINGS)[]) {
-      const seen = new Set([start]);
-      let current = nextThemeSetting(start);
-      while (current !== start) {
-        seen.add(current);
-        current = nextThemeSetting(current);
+  // System and the fixed theme the system shows look the same, so a
+  // step between them would change nothing on screen.
+  it.each(['light', 'dark'] as const)(
+    'changes the look on every click on a %s system',
+    (systemTheme) => {
+      for (const current of Object.keys(THEME_SETTINGS) as (keyof typeof THEME_SETTINGS)[]) {
+        const next = nextThemeSetting(current, systemTheme);
+        expect(resolveTheme(next, systemTheme === 'dark')).not.toBe(
+          resolveTheme(current, systemTheme === 'dark'),
+        );
       }
-      expect([...seen].sort()).toEqual(['dark', 'light', 'system']);
-    }
-  });
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
+    'comes back to system on the second click on a %s system',
+    (systemTheme) => {
+      expect(nextThemeSetting(nextThemeSetting('system', systemTheme), systemTheme)).toBe('system');
+    },
+  );
 });
 
 describe('resolveTheme', () => {

@@ -1,23 +1,28 @@
 <script lang="ts">
-  import { health, settings, resolvedTheme, version } from '$lib/stores';
+  import { health, settings, systemTheme, version } from '$lib/stores';
   import { sidebarVisible, toggleSidebar } from '$lib/stores/layout';
   import { formatVersionTag } from '$lib/utils/versionTag';
   import { shortcutById, shortcutLabel } from '$lib/utils/shortcuts';
-  import { THEME_SETTINGS, nextThemeSetting } from '$lib/utils/appSettings';
+  import { THEME_SETTINGS, nextThemeSetting, type ThemeSetting } from '$lib/utils/appSettings';
 
   const sidebarShortcut = shortcutLabel(shortcutById('toggleSidebar'));
 
   const GITHUB_REPO = 'https://github.com/wlame/rx-viewer';
 
-  /** Step to the next theme setting: system, light, dark, then system again. */
+  /** Switch to the other look; see nextThemeSetting. */
   function toggleTheme() {
-    settings.update((s) => ({ ...s, theme: nextThemeSetting(s.theme) }));
+    settings.update((s) => ({ ...s, theme: nextThemeSetting(s.theme, $systemTheme) }));
+  }
+
+  /** A setting's name, with the look the system gives "system". */
+  function themeLabel(setting: ThemeSetting): string {
+    const label = THEME_SETTINGS[setting].label;
+    return setting === 'system' ? `${label} (${$systemTheme})` : label;
   }
 
   $: themeTitle =
-    `Theme: ${THEME_SETTINGS[$settings.theme].label}` +
-    ($settings.theme === 'system' ? ` (${$resolvedTheme})` : '') +
-    `. Click for ${THEME_SETTINGS[nextThemeSetting($settings.theme)].label}.`;
+    `Theme: ${themeLabel($settings.theme)}` +
+    `. Click for ${themeLabel(nextThemeSetting($settings.theme, $systemTheme))}.`;
 </script>
 
 <header
