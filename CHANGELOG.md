@@ -254,6 +254,10 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- `just dev` runs where stdin is not a terminal (a script, an agent).
+  It always passed `-it` to Docker, which refuses `-t` without a
+  terminal; `-t` is now added only when there is one.
+
 - Cmd/Ctrl+G in the open file opens the viewer's go-to box, the same
   as `:`. It opened Monaco's own go-to-line, which counts the lines
   loaded in the editor rather than the file's lines. The shortcut list

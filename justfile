@@ -42,7 +42,11 @@ dev port='5173':
     # In the container the backend on the host is host.docker.internal,
     # and the server has to listen beyond the container's own loopback.
     # RX_DEV_PROXY_TARGET set on the host still wins.
-    exec docker run --rm -it -p "{{port}}:{{port}}" \
+    # A terminal gets -t as well, so Ctrl+C reaches the server; Docker
+    # refuses -t when stdin is not a terminal (a script, an agent, CI).
+    terminal_flags="-i"
+    if [ -t 0 ]; then terminal_flags="-it"; fi
+    exec docker run --rm $terminal_flags -p "{{port}}:{{port}}" \
         -e RX_DEV_PROXY_TARGET="${RX_DEV_PROXY_TARGET:-http://host.docker.internal:8080}" \
         -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" \
         {{bun_image}} bun run dev --host=0.0.0.0 --port={{port}}
