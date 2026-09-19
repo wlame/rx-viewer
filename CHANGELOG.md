@@ -246,6 +246,19 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Files whose extension mapped to a language Monaco does not have
+  (Erlang, Haskell, Groovy, LaTeX, Makefile, CMake, diff, ignore files)
+  rendered as plain text; they now get the log grammar, like any file of
+  unknown type, and `.env` reads as INI. A test checks every mapped ID
+  against the languages the bundled Monaco registers.
+- A link whose `#token=` value holds a bare `%` left a blank page: the
+  value failed to decode before the app started. Such a value is now
+  taken as written.
+- The viewer loads where the browser refuses `localStorage` (blocked
+  site data). Reading the settings threw while the modules loaded, which
+  left a blank page; the settings now take their defaults and last for
+  the page.
+
 - A file opened from a search result gets the size-based highlighting
   default (off from 1 MB). Its size was unknown, so it always opened
   with highlighting; the viewer now takes the size from the file tree,

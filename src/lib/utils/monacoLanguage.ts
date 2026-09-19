@@ -1,11 +1,12 @@
 /**
- * Monaco language detection utilities
- * Maps file extensions to Monaco language IDs
+ * Monaco language detection: file extensions and special file names to
+ * the language IDs the bundled Monaco registers. A file that maps to no
+ * language gets the log grammar.
  */
 
 import { LOG_LANGUAGE_ID } from './monacoLogLanguage';
 
-const extensionToLanguage: Record<string, string> = {
+export const EXTENSION_LANGUAGES: Record<string, string> = {
   // JavaScript/TypeScript
   js: 'javascript',
   jsx: 'javascript',
@@ -72,15 +73,9 @@ const extensionToLanguage: Record<string, string> = {
   pm: 'perl',
   ex: 'elixir',
   exs: 'elixir',
-  erl: 'erlang',
-  hrl: 'erlang',
   clj: 'clojure',
   cljs: 'clojure',
-  hs: 'haskell',
-  lhs: 'haskell',
   dart: 'dart',
-  groovy: 'groovy',
-  gradle: 'groovy',
 
   // Query languages
   sql: 'sql',
@@ -93,30 +88,19 @@ const extensionToLanguage: Record<string, string> = {
   md: 'markdown',
   markdown: 'markdown',
   rst: 'restructuredtext',
-  tex: 'latex',
   dockerfile: 'dockerfile',
-  makefile: 'makefile',
-  cmake: 'cmake',
   ini: 'ini',
   conf: 'ini',
   cfg: 'ini',
   properties: 'ini',
-
-  // Other
-  diff: 'diff',
-  patch: 'diff',
 };
 
 // Special filenames that map to languages
-const filenameToLanguage: Record<string, string> = {
+export const FILENAME_LANGUAGES: Record<string, string> = {
   dockerfile: 'dockerfile',
-  makefile: 'makefile',
   gemfile: 'ruby',
   rakefile: 'ruby',
-  cmakelists: 'cmake',
-  '.gitignore': 'ignore',
-  '.dockerignore': 'ignore',
-  '.env': 'dotenv',
+  '.env': 'ini',
   '.envrc': 'shell',
 };
 
@@ -128,14 +112,14 @@ export function detectMonacoLanguage(filename: string): string {
 
   // Check special filenames first
   const baseName = lowerName.split('/').pop() || lowerName;
-  if (filenameToLanguage[baseName]) {
-    return filenameToLanguage[baseName];
+  if (FILENAME_LANGUAGES[baseName]) {
+    return FILENAME_LANGUAGES[baseName];
   }
 
   // Check extension
   const ext = baseName.split('.').pop()?.toLowerCase();
-  if (ext && extensionToLanguage[ext]) {
-    return extensionToLanguage[ext];
+  if (ext && EXTENSION_LANGUAGES[ext]) {
+    return EXTENSION_LANGUAGES[ext];
   }
 
   // Use custom log language as fallback for unknown file types

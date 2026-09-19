@@ -25,6 +25,13 @@ describe('takeTokenFromHash', () => {
     expect(takeTokenFromHash('#token=a%2Fb%2Bc').token).toBe('a/b+c');
   });
 
+  // A token pasted into a link without escaping can hold a bare "%";
+  // it is not an escape, so it is taken as written.
+  it('takes a token that is not validly escaped as written', () => {
+    expect(takeTokenFromHash('#token=ab%zz&x=1')).toEqual({ token: 'ab%zz', hash: '#x=1' });
+    expect(takeTokenFromHash('#token=%').token).toBe('%');
+  });
+
   it('keeps a plus sign as a plus sign', () => {
     expect(takeTokenFromHash('#token=a+b').token).toBe('a+b');
   });

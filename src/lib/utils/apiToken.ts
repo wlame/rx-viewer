@@ -78,6 +78,19 @@ export function clearApiToken(storage: TokenStorage | null = sessionStorageOrNul
 }
 
 /**
+ * A token value from the link, percent-decoded. A value that is not
+ * validly escaped (a bare `%` pasted into the link) is taken as written:
+ * its `%` cannot be an escape, so it is part of the token.
+ */
+function decodeTokenValue(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
  * Splits a `token=` entry out of a URL fragment such as `#token=abc&x=1`.
  *
  * The value is percent-decoded but a `+` stays a `+`: a token is not a
@@ -90,7 +103,7 @@ export function takeTokenFromHash(hash: string): { token: string | null; hash: s
   const rest: string[] = [];
   for (const entry of entries) {
     if (entry.startsWith(`${HASH_KEY}=`)) {
-      token = decodeURIComponent(entry.slice(HASH_KEY.length + 1)) || null;
+      token = decodeTokenValue(entry.slice(HASH_KEY.length + 1)) || null;
     } else {
       rest.push(entry);
     }
