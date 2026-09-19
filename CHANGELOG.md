@@ -254,6 +254,14 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- `just fmt` no longer cuts off the end of a file that was made longer
+  just before it ran. Where bun runs in Docker, the VM's file sharing
+  can give the container a copy cut at the file's old size for up to
+  20 seconds, and prettier wrote that copy back. `just fmt` and
+  `just fmt-check` now hand the container a snapshot of the repo over
+  stdin, and `just fmt` writes back only the files prettier changed
+  that the host did not change meanwhile.
+
 - `just dev` runs where stdin is not a terminal (a script, an agent).
   It always passed `-it` to Docker, which refuses `-t` without a
   terminal; `-t` is now added only when there is one.

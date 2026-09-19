@@ -5,12 +5,20 @@
 # keeps no JavaScript runtime runs every recipe the same way. The image
 # mounts the directory that holds this repo, so ../rx-go resolves for the
 # generated types exactly as it does without Docker.
+#
+# fmt and fmt-check do not read the sources through the mount: in a VM
+# that shares the host's files over sshfs (colima), a file the host just
+# made longer reads in the container cut off at its old size, and a
+# formatter would write that copy back. scripts/bun-on-snapshot.sh hands
+# the image a snapshot over stdin and writes back only what it changed.
 
 set shell := ["bash", "-uc"]
 
 bun_image := "oven/bun:1"
+bun_on_path := `command -v bun >/dev/null 2>&1 && echo found || echo missing`
 docker_bun := 'docker run --rm -i -v "$(dirname "$PWD"):/work" -w "/work/$(basename "$PWD")" ' + bun_image + ' bun'
-bun := if `command -v bun >/dev/null 2>&1 && echo found || echo missing` == "found" { "bun" } else { docker_bun }
+bun := if bun_on_path == "found" { "bun" } else { docker_bun }
+snapshot_bun := if bun_on_path == "found" { "bun" } else { "./scripts/bun-on-snapshot.sh " + bun_image }
 
 # The version a release stamps. Tags are the source of truth; package.json
 # stays at 0.0.0.
@@ -67,11 +75,11 @@ shell:
 
 # Format every source file
 fmt:
-    {{bun}} run format
+    {{snapshot_bun}} run format
 
 # Fail when a file is not prettier-clean (CI gate)
 fmt-check:
-    {{bun}} run format-check
+    {{snapshot_bun}} run format-check
 
 # svelte-check: TypeScript and Svelte diagnostics
 typecheck:

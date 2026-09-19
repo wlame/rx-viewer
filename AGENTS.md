@@ -225,12 +225,19 @@ Paste the output.
 - `dist/` and `dist.tar.gz` are gitignored; the workflow produces them.
 - Relative asset paths must stay relative; backends serve the app from a cache
   directory with an SPA fallback.
-- On the macOS host the recipes run in Docker, and right after a file is
-  written on the host the container can still read the old copy:
-  prettier has reported a just-formatted file as unformatted, and vitest
-  has failed to load a module it read the next second. Run the check
-  again before believing a failure that follows an edit, and chain a
-  commit on the checks with `&&`, never `;`.
+- On the macOS host the recipes run bun in Docker, in a colima VM that
+  shares the host's files over sshfs and caches each file's size for up
+  to 20 seconds. In that time a file the host made longer reads in the
+  container cut off at its old size. `just fmt` and `just fmt-check` do
+  not read through the mount: `scripts/bun-on-snapshot.sh` pipes them a
+  snapshot of the repo and writes back only the files prettier changed,
+  and only when the host's copy still equals the snapshot (otherwise it
+  prints `not written:` and fails; run it again). Every other recipe
+  still reads through the mount, so for 20 seconds after an edit
+  `typecheck`, `lint`, `test` and `build` can check the old text: a
+  failure, or a pass, right after an edit may be about the previous
+  version. Wait or run again before you believe it, and chain a commit
+  on the checks with `&&`, never `;`.
 - Backend responses use `file` and `pattern` IDs (`f1`, `p1`) with lookup maps
   in the response, not paths, to keep payloads small.
 
