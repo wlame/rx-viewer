@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The analysis report writes a file's size and decompressed size the
+  way the tree does (`1.5 MB`, one decimal, up to TB) with the shared
+  formatter, instead of its own copy with two decimals that stopped at
+  GB.
+
 - An anomaly category takes the palette color at its position in the
   backend's `/v1/detectors` category list, so the listed categories never
   share a color (up to the palette's thirteen) and keep it from session

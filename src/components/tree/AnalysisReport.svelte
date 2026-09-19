@@ -1,19 +1,10 @@
 <script lang="ts">
   import type { IndexResponse } from '$lib/types';
-  import { formatServerTime, formatStatistic } from '$lib/utils/format';
+  import { formatServerTime, formatSize, formatStatistic } from '$lib/utils/format';
   import AnomalyReport from './AnomalyReport.svelte';
 
   /** The index to describe, with or without an analysis. */
   export let result: IndexResponse;
-
-  // Helper to format file size
-  function formatBytes(bytes: number | null | undefined): string {
-    if (bytes === null || bytes === undefined) return 'N/A';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-    return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-  }
 
   // Format build time
   function formatBuildTime(seconds: number | null | undefined): string {
@@ -37,7 +28,7 @@
     <div class="grid grid-cols-2 gap-4">
       <div>
         <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">File Size</div>
-        <div class="text-sm font-medium">{formatBytes(result.size_bytes)}</div>
+        <div class="text-sm font-medium">{formatSize(result.size_bytes)}</div>
       </div>
       <div>
         <div class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mb-1">Type</div>
@@ -174,7 +165,7 @@
               Decompressed Size
             </div>
             <div class="text-sm font-medium">
-              {formatBytes(result.decompressed_size_bytes)}
+              {formatSize(result.decompressed_size_bytes)}
             </div>
           </div>
         {/if}
