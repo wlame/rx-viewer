@@ -8,6 +8,7 @@ import {
   type GlobalShortcutActions,
   type KeyPress,
 } from './shortcuts';
+import { belongsToInputMethod } from './keyTargets';
 import { SEARCH_TOGGLES } from './searchToggles';
 
 /** A key press with no modifier unless one is given. */
@@ -109,6 +110,36 @@ describe('isShortcut', () => {
   it('matches a search toggle by key code with Alt', () => {
     expect(isShortcut('toggle:matchCase', press('ç', { code: 'KeyC', altKey: true }))).toBe(true);
   });
+
+  it('matches Enter as the go-to box jump key and Escape as its close key', () => {
+    expect(isShortcut('gotoJump', press('Enter'))).toBe(true);
+    expect(isShortcut('gotoJump', press('Enter', { metaKey: true }))).toBe(false);
+    expect(isShortcut('gotoClose', press('Escape'))).toBe(true);
+    expect(isShortcut('gotoClose', press('Enter'))).toBe(false);
+  });
+
+  // While an input method composes, Enter confirms the composition and
+  // Escape cancels it. Safari reports the Enter that ends a composition
+  // with isComposing false and the key code 229.
+  it.each([
+    ['runSearch', press('Enter', { isComposing: true })],
+    ['runSearch', press('Enter', { keyCode: 229 })],
+    ['gotoJump', press('Enter', { isComposing: true })],
+    ['gotoClose', press('Escape', { isComposing: true })],
+    ['applyFilter', press('Enter', { keyCode: 229 })],
+    ['focusSearch', press('k', { metaKey: true, isComposing: true })],
+  ] as const)('leaves %s to an input method that composes', (id, event) => {
+    expect(isShortcut(id, event)).toBe(false);
+  });
+});
+
+describe('belongsToInputMethod', () => {
+  it('is true while composing or for the key code 229, false otherwise', () => {
+    expect(belongsToInputMethod(press('Enter', { isComposing: true }))).toBe(true);
+    expect(belongsToInputMethod(press('Process', { keyCode: 229 }))).toBe(true);
+    expect(belongsToInputMethod(press('Enter', { keyCode: 13 }))).toBe(false);
+    expect(belongsToInputMethod(press('Enter'))).toBe(false);
+  });
 });
 
 describe('the shortcut list', () => {
@@ -136,6 +167,14 @@ describe('the shortcut list', () => {
         '⌘/Alt+click',
       ]),
     );
+  });
+
+  it('lists the go-to box keys in their own group', () => {
+    const group = shortcutsByScope().find((g) => g.scope === 'gotoField');
+
+    expect(group?.title).toBe('In the go-to-line box');
+    expect(group?.shortcuts.map((s) => s.id)).toEqual(['gotoJump', 'gotoClose']);
+    expect(group?.shortcuts.map(shortcutLabel)).toEqual(['Enter', 'Esc']);
   });
 
   it('holds one row per search toggle, from the toggle table', () => {

@@ -41,6 +41,11 @@ describe('toggleForShortcut', () => {
     expect(toggleForShortcut({ altKey: false, code: 'KeyC' })).toBeUndefined();
   });
 
+  it('ignores the key while an input method composes', () => {
+    expect(toggleForShortcut({ altKey: true, code: 'KeyC', isComposing: true })).toBeUndefined();
+    expect(toggleForShortcut({ altKey: true, code: 'KeyC', keyCode: 229 })).toBeUndefined();
+  });
+
   it('gives every toggle its own shortcut', () => {
     const codes = SEARCH_TOGGLES.map((spec) => spec.shortcutCode);
     expect(new Set(codes).size).toBe(codes.length);

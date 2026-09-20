@@ -5,6 +5,7 @@
    * go-to-line box between them.
    */
   import { createEventDispatcher } from 'svelte';
+  import { isShortcut } from '$lib/utils/shortcuts';
 
   /** First and last file line the editor holds. */
   export let startLine: number;
@@ -37,15 +38,17 @@
     gotoValue = '';
   }
 
+  // The keys are rows of the shortcut table, which leaves a key press to
+  // an input method while it composes.
   function handleGotoKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (isShortcut('gotoJump', e)) {
       e.preventDefault();
       const line = parseInt(gotoValue, 10);
       if (!isNaN(line) && line > 0) {
         dispatch('goto', { line });
         closeGoto();
       }
-    } else if (e.key === 'Escape') {
+    } else if (isShortcut('gotoClose', e)) {
       e.preventDefault();
       closeGoto();
     }

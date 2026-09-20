@@ -42,9 +42,9 @@
   }
 
   // While an input method composes, Enter and Escape end or cancel the
-  // composition; they reach the filter only once it is over.
+  // composition; the shortcut table gives them to the filter only once
+  // it is over.
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.isComposing) return;
     if (isShortcut('applyFilter', e)) {
       e.preventDefault();
       apply();

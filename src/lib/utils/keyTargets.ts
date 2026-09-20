@@ -1,6 +1,6 @@
 /**
- * Whether a key press belongs to the element it landed on or to the
- * pane's shortcuts.
+ * Whether a key press belongs to the element it landed on, to an input
+ * method that is composing text, or to the viewer's shortcuts.
  */
 
 /** The parts of a DOM element this module reads. */
@@ -32,4 +32,26 @@ export function acceptsTyping(target: KeyTarget): boolean {
   const isReadOnlyEditorText =
     target.classList.contains(MONACO_TEXT_AREA_CLASS) && !target.closest(MONACO_FIND_WIDGET);
   return !isReadOnlyEditorText;
+}
+
+/** The parts of a KeyboardEvent that tell whether an input method has it. */
+export interface CompositionState {
+  isComposing?: boolean;
+  keyCode?: number;
+}
+
+/**
+ * The key code browsers report for a key press an input method took.
+ * Safari sends the Enter that confirms a composition with this code and
+ * `isComposing` already false.
+ */
+const INPUT_METHOD_KEY_CODE = 229;
+
+/**
+ * Reports whether an input method (IME) is composing text with this key
+ * press, in which case the key belongs to the composition: Enter
+ * confirms it and Escape cancels it. No shortcut acts on such a key.
+ */
+export function belongsToInputMethod(event: CompositionState): boolean {
+  return Boolean(event.isComposing) || event.keyCode === INPUT_METHOD_KEY_CODE;
 }

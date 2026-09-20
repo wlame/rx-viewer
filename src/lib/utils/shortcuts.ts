@@ -6,6 +6,7 @@
  * with a `chord` is a key press; its label in the help is built from the
  * chord. A row with a `gesture` is a mouse action, listed for help only.
  */
+import { belongsToInputMethod, type CompositionState } from './keyTargets';
 import { SEARCH_TOGGLES } from './searchToggles';
 
 /** Where a shortcut works, in the order the help dialog lists them. */
@@ -13,6 +14,7 @@ export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
   searchField: 'In a search pattern field',
   filePane: 'In the open file',
+  gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
 } as const;
 
@@ -41,6 +43,8 @@ export type ShortcutId =
   | 'runSearch'
   | `toggle:${string}`
   | 'gotoLine'
+  | 'gotoJump'
+  | 'gotoClose'
   | 'findInEditor'
   | 'nextAnomaly'
   | 'applyFilter'
@@ -83,7 +87,7 @@ export function shortcutLabel(shortcut: Shortcut): string {
 }
 
 /** The parts of a KeyboardEvent a chord is matched against. */
-export interface KeyPress {
+export interface KeyPress extends CompositionState {
   key: string;
   code: string;
   metaKey: boolean;
@@ -92,8 +96,13 @@ export interface KeyPress {
   shiftKey: boolean;
 }
 
-/** Whether `event` is the key press `chord` describes. */
+/**
+ * Whether `event` is the key press `chord` describes. A key press an
+ * input method is composing with is no chord: it belongs to the
+ * composition.
+ */
 export function matchesChord(chord: KeyChord, event: KeyPress): boolean {
+  if (belongsToInputMethod(event)) return false;
   if (chord.key !== undefined && event.key.toLowerCase() !== chord.key.toLowerCase()) return false;
   if (chord.code !== undefined && event.code !== chord.code) return false;
   if ((event.metaKey || event.ctrlKey) !== Boolean(chord.mod)) return false;
@@ -142,7 +151,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   {
     id: 'gotoLine',
     scope: 'filePane',
-    description: 'Go to a line of the file (Enter jumps, Esc closes)',
+    description: 'Go to a line of the file',
     chord: { key: ':' },
     // Monaco's own Cmd/Ctrl+G counts the loaded editor lines, not the file's.
     otherChords: [{ key: 'g', mod: true }],
@@ -158,6 +167,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'filePane',
     description: 'On the selected anomaly chip: next anomaly (add Shift for the previous one)',
     gesture: '⌘/Alt+click',
+  },
+  {
+    id: 'gotoJump',
+    scope: 'gotoField',
+    description: 'Jump to the typed line',
+    chord: { key: 'Enter' },
+  },
+  {
+    id: 'gotoClose',
+    scope: 'gotoField',
+    description: 'Close the go-to-line box',
+    chord: { key: 'Escape' },
   },
   {
     id: 'applyFilter',

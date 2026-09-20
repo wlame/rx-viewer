@@ -283,6 +283,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- Enter in a search pattern field and in the go-to-line box no longer
+  runs the search or the jump while an input method is composing text:
+  Enter confirms the composition, and the next Enter acts. Escape in the
+  go-to-line box cancels a composition before it closes the box. No
+  shortcut acts on a key an input method takes, including the one
+  Safari sends with key code 229, and the editor filter box follows the
+  same rule. The help dialog lists Enter and Escape of the go-to-line
+  box.
+
 - `just fmt` no longer cuts off the end of a file that was made longer
   just before it ran. Where bun runs in Docker, the VM's file sharing
   can give the container a copy cut at the file's old size for up to
