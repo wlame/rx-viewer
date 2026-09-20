@@ -5,11 +5,9 @@
   import { detectors, files, settings, resolvedTheme } from '$lib/stores';
   import { recallPane, rememberPane, scrollOnShow } from '$lib/stores/paneMemory';
   import Spinner from '../common/Spinner.svelte';
-  import FileBadges from '../common/FileBadges.svelte';
   import MonacoEditor from './MonacoEditor.svelte';
   import RegexFilterPanel from './RegexFilterPanel.svelte';
-  import EditorToolbar from './EditorToolbar.svelte';
-  import AnomalyCategoryNav from './AnomalyCategoryNav.svelte';
+  import EditorHeader from './EditorHeader.svelte';
   import LineRangeNav from './LineRangeNav.svelte';
   import { detectMonacoLanguage } from '$lib/utils/monacoLanguage';
   import { debounce } from '$lib/utils/urlState';
@@ -111,10 +109,6 @@
     }
   }
 
-  function toggleSyntaxHighlighting() {
-    files.toggleSyntaxHighlighting(file.path);
-  }
-
   // A filter applied from outside the bar (a link, Back) opens the bar
   // showing it. Only a new filter object counts: the file changes on
   // every load, and a pattern the user is typing must survive that.
@@ -135,10 +129,6 @@
     if (filterPanelVisible && !file.regexFilter) {
       files.toggleRegexFilter(file.path);
     }
-  }
-
-  function toggleInvisibleChars() {
-    files.toggleInvisibleChars(file.path);
   }
 
   // Step to the next or previous anomaly of a category, relative to the
@@ -328,10 +318,6 @@
     }, 100);
   }
 
-  function handleClose() {
-    files.closeFile(file.path);
-  }
-
   // `:` or Cmd/Ctrl+G opens the go-to box, also while the read-only
   // editor text has focus. The pane hears keys in the capture phase and
   // stops the ones it acts on, so Monaco's own Cmd/Ctrl+G, which would
@@ -371,57 +357,15 @@
          border-r border-gh-border-default dark:border-gh-border-dark-default
          last:border-r-0"
 >
-  <!-- File header -->
   {#if !hideHeader}
-    <div
-      class="flex items-center justify-between px-3 py-2 gap-3
-           bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
-           border-b border-gh-border-default dark:border-gh-border-dark-default"
-    >
-      <div class="flex items-center gap-3 min-w-0">
-        <span class="text-base font-medium truncate" title={file.path}>
-          {file.name}
-        </span>
-        <FileBadges
-          isCompressed={file.isCompressed}
-          compressionFormat={file.compressionFormat}
-          isIndexed={null}
-        />
-        {#if file.lines.length > 0}
-          <LineRangeNav
-            bind:this={lineRangeNav}
-            startLine={file.startLine}
-            endLine={file.endLine}
-            totalLines={file.totalLines}
-            on:jump={(e) => jumpToLineNumber(e.detail.line)}
-            on:goto={(e) => files.jumpToLine(file.path, e.detail.line)}
-            on:jumpToEnd={() => files.jumpToEnd(file.path)}
-          />
-        {/if}
-      </div>
-
-      <div class="flex items-center gap-2">
-        <AnomalyCategoryNav
-          summary={file.anomalySummary}
-          selectedCategory={file.selectedAnomalyCategory}
-          on:toggle={(e) => files.toggleAnomalyCategory(file.path, e.detail.category)}
-          on:navigate={(e) => navigateToAnomaly(e.detail.category, e.detail.direction)}
-        />
-
-        <EditorToolbar
-          syntaxHighlighting={file.syntaxHighlighting}
-          wordWrap={file.wordWrap}
-          showInvisibleChars={file.showInvisibleChars}
-          filterEnabled={Boolean(file.regexFilter?.enabled)}
-          {monacoTheme}
-          on:toggleSyntax={toggleSyntaxHighlighting}
-          on:toggleWordWrap={() => files.toggleWordWrap(file.path)}
-          on:toggleInvisible={toggleInvisibleChars}
-          on:toggleFilter={toggleFilterPanel}
-          on:close={handleClose}
-        />
-      </div>
-    </div>
+    <EditorHeader
+      {file}
+      {monacoTheme}
+      bind:lineRangeNav
+      on:jump={(e) => jumpToLineNumber(e.detail.line)}
+      on:navigateAnomaly={(e) => navigateToAnomaly(e.detail.category, e.detail.direction)}
+      on:toggleFilter={toggleFilterPanel}
+    />
   {/if}
 
   <!-- Regex filter panel (expandable) -->
