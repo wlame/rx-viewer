@@ -13,9 +13,11 @@ import { SEARCH_TOGGLES } from './searchToggles';
 export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
   searchField: 'In a search pattern field',
+  fileTree: 'In the file tree',
   filePane: 'In the open file',
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
+  openPanel: 'While a panel is open',
 } as const;
 
 export type ShortcutScope = keyof typeof SHORTCUT_SCOPES;
@@ -48,7 +50,10 @@ export type ShortcutId =
   | 'findInEditor'
   | 'nextAnomaly'
   | 'applyFilter'
-  | 'closeFilter';
+  | 'closeFilter'
+  | 'openTreeItem'
+  | 'closeHistory'
+  | 'closeAnalysis';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -64,6 +69,12 @@ export interface Shortcut {
 /** The modifier labels, as the help shows them on every platform. */
 const MOD_LABEL = '⌘/Ctrl';
 
+/** The help's name for a key whose `KeyboardEvent.key` reads badly or not at all. */
+const KEY_LABELS: Readonly<Record<string, string>> = {
+  Escape: 'Esc',
+  ' ': 'Space',
+};
+
 /** The help dialog's label for a key press. */
 export function chordLabel(chord: KeyChord): string {
   const parts: string[] = [];
@@ -71,7 +82,7 @@ export function chordLabel(chord: KeyChord): string {
   if (chord.alt) parts.push('Alt');
   if (chord.shift) parts.push('Shift');
   const key = chord.key ?? chord.code?.replace(/^Key/, '') ?? '';
-  parts.push(key === 'Escape' ? 'Esc' : key.length === 1 ? key.toUpperCase() : key);
+  parts.push(KEY_LABELS[key] ?? (key.length === 1 ? key.toUpperCase() : key));
   return parts.join('+');
 }
 
@@ -149,6 +160,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chord: { code: toggle.shortcutCode, alt: true },
   })),
   {
+    id: 'openTreeItem',
+    scope: 'fileTree',
+    description: 'Open the file, or open or close the folder',
+    chord: { key: 'Enter' },
+    otherChords: [{ key: ' ' }],
+  },
+  {
     id: 'gotoLine',
     scope: 'filePane',
     description: 'Go to a line of the file',
@@ -190,6 +208,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: 'closeFilter',
     scope: 'filterField',
     description: 'Close the filter bar (an applied filter stays)',
+    chord: { key: 'Escape' },
+  },
+  {
+    id: 'closeHistory',
+    scope: 'openPanel',
+    description: 'Close the recent commands',
+    chord: { key: 'Escape' },
+  },
+  {
+    id: 'closeAnalysis',
+    scope: 'openPanel',
+    description: 'Close the analysis dialog',
     chord: { key: 'Escape' },
   },
 ];

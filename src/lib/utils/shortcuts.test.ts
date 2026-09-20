@@ -128,8 +128,26 @@ describe('isShortcut', () => {
     ['gotoClose', press('Escape', { isComposing: true })],
     ['applyFilter', press('Enter', { keyCode: 229 })],
     ['focusSearch', press('k', { metaKey: true, isComposing: true })],
+    ['closeHistory', press('Escape', { isComposing: true })],
+    ['closeAnalysis', press('Escape', { keyCode: 229 })],
   ] as const)('leaves %s to an input method that composes', (id, event) => {
     expect(isShortcut(id, event)).toBe(false);
+  });
+});
+
+describe('panel and tree keys', () => {
+  it('matches Escape as the key that closes the recent commands and the analysis', () => {
+    for (const id of ['closeHistory', 'closeAnalysis'] as const) {
+      expect(isShortcut(id, press('Escape'))).toBe(true);
+      expect(isShortcut(id, press('Enter'))).toBe(false);
+    }
+  });
+
+  it('matches Enter and Space on a tree row, without a modifier', () => {
+    expect(isShortcut('openTreeItem', press('Enter'))).toBe(true);
+    expect(isShortcut('openTreeItem', press(' '))).toBe(true);
+    expect(isShortcut('openTreeItem', press('Enter', { metaKey: true }))).toBe(false);
+    expect(isShortcut('openTreeItem', press('a'))).toBe(false);
   });
 });
 
@@ -175,6 +193,17 @@ describe('the shortcut list', () => {
     expect(group?.title).toBe('In the go-to-line box');
     expect(group?.shortcuts.map((s) => s.id)).toEqual(['gotoJump', 'gotoClose']);
     expect(group?.shortcuts.map(shortcutLabel)).toEqual(['Enter', 'Esc']);
+  });
+
+  it.each([
+    ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
+    ['openPanel', 'While a panel is open', ['closeHistory', 'closeAnalysis'], ['Esc', 'Esc']],
+  ])('lists the %s keys in their own group', (scope, title, ids, labels) => {
+    const group = shortcutsByScope().find((g) => g.scope === scope);
+
+    expect(group?.title).toBe(title);
+    expect(group?.shortcuts.map((s) => s.id)).toEqual(ids);
+    expect(group?.shortcuts.map(shortcutLabel)).toEqual(labels);
   });
 
   it('holds one row per search toggle, from the toggle table', () => {

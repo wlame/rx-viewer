@@ -6,6 +6,7 @@
    */
   import { createEventDispatcher } from 'svelte';
   import type { CommandAction, CommandEntry } from '$lib/stores/commands';
+  import { isShortcut } from '$lib/utils/shortcuts';
 
   export let entries: CommandEntry[];
 
@@ -23,7 +24,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') dispatch('close');
+    if (isShortcut('closeHistory', event)) dispatch('close');
   }
 </script>
 

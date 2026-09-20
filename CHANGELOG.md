@@ -283,6 +283,13 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- The recent commands panel, the analysis dialog and the shortcut list
+  stay open on an Escape that only cancels an input method's
+  composition, for instance in the search field. The help dialog lists
+  Escape for the recent commands and the analysis dialog, and Enter or
+  Space on a row of the file tree. Cmd/Ctrl+Enter on a tree row no
+  longer opens it; Enter and Space do.
+
 - Enter in a search pattern field and in the go-to-line box no longer
   runs the search or the jump while an input method is composing text:
   Enter confirms the composition, and the next Enter acts. Escape in the

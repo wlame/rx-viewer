@@ -4,6 +4,7 @@
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { openTreeFile } from '$lib/fileOpening';
   import { formatSize } from '$lib/utils/format';
+  import { isShortcut } from '$lib/utils/shortcuts';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -30,7 +31,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' || event.key === ' ') {
+    if (isShortcut('openTreeItem', event)) {
       event.preventDefault();
       handleClick();
     }

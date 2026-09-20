@@ -182,6 +182,10 @@ separate comment above, or eslint reads every word as another rule.
   jsdom: its first line is `// @vitest-environment jsdom`
   (`src/components/editor/RegexFilterPanel.test.ts`). jsdom does no
   layout, so a test gives a scroll position or size itself.
+- In a component test `onMount` does not run (vitest resolves `svelte`
+  to its server entry), so a window listener belongs in
+  `<svelte:window>`. A test whose component reaches `$lib/stores`
+  imports `$lib/testing/matchMediaStub` first.
 - Names: `describe(unit) / it("scenario returns expected")`.
 - End-to-end smoke against a real backend is manual until a Playwright job
   exists; record the manual check in the pull request or final report.

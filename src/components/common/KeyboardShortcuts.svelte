@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { focusSearch, toggleSidebar } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
   import {
     handleGlobalKey,
+    isShortcut,
     shortcutLabel,
     shortcutsByScope,
     type GlobalShortcutActions,
@@ -41,17 +41,11 @@
     if (get(contractRefused)) return;
     handleGlobalKey(event, actions);
   }
-
-  // The capture phase runs before the editor sees the key: Monaco binds
-  // Cmd/Ctrl+K and Cmd/Ctrl+/ itself and would stop them otherwise.
-  onMount(() => {
-    window.addEventListener('keydown', handleKeydown, true);
-  });
-
-  onDestroy(() => {
-    window.removeEventListener('keydown', handleKeydown, true);
-  });
 </script>
+
+<!-- The capture phase runs before the editor sees the key: Monaco binds
+     Cmd/Ctrl+K and Cmd/Ctrl+/ itself and would stop them otherwise. -->
+<svelte:window on:keydown|capture={handleKeydown} />
 
 <!-- Help dialog -->
 {#if showHelp}
@@ -61,7 +55,7 @@
     tabindex="-1"
     aria-label="Close dialog"
     on:click={() => (showHelp = false)}
-    on:keydown={(e) => e.key === 'Escape' && (showHelp = false)}
+    on:keydown={(e) => isShortcut('closeDialog', e) && (showHelp = false)}
   >
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div

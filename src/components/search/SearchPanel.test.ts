@@ -1,21 +1,10 @@
 // @vitest-environment jsdom
+import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { writable } from 'svelte/store';
 import { trace } from '$lib/stores';
 import SearchPanel from './SearchPanel.svelte';
-
-// jsdom has no matchMedia, and the settings store asks it for the
-// system theme when it is imported.
-vi.hoisted(() => {
-  window.matchMedia = (query: string) =>
-    ({
-      matches: false,
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-});
 
 // The real tree store loads its roots from the backend; the panel only
 // needs one root to search in.

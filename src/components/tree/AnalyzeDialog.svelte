@@ -4,6 +4,7 @@
   import { files, notifications } from '$lib/stores';
   import { analyzeFile } from '$lib/indexTasks';
   import { isAbortError } from '$lib/utils/latestRequest';
+  import { isShortcut } from '$lib/utils/shortcuts';
   import Spinner from '../common/Spinner.svelte';
   import AnalysisReport from './AnalysisReport.svelte';
 
@@ -60,7 +61,7 @@
    *  belongs to what is on screen. */
   function handleKeydown(event: KeyboardEvent) {
     const isOnScreen = backdropEl?.getClientRects().length > 0;
-    if (event.key === 'Escape' && isOnScreen) {
+    if (isShortcut('closeAnalysis', event) && isOnScreen) {
       close();
     }
   }
