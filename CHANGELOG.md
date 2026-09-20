@@ -283,6 +283,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- A search result whose line the search left unknown says why when the
+  viewer cannot find the line: the row reads "line unknown: " and the
+  backend's reason (an older backend refuses byte offsets in a
+  compressed file), or that the file has no line at that byte any more.
+  A click on such a row shows the reason in a notification instead of
+  doing nothing. With rx-go's offsets for compressed files, a capped
+  search of a `.gz` or `.zst` file now shows the line of every such
+  match and jumps to it.
+
 - When the backend cannot analyse a file, the Analyze dialog says
   "Analysis not available for this file", with the backend's reason
   when it gives one (a `400` from `POST /v1/index`), instead of showing

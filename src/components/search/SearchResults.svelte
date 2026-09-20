@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { trace, tree, files } from '$lib/stores';
+  import { notifications } from '$lib/stores/notifications';
   import { searchShowsOffsets } from '$lib/stores/layout';
   import {
     OffsetLineResolver,
     offsetKey,
     unresolvedOffsetsByFile,
     type ResolvedLines,
+    type UnresolvedReasons,
   } from '$lib/offsetLines';
   import { SUPERSEDED } from '$lib/utils/latestRequest';
   import { resolveMatchLine } from '$lib/utils/matchLine';
@@ -21,6 +23,9 @@
   let resolvedLines: ResolvedLines = {};
   // Matches currently being resolved, so the row can say so.
   let resolving: Record<string, boolean> = {};
+  // Why a match's line could not be resolved, keyed by offsetKey, so the
+  // row says why instead of only "line unknown".
+  let unresolved: UnresolvedReasons = {};
 
   const resolver = new OffsetLineResolver();
   onDestroy(() => resolver.cancel());
@@ -46,6 +51,7 @@
 
   async function resolveUnknownLines(response: typeof $trace.response) {
     resolvedLines = {};
+    unresolved = {};
     const pending: Record<string, boolean> = {};
     if (response) {
       for (const [filePath, offsets] of unresolvedOffsetsByFile(response)) {
@@ -54,24 +60,41 @@
     }
     resolving = pending;
 
-    await resolver.resolveAll(response, (found) => {
-      resolvedLines = { ...resolvedLines, ...found };
-    });
+    await resolver.resolveAll(
+      response,
+      (found) => {
+        resolvedLines = { ...resolvedLines, ...found };
+      },
+      (reasons) => {
+        unresolved = { ...unresolved, ...reasons };
+      },
+    );
     if (response === $trace.response) resolving = {};
   }
 
-  /** Ask the backend which line a byte offset falls on. */
+  /**
+   * Ask the backend which line a byte offset falls on. Null when another
+   * click took over, or when there is no line: the reason is then in
+   * `unresolved` and on screen.
+   */
   async function resolveLineFromOffset(filePath: string, offset: number): Promise<number | null> {
     const key = offsetKey(filePath, offset);
     if (resolvedLines[key] !== undefined) return resolvedLines[key];
 
     resolving = { ...resolving, [key]: true };
-    const line = await resolver.resolveOne(filePath, offset);
+    const lookup = await resolver.resolveOne(filePath, offset);
     const { [key]: _dropped, ...rest } = resolving;
     resolving = rest;
-    if (line === SUPERSEDED || line === null) return null;
-    resolvedLines = { ...resolvedLines, [key]: line };
-    return line;
+    if (lookup === SUPERSEDED) return null;
+    if ('reason' in lookup) {
+      unresolved = { ...unresolved, [key]: lookup.reason };
+      notifications.error(`Cannot jump to the match at byte ${offset}: ${lookup.reason}`);
+      return null;
+    }
+    const { [key]: _resolved, ...stillUnresolved } = unresolved;
+    unresolved = stillUnresolved;
+    resolvedLines = { ...resolvedLines, [key]: lookup.line };
+    return lookup.line;
   }
 
   async function openMatch(match: TraceMatch, filePath: string) {
@@ -165,6 +188,7 @@
           {@const filePath = getFilePath(match.file)}
           {@const lineNum = displayLine(match, filePath)}
           {@const isResolving = resolving[offsetKey(filePath, match.offset)]}
+          {@const whyUnknown = unresolved[offsetKey(filePath, match.offset)]}
           {@const fileMetadata = getFileMetadata(filePath)}
           <li>
             <button
@@ -187,7 +211,8 @@
                     @{match.offset}
                   </span>
                   <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-                    {#if lineNum !== null}(:{lineNum}){:else if isResolving}(resolving line…){/if}
+                    {#if lineNum !== null}(:{lineNum}){:else if isResolving}(resolving line…){:else if whyUnknown}(line
+                      unknown: {whyUnknown}){/if}
                   </span>
                 {:else}
                   <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
@@ -196,7 +221,7 @@
                     {:else if isResolving}
                       resolving line…
                     {:else}
-                      line unknown
+                      line unknown{#if whyUnknown}: {whyUnknown}{/if}
                     {/if}
                   </span>
                   <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">

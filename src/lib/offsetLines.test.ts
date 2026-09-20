@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { OffsetLineResolver, offsetKey } from './offsetLines';
+import { OffsetLineResolver, offsetKey, noLineAtOffset } from './offsetLines';
 import { SUPERSEDED } from './utils/latestRequest';
 import type { TraceResponse } from './types';
 
@@ -59,6 +59,20 @@ function stubSlowSamples() {
     ),
   );
   return pending;
+}
+
+/** A backend whose `/v1/samples` answers every request with an error. */
+function stubRefusingSamples(status: number, detail: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: false,
+      status,
+      statusText: 'Error',
+      json: async () => ({ detail }),
+      text: async () => JSON.stringify({ detail }),
+    })),
+  );
 }
 
 /** Let the resolver's awaits run. */
@@ -128,6 +142,67 @@ describe('OffsetLineResolver', () => {
 
     expect(pending[0].signal?.aborted).toBe(true);
     expect(await first).toBe(SUPERSEDED);
-    expect(await second).toBe(12);
+    expect(await second).toEqual({ line: 12 });
+  });
+
+  it('gives the reason a backend states when it refuses the lookup', async () => {
+    stubRefusingSamples(
+      400,
+      "Byte offsets are not supported for compressed files. Use 'lines' parameter instead.",
+    );
+    const resolver = new OffsetLineResolver();
+
+    expect(await resolver.resolveOne(PATH, 100)).toEqual({
+      reason: "Byte offsets are not supported for compressed files. Use 'lines' parameter instead.",
+    });
+  });
+
+  it('says the file has no line at an offset the answer leaves unknown', async () => {
+    const pending = stubSlowSamples();
+    const resolver = new OffsetLineResolver();
+
+    const lookup = resolver.resolveOne(PATH, 300);
+    await settle();
+    pending[0].answer({ '300': -1 });
+
+    expect(await lookup).toEqual({ reason: noLineAtOffset(300) });
+  });
+
+  it('reports why each offset of a failed batch stays unknown', async () => {
+    stubRefusingSamples(500, 'read /var/log/app.log: input/output error');
+    const resolver = new OffsetLineResolver();
+    const reasons: Record<string, string>[] = [];
+
+    await resolver.resolveAll(
+      responseWithUnknownLines([100, 200]),
+      () => {},
+      (found) => reasons.push(found),
+    );
+
+    expect(reasons).toEqual([
+      {
+        [offsetKey(PATH, 100)]: 'read /var/log/app.log: input/output error',
+        [offsetKey(PATH, 200)]: 'read /var/log/app.log: input/output error',
+      },
+    ]);
+  });
+
+  it('reports a batch offset the answer leaves unknown with its reason, and the rest as lines', async () => {
+    const pending = stubSlowSamples();
+    const resolver = new OffsetLineResolver();
+    const lines: Record<string, number>[] = [];
+    const reasons: Record<string, string>[] = [];
+
+    const done = resolver.resolveAll(
+      responseWithUnknownLines([100, 900]),
+      (found) => lines.push(found),
+      (found) => reasons.push(found),
+    );
+    await settle();
+    pending[0].answer({ '100': 7, '900': -1 });
+    await done;
+
+    expect(lines).toEqual([{ [offsetKey(PATH, 100)]: 7 }]);
+    expect(reasons).toEqual([{ [offsetKey(PATH, 900)]: noLineAtOffset(900) }]);
   });
 });

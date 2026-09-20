@@ -10,10 +10,15 @@
  * Both are superseded often — a new search replaces the batch, a second
  * click replaces the first — so each runs in its own LatestRequest: the
  * superseded request is aborted and its answer is never reported.
+ *
+ * An offset the lookup cannot number comes back with the reason, so the
+ * result list can say why a line stays unknown and a click on it can say
+ * why it does not jump: the backend's own sentence when it refuses or
+ * fails, or noLineAtOffset when its answer has no line at that byte.
  */
 import { api } from './api';
 import { resolveMatchLine } from './utils/matchLine';
-import { LatestRequest, SUPERSEDED } from './utils/latestRequest';
+import { LatestRequest, SUPERSEDED, isAbortError } from './utils/latestRequest';
 import type { TraceResponse } from './types';
 
 /**
@@ -26,6 +31,25 @@ export const EAGER_RESOLVE_LIMIT_PER_FILE = 200;
 
 /** Lines found so far, keyed by offsetKey. */
 export type ResolvedLines = Record<string, number>;
+
+/** Why a match's line could not be found, keyed by offsetKey. */
+export type UnresolvedReasons = Record<string, string>;
+
+/** The answer to the lookup of one offset: its line, or why there is none. */
+export type OffsetLookup = { line: number } | { reason: string };
+
+/**
+ * The reason given when the backend answers but names no line for the
+ * offset, which is how it reports a byte past the end of the file.
+ */
+export function noLineAtOffset(offset: number): string {
+  return `the file has no line at byte ${offset}; it may have changed since the search`;
+}
+
+/** The reason a lookup failed, in the backend's words when it gave any. */
+function reasonForFailure(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : 'the line lookup failed';
+}
 
 /** The key of one match position: one lookup serves the list and the jump. */
 export function offsetKey(filePath: string, offset: number): string {
@@ -52,18 +76,28 @@ export function unresolvedOffsetsByFile(
   return offsetsByFile;
 }
 
-/** The valid lines a samples answer gives for `offsets`, keyed by offsetKey. */
-function linesFromAnswer(
+/**
+ * Split a samples answer for `offsets` into the lines it gives and, for
+ * every offset it gives none, the reason; both keyed by offsetKey.
+ */
+function lookupsFromAnswer(
   filePath: string,
   offsets: number[],
   answer: Record<string, number> | null | undefined,
-): ResolvedLines {
-  const found: ResolvedLines = {};
+): { lines: ResolvedLines; reasons: UnresolvedReasons } {
+  const lines: ResolvedLines = {};
+  const reasons: UnresolvedReasons = {};
   for (const offset of offsets) {
     const line = answer?.[String(offset)];
-    if (typeof line === 'number' && line >= 1) found[offsetKey(filePath, offset)] = line;
+    if (typeof line === 'number' && line >= 1) lines[offsetKey(filePath, offset)] = line;
+    else reasons[offsetKey(filePath, offset)] = noLineAtOffset(offset);
   }
-  return found;
+  return { lines, reasons };
+}
+
+/** The same reason for every offset of one file. */
+function sameReasonFor(filePath: string, offsets: number[], reason: string): UnresolvedReasons {
+  return Object.fromEntries(offsets.map((offset) => [offsetKey(filePath, offset), reason]));
 }
 
 export class OffsetLineResolver {
@@ -72,16 +106,19 @@ export class OffsetLineResolver {
 
   /**
    * Resolve every unknown line of `response`, one request per file,
-   * reporting each file's lines through `onLines` as its answer arrives.
+   * reporting each file's lines through `onLines` and the offsets it could
+   * not number, with the reason, through `onUnresolved`, as each file's
+   * answer arrives.
    *
    * Starting a batch aborts the previous batch and any click lookup, which
    * belonged to the previous search. A null response only cancels. A file
-   * whose lookup fails is skipped: its matches keep showing the offset,
-   * and a click retries.
+   * whose lookup fails reports the failure for each of its offsets; a
+   * click retries.
    */
   async resolveAll(
     response: TraceResponse | null,
     onLines: (lines: ResolvedLines) => void,
+    onUnresolved: (reasons: UnresolvedReasons) => void = () => {},
   ): Promise<void> {
     this.single.abort();
     if (!response) {
@@ -100,9 +137,13 @@ export class OffsetLineResolver {
           try {
             const samples = await api.getSamplesByOffset(filePath, offsets, 0, { signal });
             if (signal.aborted) return;
-            onLines(linesFromAnswer(filePath, offsets, samples.offsets));
-          } catch {
-            // Aborted, or the lookup failed: either way nothing to report.
+            const { lines, reasons } = lookupsFromAnswer(filePath, offsets, samples.offsets);
+            if (Object.keys(lines).length > 0) onLines(lines);
+            if (Object.keys(reasons).length > 0) onUnresolved(reasons);
+          } catch (error) {
+            // An aborted lookup belongs to a search nobody is looking at.
+            if (signal.aborted || isAbortError(error)) return;
+            onUnresolved(sameReasonFor(filePath, offsets, reasonForFailure(error)));
           }
         }),
       ),
@@ -110,23 +151,21 @@ export class OffsetLineResolver {
   }
 
   /**
-   * The line of one byte offset, for a click on a match. Null when the
-   * backend cannot say; SUPERSEDED when another click or a new search
-   * took over first.
+   * The line of one byte offset, for a click on a match, or the reason
+   * there is none; SUPERSEDED when another click or a new search took
+   * over first.
    */
-  async resolveOne(filePath: string, offset: number): Promise<number | null | typeof SUPERSEDED> {
+  async resolveOne(filePath: string, offset: number): Promise<OffsetLookup | typeof SUPERSEDED> {
     try {
       const samples = await this.single.run((signal) =>
         api.getSamplesByOffset(filePath, [offset], 0, { signal }),
       );
       if (samples === SUPERSEDED) return SUPERSEDED;
-      return (
-        linesFromAnswer(filePath, [offset], samples.offsets)[offsetKey(filePath, offset)] ?? null
-      );
-    } catch {
-      // The jump still works from the offset's file window; a failed
-      // lookup only costs the gutter number.
-      return null;
+      const key = offsetKey(filePath, offset);
+      const { lines, reasons } = lookupsFromAnswer(filePath, [offset], samples.offsets);
+      return key in lines ? { line: lines[key] } : { reason: reasons[key] };
+    } catch (error) {
+      return { reason: reasonForFailure(error) };
     }
   }
 
