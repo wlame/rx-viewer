@@ -5,6 +5,7 @@ import {
   hiddenMarkerDecorations,
   highlightedRangeDecorations,
   matchLineDecorations,
+  paneDecorations,
   regexHighlightDecorations,
   toMonacoLine,
   type LineSource,
@@ -153,5 +154,71 @@ describe('hiddenMarkerDecorations', () => {
     const decorations = hiddenMarkerDecorations('show', lines(HIDDEN_MARKER), new Map());
 
     expect(decorations[0].options.inlineClassName).toBe('monaco-hidden-marker-blue');
+  });
+});
+
+describe('paneDecorations', () => {
+  const anomaly = {
+    start_line: 105,
+    end_line: 105,
+    start_offset: 0,
+    end_offset: 0,
+    severity: 0.5,
+    description: '',
+    detector: 'secrets-scan',
+    category: 'secrets',
+  };
+  const filter = { enabled: true, pattern: 'b', mode: 'highlight' as const, compiledRegex: /b/ };
+  const nothingShown = {
+    editorWindow,
+    matchedFileLines: [],
+    highlightedRange: null,
+    anomalies: null,
+    selectedCategory: null,
+    filter: null,
+    text: lines('abc', `a${HIDDEN_MARKER}c`),
+    hiddenContent: new Map([['2:0', 'b']]),
+  };
+
+  it('marks the matched lines, the highlighted range and the selected category together', () => {
+    const decorations = paneDecorations({
+      ...nothingShown,
+      matchedFileLines: [102],
+      highlightedRange: { start: 103, end: 103 },
+      anomalies: [anomaly, { ...anomaly, category: 'format', start_line: 106, end_line: 106 }],
+      selectedCategory: {
+        name: 'secrets',
+        style: { color: '#0ea5e9', decorationClass: 'palette-0' },
+      },
+    });
+
+    expect(decorations.map((d) => d.range.startLineNumber)).toEqual([2, 3, 5]);
+  });
+
+  it('marks no anomaly while no category is selected', () => {
+    expect(paneDecorations({ ...nothingShown, anomalies: [anomaly] })).toEqual([]);
+  });
+
+  it.each([
+    ['highlight', 'monaco-regex-highlight', 1],
+    ['hide', 'monaco-hidden-marker-red', 2],
+    ['show', 'monaco-hidden-marker-blue', 2],
+  ] as const)('marks what a %s filter does on the line it does it', (mode, className, line) => {
+    const decorations = paneDecorations({ ...nothingShown, filter: { ...filter, mode } });
+
+    expect(decorations).toHaveLength(1);
+    expect(decorations[0].range.startLineNumber).toBe(line);
+    expect(decorations[0].options.inlineClassName).toBe(className);
+  });
+
+  it.each([
+    ['disabled', { ...filter, enabled: false }],
+    ['not compiled', { ...filter, compiledRegex: null }],
+  ])('marks nothing for a filter that is %s', (_, inactive) => {
+    expect(paneDecorations({ ...nothingShown, filter: inactive })).toEqual([]);
+  });
+
+  it('marks no filter result before the editor has text', () => {
+    expect(paneDecorations({ ...nothingShown, filter, text: null })).toEqual([]);
   });
 });

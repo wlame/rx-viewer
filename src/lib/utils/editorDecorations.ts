@@ -11,7 +11,7 @@
  * The class names here are styled in components/editor/editorDecorations.css.
  */
 import type * as Monaco from 'monaco-editor';
-import type { AnomalyRangeResult } from '../types';
+import type { AnomalyRangeResult, RegexFilter } from '../types';
 import type { CategoryStyle } from './categoryStyle';
 import { HIDDEN_MARKER } from './processContent';
 import { matchedSpans } from './regexMatches';
@@ -194,4 +194,56 @@ export function hiddenMarkerDecorations(
     }
   }
   return out;
+}
+
+/** What the pane shows that its decorations mark. */
+export interface PaneView {
+  editorWindow: EditorWindow;
+  /** File lines a trace search matched. */
+  matchedFileLines: readonly number[];
+  /** A highlighted range of file lines, such as one anomaly picked from a list. */
+  highlightedRange: { start: number; end: number } | null | undefined;
+  anomalies: readonly AnomalyRangeResult[] | null;
+  /** The anomaly category whose lines are marked, with its look. */
+  selectedCategory: { name: string; style: CategoryStyle } | null;
+  filter: Pick<RegexFilter, 'enabled' | 'pattern' | 'mode' | 'compiledRegex'> | null;
+  /** The editor's text, or null before the editor has a model. */
+  text: LineSource | null;
+  /** What the hide/show filter replaced, as processContent built it. */
+  hiddenContent: ReadonlyMap<string, string>;
+}
+
+/** The decorations of each filter mode, over the editor's text. */
+const FILTER_DECORATIONS: Record<
+  RegexFilter['mode'],
+  (pattern: string, text: LineSource, hiddenContent: ReadonlyMap<string, string>) => Decoration[]
+> = {
+  highlight: (pattern, text) => regexHighlightDecorations(pattern, text),
+  hide: (_, text, hiddenContent) => hiddenMarkerDecorations('hide', text, hiddenContent),
+  show: (_, text, hiddenContent) => hiddenMarkerDecorations('show', text, hiddenContent),
+};
+
+/**
+ * Every decoration of the pane: matched lines, the highlighted range,
+ * the selected category's anomalies, and what an active filter does. A
+ * filter is active when it is enabled and its pattern compiled.
+ */
+export function paneDecorations(view: PaneView): Decoration[] {
+  const { editorWindow, filter, text, selectedCategory } = view;
+  const isFilterActive = Boolean(filter?.enabled && filter.compiledRegex);
+  return [
+    ...matchLineDecorations(view.matchedFileLines, editorWindow),
+    ...highlightedRangeDecorations(view.highlightedRange, editorWindow),
+    ...(selectedCategory && view.anomalies
+      ? anomalyCategoryDecorations(
+          view.anomalies,
+          selectedCategory.name,
+          selectedCategory.style,
+          editorWindow,
+        )
+      : []),
+    ...(filter && isFilterActive && text
+      ? FILTER_DECORATIONS[filter.mode](filter.pattern, text, view.hiddenContent)
+      : []),
+  ];
 }

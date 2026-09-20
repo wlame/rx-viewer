@@ -16,14 +16,7 @@
   import { anchorAfterScroll, type VisibleLines } from '$lib/utils/anchorLine';
   import { pagingDirection, watchUserInput } from '$lib/utils/paging';
   import { processContent } from '$lib/utils/processContent';
-  import {
-    anomalyCategoryDecorations,
-    hiddenMarkerDecorations,
-    highlightedRangeDecorations,
-    matchLineDecorations,
-    regexHighlightDecorations,
-    toMonacoLine,
-  } from '$lib/utils/editorDecorations';
+  import { paneDecorations, toMonacoLine, type PaneView } from '$lib/utils/editorDecorations';
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import { acceptsTyping } from '$lib/utils/keyTargets';
   import { isShortcut } from '$lib/utils/shortcuts';
@@ -42,7 +35,7 @@
 
   // Hidden-content map for hover tooltips, keyed "lineNum:markerIndex".
   // Assigned together with `content` by processContent below.
-  let hiddenContentMap: Map<string, string> = new Map();
+  let hiddenContentMap: Map<string, string>;
 
   // The header's line readout, whose go-to box the `:` shortcut opens.
   let lineRangeNav: LineRangeNav | undefined;
@@ -87,66 +80,32 @@
     file.showInvisibleChars,
   ));
 
-  // Apply decorations when matches change or content changes
-  $: if (monacoEditor && file.lines.length > 0) {
-    updateDecorations();
-  }
-
-  // Also update decorations when regex filter changes
-  $: if (monacoEditor && file.regexFilter) {
-    updateDecorations();
-  }
-
-  // Update decorations when highlighted lines change
-  $: if (monacoEditor && file.highlightedLines !== undefined) {
-    updateDecorations();
-  }
-
-  // Update decorations when selected anomaly category changes
-  $: if (monacoEditor && file.selectedAnomalyCategory !== undefined) {
-    updateDecorations();
-  }
-
-  // Update decorations when anomalies data is loaded
-  $: if (monacoEditor && file.anomalies) {
-    updateDecorations();
-  }
-
   // The selected category's color is its place in the detector list,
   // which can arrive after the anomalies.
   $: selectedCategoryStyle = file.selectedAnomalyCategory
     ? categoryStyle(file.selectedAnomalyCategory, $detectors.categories)
     : null;
-  $: if (monacoEditor && selectedCategoryStyle) {
-    updateDecorations();
-  }
 
-  function updateDecorations() {
+  // Everything the decorations mark; any change to it repaints them.
+  $: paneView = {
+    editorWindow: { startLine: file.startLine, lineCount: file.lines.length },
+    matchedFileLines: fileMatches.map((match) => match.lineNumber),
+    highlightedRange: file.highlightedLines,
+    anomalies: file.anomalies,
+    selectedCategory:
+      file.selectedAnomalyCategory && selectedCategoryStyle
+        ? { name: file.selectedAnomalyCategory, style: selectedCategoryStyle }
+        : null,
+    filter: file.regexFilter,
+    text: monacoEditor?.getModel() ?? null,
+    hiddenContent: hiddenContentMap,
+  } satisfies PaneView;
+  $: if (monacoEditor) updateDecorations(paneView);
+
+  function updateDecorations(view: PaneView) {
     if (!monacoEditor) return;
     decorationsCollection?.clear();
-
-    const editorWindow = { startLine: file.startLine, lineCount: file.lines.length };
-    const model = monacoEditor.getModel();
-    const filter = file.regexFilter;
-    const filterActive = Boolean(filter?.enabled && filter.compiledRegex);
-    const category = file.selectedAnomalyCategory;
-
-    const decorations = [
-      ...matchLineDecorations(
-        fileMatches.map((match) => match.lineNumber),
-        editorWindow,
-      ),
-      ...highlightedRangeDecorations(file.highlightedLines, editorWindow),
-      ...(category && selectedCategoryStyle && file.anomalies
-        ? anomalyCategoryDecorations(file.anomalies, category, selectedCategoryStyle, editorWindow)
-        : []),
-      ...(model && filter && filterActive && filter.mode === 'highlight'
-        ? regexHighlightDecorations(filter.pattern, model)
-        : []),
-      ...(model && filter && filterActive && filter.mode !== 'highlight'
-        ? hiddenMarkerDecorations(filter.mode, model, hiddenContentMap)
-        : []),
-    ];
+    const decorations = paneDecorations(view);
     if (decorations.length > 0) {
       decorationsCollection = monacoEditor.createDecorationsCollection(decorations);
     }
@@ -358,14 +317,14 @@
       model.onDidChangeContent(() => {
         // Delay slightly to ensure content is fully rendered
         setTimeout(() => {
-          updateDecorations();
+          updateDecorations(paneView);
         }, 50);
       });
     }
 
     // Initial decoration update (with delay to ensure content is ready)
     setTimeout(() => {
-      updateDecorations();
+      updateDecorations(paneView);
     }, 100);
   }
 
