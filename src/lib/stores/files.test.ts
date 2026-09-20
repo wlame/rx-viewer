@@ -98,7 +98,7 @@ describe('the file window against samples answers', () => {
 
   it('stops paging at a null sample past the end', async () => {
     const fetchSpy = serveFileOf(1000);
-    await files.openFile('/logs/thousand.log', undefined, null, undefined, false);
+    await files.openFile('/logs/thousand.log', { isIndexed: false });
     expect(openedFile('/logs/thousand.log').reachedEnd).toBe(false);
 
     await files.loadMore('/logs/thousand.log', 'after');
@@ -115,7 +115,7 @@ describe('the file window against samples answers', () => {
 
   it('opens an empty file with no lines and does not page', async () => {
     const fetchSpy = serveFileOf(0);
-    await files.openFile('/logs/empty.log', undefined, null, undefined, false);
+    await files.openFile('/logs/empty.log', { isIndexed: false });
     await files.loadMore('/logs/empty.log', 'after');
 
     const file = openedFile('/logs/empty.log');
@@ -134,7 +134,7 @@ describe('the file window against samples answers', () => {
     async ({ lineCount, first }) => {
       serveFileOf(lineCount);
       const path = `/logs/lines-${lineCount}.log`;
-      await files.openFile(path, undefined, null, undefined, false);
+      await files.openFile(path, { isIndexed: false });
 
       await files.jumpToEnd(path);
 
@@ -149,7 +149,7 @@ describe('the file window against samples answers', () => {
 
   it('shows the end of the file for a line far past it', async () => {
     serveFileOf(7);
-    await files.openFile('/logs/seven.log', 100_000, null, undefined, false);
+    await files.openFile('/logs/seven.log', { scrollToLine: 100_000, isIndexed: false });
 
     const file = openedFile('/logs/seven.log');
     expect(file.error).toBeNull();
@@ -159,7 +159,7 @@ describe('the file window against samples answers', () => {
 
   it('pages down again after a jump from the end back into the middle', async () => {
     serveFileOf(10_000);
-    await files.openFile('/logs/long.log', undefined, null, undefined, false);
+    await files.openFile('/logs/long.log', { isIndexed: false });
     await files.jumpToEnd('/logs/long.log');
 
     await files.jumpToLine('/logs/long.log', 5_000);
@@ -194,7 +194,7 @@ describe('the held window while paging', () => {
 
   it('holds at most the cap after paging forward 50 times', async () => {
     serveFileOf(100_000);
-    await files.openFile(path, undefined, null, undefined, false);
+    await files.openFile(path, { isIndexed: false });
 
     await page('after', 50);
 
@@ -209,7 +209,7 @@ describe('the held window while paging', () => {
 
   it('reloads the dropped pages when paging back, with their numbers', async () => {
     serveFileOf(100_000);
-    await files.openFile(path, undefined, null, undefined, false);
+    await files.openFile(path, { isIndexed: false });
     await page('after', 50);
 
     await page('before', 10);
@@ -225,7 +225,7 @@ describe('the held window while paging', () => {
 
   it('reaches the start again after paging back all the way', async () => {
     serveFileOf(100_000);
-    await files.openFile(path, undefined, null, undefined, false);
+    await files.openFile(path, { isIndexed: false });
     await page('after', 20);
 
     await page('before', 30);
@@ -239,7 +239,7 @@ describe('the held window while paging', () => {
 
   it('keeps the end of the file known after dropping the lines near it', async () => {
     serveFileOf(12_000);
-    await files.openFile(path, undefined, null, undefined, false);
+    await files.openFile(path, { isIndexed: false });
     await page('after', 20);
     expect(openedFile(path).reachedEnd).toBe(true);
 
@@ -263,7 +263,7 @@ describe('the filter of a file', () => {
 
   it('applies a pattern to a file that has no filter yet', async () => {
     serveFileOf(100);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
 
     files.updateRegexFilter('/logs/a.log', 'LINE 1\\d', 'show');
 
@@ -276,8 +276,8 @@ describe('the filter of a file', () => {
 
   it('keeps the filter of each file when another file gets one', async () => {
     serveFileOf(100);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
-    await files.openFile('/logs/b.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
+    await files.openFile('/logs/b.log', { isIndexed: false });
 
     files.updateRegexFilter('/logs/a.log', 'ERROR', 'hide');
     files.updateRegexFilter('/logs/b.log', 'WARN', 'highlight');
@@ -302,19 +302,19 @@ describe('the anchor line', () => {
 
   it('anchors a file opened without a line on line 1', async () => {
     serveFileOf(1000);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     expect(openedFile('/logs/a.log').anchorLine).toBe(1);
   });
 
   it('anchors a file opened at a line on that line', async () => {
     serveFileOf(1000);
-    await files.openFile('/logs/a.log', 169, null, undefined, false);
+    await files.openFile('/logs/a.log', { scrollToLine: 169, isIndexed: false });
     expect(openedFile('/logs/a.log').anchorLine).toBe(169);
   });
 
   it('anchors a jump on its target, loaded or not', async () => {
     serveFileOf(10_000);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
 
     await files.jumpToLine('/logs/a.log', 50);
     expect(openedFile('/logs/a.log').anchorLine).toBe(50);
@@ -325,7 +325,7 @@ describe('the anchor line', () => {
 
   it('anchors the end of the file on its last line', async () => {
     serveFileOf(300);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     await files.jumpToEnd('/logs/a.log');
     expect(openedFile('/logs/a.log').anchorLine).toBe(300);
   });
@@ -334,7 +334,7 @@ describe('the anchor line', () => {
     'moves a line %i past the end of a 1000-line file to line 1000',
     async (line) => {
       serveFileOf(1000);
-      await files.openFile('/logs/a.log', line, null, undefined, false);
+      await files.openFile('/logs/a.log', { scrollToLine: line, isIndexed: false });
 
       const file = openedFile('/logs/a.log');
       expect(file.anchorLine).toBe(1000);
@@ -344,7 +344,7 @@ describe('the anchor line', () => {
 
   it('takes an anchor the editor reports after a scroll', async () => {
     serveFileOf(1000);
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     files.setAnchorLine('/logs/a.log', 415);
     expect(openedFile('/logs/a.log').anchorLine).toBe(415);
   });
@@ -364,7 +364,7 @@ describe('the equivalent command of a file window', () => {
 
   it('records the command of each window the user asked for', async () => {
     serveFileOf(10_000, { withCommand: true });
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     await files.jumpToLine('/logs/a.log', 5_000);
     await files.jumpToEnd('/logs/a.log');
 
@@ -378,7 +378,7 @@ describe('the equivalent command of a file window', () => {
 
   it('records nothing for the pages loaded while scrolling', async () => {
     serveFileOf(10_000, { withCommand: true });
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     await files.loadMore('/logs/a.log', 'after');
 
     expect(commands()).toEqual(['rx samples /logs/a.log --lines=1-1000']);

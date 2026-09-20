@@ -196,19 +196,19 @@ describe('the URL follows the view', () => {
   });
 
   it('names a file opened at its start and no line', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
     expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log');
   });
 
   it('names the line a jump went to', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
     files.setHighlightedLines('/logs/small.log', { start: 169, end: 175 });
     await files.jumpToLine('/logs/small.log', 169);
     expect(urlParams().get('line')).toBe('169');
   });
 
   it('stops naming a file when the last one is closed', async () => {
-    await files.openFile('/logs/small.log', 40, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { scrollToLine: 40, fileSize: 1000, isIndexed: false });
     files.toggleSyntaxHighlighting('/logs/small.log');
 
     files.closeFile('/logs/small.log');
@@ -217,8 +217,8 @@ describe('the URL follows the view', () => {
   });
 
   it('names the remaining file while one is still open', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
-    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
 
     files.closeFile('/logs/big.log');
 
@@ -238,7 +238,7 @@ describe('the URL follows the view', () => {
   });
 
   it('names the filter and the anomaly category of the active file', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
     files.setRegexFilter('/logs/small.log', { pattern: 'LINE 1\\d', mode: 'show' });
     files.setSelectedAnomalyCategory('/logs/small.log', 'error');
     expect(urlParams().get('filter')).toBe('LINE 1\\d');
@@ -374,9 +374,9 @@ describe('Back and Forward', () => {
   };
 
   it('adds an entry for each file opened, and none for a jump inside one', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
     await files.jumpToLine('/logs/small.log', 500);
-    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB, undefined, false);
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
 
     expect(browser.entries).toEqual([
       '',
@@ -386,8 +386,12 @@ describe('Back and Forward', () => {
   });
 
   it('returns to the previous file, then to no file, and forward again', async () => {
-    await files.openFile('/logs/small.log', 300, 1000, undefined, false);
-    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB, undefined, false);
+    await files.openFile('/logs/small.log', {
+      scrollToLine: 300,
+      fileSize: 1000,
+      isIndexed: false,
+    });
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
 
     browser.back();
     await vi.waitFor(() => expect(activePath()).toBe('/logs/small.log'));
@@ -403,7 +407,7 @@ describe('Back and Forward', () => {
 
   it('returns from a file to the search run before it, then to no search', async () => {
     searchRequest.set(search);
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
 
     browser.back();
     await vi.waitFor(() => expect(openPaths()).toEqual([]));
@@ -422,8 +426,8 @@ describe('Back and Forward', () => {
   });
 
   it('adds no entry while it restores a view', async () => {
-    await files.openFile('/logs/small.log', undefined, 1000, undefined, false);
-    await files.openFile('/logs/big.log', undefined, 5 * ONE_MB, undefined, false);
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
     const pushes = browser.modes.filter((mode) => mode === 'push').length;
 
     browser.back();

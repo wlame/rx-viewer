@@ -70,7 +70,7 @@ describe('the pane memory of each tab', () => {
         text: async () => '',
       })),
     );
-    await files.openFile('/logs/a.log', undefined, null, undefined, false);
+    await files.openFile('/logs/a.log', { isIndexed: false });
     rememberPane('/logs/a.log', paneWithFilter('ERROR', 'show'));
 
     files.closeFile('/logs/a.log');

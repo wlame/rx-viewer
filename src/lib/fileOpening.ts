@@ -25,14 +25,11 @@ export async function openTreeFile(
     notifications.error(`Cannot open binary file: ${entry.name}`, BINARY_NOTICE_MS);
     return;
   }
-  await files.openFile(
-    entry.path,
-    undefined,
-    entry.size,
-    undefined,
-    entry.is_indexed ?? undefined,
-    entry.line_count ?? undefined,
-  );
+  await files.openFile(entry.path, {
+    fileSize: entry.size,
+    isIndexed: entry.is_indexed ?? undefined,
+    lineCount: entry.line_count ?? undefined,
+  });
 }
 
 /** The directory that holds `path`: `/logs` for `/logs/app.log`, `/` for `/app.log`. */
@@ -71,12 +68,10 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
     return;
   }
   const entry = await lookUpEntry(path);
-  await files.openFile(
-    path,
-    line,
-    entry?.size ?? null,
-    undefined,
-    entry?.is_indexed ?? undefined,
-    entry?.line_count ?? undefined,
-  );
+  await files.openFile(path, {
+    scrollToLine: line,
+    fileSize: entry?.size ?? null,
+    isIndexed: entry?.is_indexed ?? undefined,
+    lineCount: entry?.line_count ?? undefined,
+  });
 }

@@ -143,14 +143,13 @@ async function showFile(
   const node = view.highlight === null ? await located : null;
   if (!isCurrent()) return null;
   // openFile puts the file in the store before its first await.
-  const loaded = files.openFile(
-    path,
-    view.line ?? undefined,
-    node?.size ?? null,
-    view.highlight ?? undefined,
-    node?.is_indexed ?? undefined,
-    node?.line_count ?? undefined,
-  );
+  const loaded = files.openFile(path, {
+    scrollToLine: view.line ?? undefined,
+    fileSize: node?.size ?? null,
+    syntaxHighlighting: view.highlight ?? undefined,
+    isIndexed: node?.is_indexed ?? undefined,
+    lineCount: node?.line_count ?? undefined,
+  });
   return { loaded };
 }
 

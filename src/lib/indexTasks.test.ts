@@ -296,7 +296,7 @@ describe('a finished task', () => {
       'POST /v1/index': [started('t1')],
       'GET /v1/tasks/t1': [completed('t1', indexData(true, { line_count: 120 }))],
     });
-    await files.openFile(PATH, undefined, 1000, undefined, false);
+    await files.openFile(PATH, { fileSize: 1000, isIndexed: false });
 
     const result = analyzeFile(PATH, { signal: new AbortController().signal });
     await settle();
@@ -330,7 +330,7 @@ describe('a finished task', () => {
       'POST /v1/index': [started('t1')],
       'GET /v1/tasks/t1': [completed('t1', indexData(true, { line_count: null }))],
     });
-    await files.openFile(PATH, undefined, 1000, undefined, false);
+    await files.openFile(PATH, { fileSize: 1000, isIndexed: false });
     const linesBefore = get(files).openFiles.find((f) => f.path === PATH)?.totalLines;
 
     const result = analyzeFile(PATH, { signal: new AbortController().signal });

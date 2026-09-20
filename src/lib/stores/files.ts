@@ -37,6 +37,20 @@ function windowBounds(window: SampleWindow) {
   };
 }
 
+/** What the caller of `openFile` knows about the file; every field may be left out. */
+export interface OpenFileOptions {
+  /** The line to show; without one the file opens at line 1. */
+  scrollToLine?: number;
+  /** The file's size in bytes, which picks the highlighting default; null when unknown. */
+  fileSize?: number | null;
+  /** Highlighting as a link gives it, in place of the size-based default. */
+  syntaxHighlighting?: boolean;
+  /** Whether the file is indexed; false skips the index request. */
+  isIndexed?: boolean;
+  /** The file's line count, when the tree lists it. */
+  lineCount?: number | null;
+}
+
 interface FilesState {
   openFiles: OpenFile[];
   matches: Map<string, FileMatch[]>; // path -> matches
@@ -127,16 +141,11 @@ function createFilesStore() {
   }
 
   /**
-   * Open a file and load initial content
+   * Open a file and load its first window, or bring an open file to the
+   * front, moved to `scrollToLine` when one is given.
    */
-  async function openFile(
-    path: string,
-    scrollToLine?: number,
-    fileSize?: number | null,
-    syntaxHighlightingOverride?: boolean,
-    isIndexed?: boolean,
-    lineCount?: number | null,
-  ) {
+  async function openFile(path: string, options: OpenFileOptions = {}) {
+    const { scrollToLine, fileSize, isIndexed, lineCount } = options;
     const state = get({ subscribe });
 
     // Check if already open
@@ -160,7 +169,7 @@ function createFilesStore() {
     const name = path.split('/').pop() || path;
 
     // The size-based default, unless the caller (a link) says otherwise.
-    const syntaxHighlighting = syntaxHighlightingOverride ?? defaultSyntaxHighlighting(fileSize);
+    const syntaxHighlighting = options.syntaxHighlighting ?? defaultSyntaxHighlighting(fileSize);
 
     const newFile: OpenFile = {
       path,
@@ -427,7 +436,7 @@ function createFilesStore() {
 
     if (!file) {
       // Open file and scroll to line
-      await openFile(path, lineNumber);
+      await openFile(path, { scrollToLine: lineNumber });
       return;
     }
 
