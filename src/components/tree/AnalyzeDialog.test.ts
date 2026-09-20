@@ -1,17 +1,29 @@
 // @vitest-environment jsdom
 import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { notifications } from '$lib/stores';
+import { AnalysisUnavailableError } from '$lib/indexTasks';
 import AnalyzeDialog from './AnalyzeDialog.svelte';
 
-// The analysis waits on the backend; here it never answers, so the
-// dialog stays in its loading state.
-vi.mock('$lib/indexTasks', () => ({ analyzeFile: () => new Promise(() => {}) }));
+// The analysis waits on the backend; by default it never answers, so
+// the dialog stays in its loading state. A test that needs an answer
+// gives one.
+const { analyzeFile } = vi.hoisted(() => ({
+  analyzeFile: vi.fn((): Promise<unknown> => new Promise(() => {})),
+}));
+vi.mock('$lib/indexTasks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$lib/indexTasks')>()),
+  analyzeFile,
+}));
 
 let dialog: AnalyzeDialog | null = null;
+let mountedTarget: HTMLElement | null = null;
 
 /** Mount the dialog on screen, recording its close events. */
 function mount() {
   const target = document.createElement('div');
+  mountedTarget = target;
   document.body.appendChild(target);
   dialog = new AnalyzeDialog({ target, props: { path: '/logs/app.log', name: 'app.log' } });
   const close = vi.fn();
@@ -31,6 +43,9 @@ function keyDown(init: KeyboardEventInit): KeyboardEvent {
 }
 
 afterEach(() => {
+  analyzeFile.mockReset();
+  analyzeFile.mockImplementation(() => new Promise(() => {}));
+  vi.restoreAllMocks();
   dialog?.$destroy();
   dialog = null;
   document.body.replaceChildren();
@@ -56,5 +71,25 @@ describe('AnalyzeDialog keys', () => {
     keyDown(init);
 
     expect(close).not.toHaveBeenCalled();
+  });
+});
+
+describe('AnalyzeDialog without an analysis', () => {
+  it('says the analysis is not available, with the reason, and stays open', async () => {
+    analyzeFile.mockImplementation(() =>
+      Promise.reject(new AnalysisUnavailableError('/logs/app.log is not a text file')),
+    );
+    const notifyError = vi.spyOn(notifications, 'error');
+    const { close } = mount();
+
+    await tick();
+    await tick();
+
+    expect(analyzeFile).toHaveBeenCalledTimes(1);
+    expect(mountedTarget?.textContent).toContain(
+      'Analysis not available for this file: /logs/app.log is not a text file',
+    );
+    expect(close).not.toHaveBeenCalled();
+    expect(notifyError).not.toHaveBeenCalled();
   });
 });

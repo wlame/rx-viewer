@@ -283,6 +283,15 @@ typecheck lint test build` in the order CI runs them, and
 
 ### Fixed
 
+- When the backend cannot analyse a file, the Analyze dialog says
+  "Analysis not available for this file", with the backend's reason
+  when it gives one (a `400` from `POST /v1/index`), instead of showing
+  an empty report. It used to start a second analysis task first, and
+  then show the report of the index with nothing in it. A second task is
+  still asked for once when the first request joined a running plain
+  index build, which ends without an analysis by design. The tree still
+  shows the file as indexed.
+
 - The recent commands panel, the analysis dialog and the shortcut list
   stay open on an Escape that only cancels an input method's
   composition, for instance in the search field. The help dialog lists

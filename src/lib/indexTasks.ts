@@ -49,8 +49,24 @@ export function treeMenuItems(
   return [ANALYZE_ITEM, INDEX_ITEM[entry.is_indexed ? 'true' : 'false']];
 }
 
+const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
 const HTTP_CONFLICT = 409;
+
+/** The first words of every answer that a file's analysis is not available. */
+const ANALYSIS_UNAVAILABLE = 'Analysis not available for this file';
+
+/**
+ * The backend answered an analysis request without an analysis: it
+ * cannot analyse this file. The message says so, with the backend's
+ * reason when it gave one.
+ */
+export class AnalysisUnavailableError extends Error {
+  constructor(reason: string | null) {
+    super(reason ? `${ANALYSIS_UNAVAILABLE}: ${reason}` : `${ANALYSIS_UNAVAILABLE}.`);
+    this.name = 'AnalysisUnavailableError';
+  }
+}
 
 /** The prose form of a running task's ID in a 409: "... (task: <id>)". */
 const TASK_ID_IN_PROSE = /task:\s*([^\s)]+)/i;
@@ -94,22 +110,50 @@ async function cachedIndex(path: string, signal: AbortSignal): Promise<IndexResp
   }
 }
 
+interface IndexTaskOutcome {
+  result: IndexTaskResult;
+  /** The task was already running for the file (a 409), not started by this request. */
+  joined: boolean;
+}
+
 /** Start an index task, or join the one a 409 names, and wait for its result. */
 async function runIndexTask(
   path: string,
   request: IndexRequest,
   signal: AbortSignal,
   onStatus?: (task: TaskStatus) => void,
-): Promise<IndexTaskResult> {
+): Promise<IndexTaskOutcome> {
   let taskId: string;
+  let joined = false;
   try {
     taskId = (await api.startIndex(path, request)).task_id;
   } catch (error) {
     const runningTaskId = conflictTaskId(error);
     if (!runningTaskId) throw error;
     taskId = runningTaskId;
+    joined = true;
   }
-  return taskPolls.join(path, taskId, { signal, onStatus });
+  const result = await taskPolls.join(path, taskId, { signal, onStatus });
+  return { result, joined };
+}
+
+/**
+ * Ask for an analysis and wait for the task that answers it. A 400 is
+ * the backend refusing to analyse the file, and its detail says why.
+ */
+async function requestAnalysis(
+  path: string,
+  signal: AbortSignal,
+  onStatus?: (task: TaskStatus) => void,
+): Promise<IndexTaskOutcome> {
+  try {
+    return await runIndexTask(path, { force: false, analyze: true }, signal, onStatus);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === HTTP_BAD_REQUEST) {
+      throw new AnalysisUnavailableError(error.message);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -141,6 +185,11 @@ export interface AnalyzeOptions {
  * analysis, and is not shown as one. A task already running for the file
  * is joined; when it was a plain index build and ends without an
  * analysis, the analysis is asked for once that task is out of the way.
+ *
+ * Rejects with AnalysisUnavailableError when the backend cannot analyse
+ * the file: it refused the request, or the analysis task it ran ended
+ * without an analysis. Asking again would get the same answer, so no
+ * further task is started; the index the task built is still shown.
  */
 export async function analyzeFile(path: string, options: AnalyzeOptions): Promise<IndexResponse> {
   const { signal, onStatus } = options;
@@ -154,10 +203,15 @@ export async function analyzeFile(path: string, options: AnalyzeOptions): Promis
     if (cached?.analysis_performed) return publishIndex(path, cached, 'analysis');
   }
 
-  const analysis = { force: false, analyze: true };
-  const result = await runIndexTask(path, analysis, signal, onStatus);
-  if (result.analysis_performed) return publishIndex(path, result, 'analysis');
-  return publishIndex(path, await runIndexTask(path, analysis, signal, onStatus), 'analysis');
+  let outcome = await requestAnalysis(path, signal, onStatus);
+  // Only a task joined through a 409 can be a plain index build; a task
+  // this request started was an analysis.
+  if (!outcome.result.analysis_performed && outcome.joined) {
+    outcome = await requestAnalysis(path, signal, onStatus);
+  }
+  publishIndex(path, outcome.result, 'analysis');
+  if (!outcome.result.analysis_performed) throw new AnalysisUnavailableError(null);
+  return outcome.result;
 }
 
 export interface IndexOptions {
@@ -180,5 +234,6 @@ export async function indexFile(path: string, options: IndexOptions): Promise<In
     analyze: cached?.analysis_performed ?? false,
     threshold: 0,
   };
-  return publishIndex(path, await runIndexTask(path, request, NEVER_ABORTED), 'index');
+  const { result } = await runIndexTask(path, request, NEVER_ABORTED);
+  return publishIndex(path, result, 'index');
 }

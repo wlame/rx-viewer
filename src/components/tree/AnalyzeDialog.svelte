@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
+  import { createEventDispatcher, onDestroy } from 'svelte';
   import type { AnomalyRangeResult, IndexResponse, TaskStatus } from '$lib/types';
   import { files, notifications } from '$lib/stores';
-  import { analyzeFile } from '$lib/indexTasks';
+  import { AnalysisUnavailableError, analyzeFile } from '$lib/indexTasks';
   import { isAbortError } from '$lib/utils/latestRequest';
   import { isShortcut } from '$lib/utils/shortcuts';
   import Spinner from '../common/Spinner.svelte';
@@ -18,6 +18,8 @@
   let analyzeLoading = true;
   let analyzeStatusMessage = 'Checking for an analysis...';
   let analyzeResult: IndexResponse | null = null;
+  /** Why there is no report: the backend cannot analyse this file. */
+  let unavailableMessage: string | null = null;
 
   /** Cancels the analysis wait: its index request and its share of the task poll. */
   const run = new AbortController();
@@ -27,7 +29,8 @@
   // the sidebar to Search only hides the tree, so the dialog stays.
   onDestroy(() => run.abort());
 
-  onMount(async () => {
+  /** Runs once, as the dialog is created. */
+  async function runAnalysis() {
     try {
       analyzeResult = await analyzeFile(path, {
         signal: run.signal,
@@ -39,13 +42,19 @@
     } catch (e) {
       // Closing the dialog cancels the run; nothing to report.
       if (isAbortError(e)) return;
+      // Not a failure: the dialog says so in place of the report.
+      if (e instanceof AnalysisUnavailableError) {
+        unavailableMessage = e.message;
+        return;
+      }
       const error = e instanceof Error ? e.message : 'Analysis failed';
       notifications.error(error, 5000);
       close();
     } finally {
       analyzeLoading = false;
     }
-  });
+  }
+  runAnalysis();
 
   function close() {
     run.abort();
@@ -135,6 +144,10 @@
             {analyzeStatusMessage || 'Analyzing...'}
           </p>
         </div>
+      {:else if unavailableMessage}
+        <p class="py-12 text-center text-gh-fg-muted dark:text-gh-fg-dark-muted">
+          {unavailableMessage}
+        </p>
       {:else if analyzeResult}
         <AnalysisReport result={analyzeResult} on:select={handleAnomalySelect} />
       {/if}

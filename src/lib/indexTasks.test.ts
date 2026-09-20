@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { files, tree } from './stores';
 import { commandLog } from './stores/commands';
-import { analyzeFile, conflictTaskId, indexFile, treeMenuItems } from './indexTasks';
+import {
+  AnalysisUnavailableError,
+  analyzeFile,
+  conflictTaskId,
+  indexFile,
+  treeMenuItems,
+} from './indexTasks';
 import { ApiError } from './api';
 import { isAbortError } from './utils/latestRequest';
 import type { TreeNode } from './types';
@@ -181,6 +187,76 @@ describe('analyzeFile', () => {
 
     await expect(result).resolves.toMatchObject({ analysis_performed: true });
     expect(backend.routes().filter((r) => r === 'POST /v1/index')).toHaveLength(2);
+  });
+
+  // A backend that cannot analyse a file answers the analysis task with
+  // an index and analysis_performed false. Asking again gets the same.
+  it('says the analysis is not available when its own task ends without one', async () => {
+    const backend = stubBackend({
+      'POST /v1/index': [started('t1'), started('t2')],
+      'GET /v1/tasks/t1': [completed('t1', indexData(false))],
+      'GET /v1/tasks/t2': [completed('t2', indexData(false))],
+    });
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    result.catch(() => {});
+    await settle();
+
+    await expect(result).rejects.toBeInstanceOf(AnalysisUnavailableError);
+    await expect(result).rejects.toThrow('Analysis not available for this file.');
+    expect(backend.routes().filter((r) => r === 'POST /v1/index')).toHaveLength(1);
+  });
+
+  it('asks only once more after a joined task, and then says the analysis is not available', async () => {
+    const backend = stubBackend({
+      'POST /v1/index': [
+        [409, { detail: 'Indexing already in progress (task: t1)' }],
+        started('t2'),
+        started('t3'),
+      ],
+      'GET /v1/tasks/t1': [completed('t1', indexData(false))],
+      'GET /v1/tasks/t2': [completed('t2', indexData(false))],
+      'GET /v1/tasks/t3': [completed('t3', indexData(false))],
+    });
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    result.catch(() => {});
+    await settle();
+
+    await expect(result).rejects.toBeInstanceOf(AnalysisUnavailableError);
+    expect(backend.routes().filter((r) => r === 'POST /v1/index')).toHaveLength(2);
+  });
+
+  it("gives the backend's reason when it refuses to analyse the file", async () => {
+    stubBackend({
+      'POST /v1/index': [[400, { detail: `${PATH} is not a text file` }]],
+    });
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    result.catch(() => {});
+    await settle();
+
+    await expect(result).rejects.toBeInstanceOf(AnalysisUnavailableError);
+    await expect(result).rejects.toThrow(
+      `Analysis not available for this file: ${PATH} is not a text file`,
+    );
+  });
+
+  // The index built on the way is real: the tree still gets its badge.
+  it('marks the file indexed when the analysis is not available', async () => {
+    stubBackend({
+      'POST /v1/index': [started('t1')],
+      'GET /v1/tasks/t1': [completed('t1', indexData(false))],
+    });
+    const markIndexed = vi.spyOn(tree, 'markIndexed');
+
+    const result = analyzeFile(PATH, { signal: new AbortController().signal });
+    result.catch(() => {});
+    await settle();
+
+    await expect(result).rejects.toBeInstanceOf(AnalysisUnavailableError);
+    expect(markIndexed).toHaveBeenCalledWith(PATH, 120);
+    markIndexed.mockRestore();
   });
 
   it('stops polling once its signal aborts', async () => {
