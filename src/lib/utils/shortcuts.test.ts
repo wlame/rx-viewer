@@ -98,6 +98,13 @@ describe('isShortcut', () => {
     expect(isShortcut('runSearch', press('Enter', { shiftKey: true }))).toBe(false);
   });
 
+  it('matches Enter as the filter apply key and Escape as its close key', () => {
+    expect(isShortcut('applyFilter', press('Enter'))).toBe(true);
+    expect(isShortcut('applyFilter', press('Enter', { metaKey: true }))).toBe(false);
+    expect(isShortcut('closeFilter', press('Escape'))).toBe(true);
+    expect(isShortcut('closeFilter', press('a', { metaKey: true }))).toBe(false);
+  });
+
   // On a Mac Alt+C types "ç", so the toggles match the key's code.
   it('matches a search toggle by key code with Alt', () => {
     expect(isShortcut('toggle:matchCase', press('ç', { code: 'KeyC', altKey: true }))).toBe(true);

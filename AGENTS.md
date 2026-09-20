@@ -178,6 +178,10 @@ separate comment above, or eslint reads every word as another rule.
 - Unit tests with `vitest` for the pure modules: `processContent.ts`,
   `urlState.ts`, `format.ts`, `monacoLogLanguage.ts`, `api.ts` with a stubbed
   `fetch`, and the line-number resolution logic in the search flow.
+- Tests run in Node. A component test mounts the Svelte component in
+  jsdom: its first line is `// @vitest-environment jsdom`
+  (`src/components/editor/RegexFilterPanel.test.ts`). jsdom does no
+  layout, so a test gives a scroll position or size itself.
 - Names: `describe(unit) / it("scenario returns expected")`.
 - End-to-end smoke against a real backend is manual until a Playwright job
   exists; record the manual check in the pull request or final report.

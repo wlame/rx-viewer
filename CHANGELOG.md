@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The editor filter's pattern box is a plain text input over a
+  Prism-coloured copy of the pattern, instead of an editable element
+  whose markup was rewritten on every keystroke. The browser now keeps
+  the caret, selection, undo and redo, Cmd/Ctrl+A and input-method
+  composition; Enter and Escape wait for a composition to end. A
+  pattern such as `&lt;` shows as typed. A paste of several lines keeps
+  the first one, at the caret. Group parentheses are no longer bold, so
+  no glyph is wider than the caret expects. The help dialog lists Enter
+  and Escape of the filter field.
+
 - Every click on the header's theme button changes the look. It
   switches between System and the fixed theme the system does not
   show (Dark on a light system, Light on a dark one); from System

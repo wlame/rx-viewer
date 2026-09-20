@@ -13,6 +13,7 @@ export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
   searchField: 'In a search pattern field',
   filePane: 'In the open file',
+  filterField: 'In the editor filter field',
 } as const;
 
 export type ShortcutScope = keyof typeof SHORTCUT_SCOPES;
@@ -36,7 +37,14 @@ export interface KeyChord {
 export type GlobalShortcutId = 'focusSearch' | 'toggleSidebar' | 'showShortcuts' | 'closeDialog';
 
 export type ShortcutId =
-  GlobalShortcutId | 'runSearch' | `toggle:${string}` | 'gotoLine' | 'findInEditor' | 'nextAnomaly';
+  | GlobalShortcutId
+  | 'runSearch'
+  | `toggle:${string}`
+  | 'gotoLine'
+  | 'findInEditor'
+  | 'nextAnomaly'
+  | 'applyFilter'
+  | 'closeFilter';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -150,6 +158,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'filePane',
     description: 'On the selected anomaly chip: next anomaly (add Shift for the previous one)',
     gesture: '⌘/Alt+click',
+  },
+  {
+    id: 'applyFilter',
+    scope: 'filterField',
+    description: 'Apply the filter to the open file',
+    chord: { key: 'Enter' },
+  },
+  {
+    id: 'closeFilter',
+    scope: 'filterField',
+    description: 'Close the filter bar (an applied filter stays)',
+    chord: { key: 'Escape' },
   },
 ];
 

@@ -6,10 +6,16 @@
    * The pattern and mode are bound by the parent, so they survive the bar
    * closing. Every event carries the values it applies, so a handler
    * never reads a binding that has not reached the parent yet.
+   *
+   * The pattern box is a plain text input whose own text is transparent,
+   * laid over a copy of the pattern that Prism colours. The input keeps
+   * the value, caret, selection, undo and input-method composition; the
+   * copy behind it only paints, built from text nodes, and follows the
+   * input's horizontal scroll.
    */
   import { createEventDispatcher } from 'svelte';
-  import Prism from 'prismjs';
-  import 'prismjs/components/prism-regex';
+  import { firstLine, regexHighlightPieces } from '$lib/utils/patternBox';
+  import { isShortcut } from '$lib/utils/shortcuts';
 
   type FilterMode = 'hide' | 'show' | 'highlight';
 
@@ -26,105 +32,59 @@
 
   const PLACEHOLDER = 'e.g. (\\w+)@(\\w+)\\.com';
 
-  let regexInputEl: HTMLDivElement;
+  /** How far the input has scrolled its text to the left, in pixels. */
+  let scrollLeft = 0;
+
+  $: pieces = regexHighlightPieces(pattern);
 
   function apply() {
     dispatch('apply', { pattern, mode });
   }
 
+  // While an input method composes, Enter and Escape end or cancel the
+  // composition; they reach the filter only once it is over.
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
+    if (e.isComposing) return;
+    if (isShortcut('applyFilter', e)) {
       e.preventDefault();
       apply();
-    } else if (e.key === 'Escape') {
+    } else if (isShortcut('closeFilter', e)) {
       e.preventDefault();
       dispatch('close');
     }
   }
 
-  function highlightRegexPattern(text: string): string {
-    if (!text) return '';
-    try {
-      return Prism.highlight(text, Prism.languages.regex, 'regex');
-    } catch {
-      return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
+  // A pattern is one line. A text input would join a pasted text's lines
+  // into one; the box keeps the first line instead and leaves a one-line
+  // paste to the browser.
+  function handlePaste(e: ClipboardEvent & { currentTarget: HTMLInputElement }) {
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    const line = firstLine(text);
+    if (line === text) return;
+    e.preventDefault();
+    insertAtCaret(e.currentTarget, line);
   }
 
-  function getCursorPosition(element: HTMLElement): number {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return 0;
-    const range = selection.getRangeAt(0);
-    const preCaretRange = range.cloneRange();
-    preCaretRange.selectNodeContents(element);
-    preCaretRange.setEnd(range.endContainer, range.endOffset);
-    return preCaretRange.toString().length;
+  /**
+   * Replace the input's selection with `text`. The browser's insertText
+   * command puts the change on the input's undo stack and reports it as
+   * typing; where it is missing, setRangeText makes the same change
+   * without an undo step.
+   */
+  function insertAtCaret(input: HTMLInputElement, text: string) {
+    if (
+      typeof document.execCommand === 'function' &&
+      document.execCommand('insertText', false, text)
+    ) {
+      return;
+    }
+    const end = input.value.length;
+    input.setRangeText(text, input.selectionStart ?? end, input.selectionEnd ?? end, 'end');
+    pattern = input.value;
   }
 
-  function setCursorPosition(element: HTMLElement, position: number) {
-    const selection = window.getSelection();
-    if (!selection) return;
-    let currentPos = 0;
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      const textLength = node.textContent?.length || 0;
-      if (currentPos + textLength >= position) {
-        const range = document.createRange();
-        range.setStart(node, position - currentPos);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return;
-      }
-      currentPos += textLength;
-    }
-    if (element.lastChild) {
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  }
-
-  function handleInput(e: Event) {
-    const target = e.target as HTMLDivElement;
-    const text = target.textContent || '';
-    if (text === PLACEHOLDER) return;
-    pattern = text;
-
-    // Read the caret, rewrite the markup and put the caret back in one
-    // synchronous step. Deferring any part of this to an animation frame
-    // leaves the caret collapsed at the start of the element until the
-    // frame runs, and a keystroke arriving in that window is inserted at
-    // the front — which reverses the pattern as it is typed. Highlighting
-    // a pattern this short costs far less than a frame, so there is
-    // nothing to gain by spreading it over two.
-    const cursorPos = getCursorPosition(target);
-    const highlighted = highlightRegexPattern(text);
-    if (highlighted) {
-      target.innerHTML = highlighted;
-      setCursorPosition(target, cursorPos);
-    }
-  }
-
-  // The highlighted box has two writers: handleInput while the user
-  // types, which restores the caret after rewriting the markup, and this
-  // block when the pattern changes from anywhere else — the bar opening
-  // with a stored filter, a selection sent to the filter, or a clear.
-  //
-  // Assigning innerHTML collapses the selection to the start of the
-  // element. Doing that while the box has focus drops the caret in front
-  // of the text, so the next character typed lands at the front and the
-  // pattern comes out reversed. Sync only when the box is not focused and
-  // let the input handler own it while it is.
-  $: if (regexInputEl && document.activeElement !== regexInputEl) {
-    if (pattern) {
-      regexInputEl.innerHTML = highlightRegexPattern(pattern);
-    } else {
-      regexInputEl.textContent = '';
-    }
+  function followScroll(e: Event & { currentTarget: HTMLInputElement }) {
+    scrollLeft = e.currentTarget.scrollLeft;
   }
 </script>
 
@@ -139,20 +99,38 @@
       Regex:
     </label>
     <div
-      id="regex-filter-input"
-      bind:this={regexInputEl}
-      contenteditable="plaintext-only"
-      on:input={handleInput}
-      on:keydown={handleKeyDown}
-      role="textbox"
-      tabindex="0"
-      aria-label="Regex pattern"
-      data-placeholder={PLACEHOLDER}
-      class="flex-1 text-base bg-gh-canvas-default dark:bg-gh-canvas-dark-default
-             border border-gh-border-default dark:border-gh-border-dark-default
-             rounded px-3 py-2 outline-none focus:border-gh-accent-fg dark:focus:border-gh-accent-dark-fg
-             font-mono regex-input min-h-[36px]"
-    ></div>
+      class="relative flex-1 min-w-0 text-base font-mono
+             bg-gh-canvas-default dark:bg-gh-canvas-dark-default
+             border border-gh-border-default dark:border-gh-border-dark-default rounded
+             focus-within:border-gh-accent-fg dark:focus-within:border-gh-accent-dark-fg"
+    >
+      <pre aria-hidden="true" class="pattern-overlay"><span class="pattern-overlay-clip"
+          ><span
+            data-overlay-text
+            class="pattern-overlay-text"
+            style:transform="translateX(-{scrollLeft}px)"
+            >{#each pieces as piece, i (i)}<span class={piece.className}>{piece.text}</span
+              >{/each}</span
+          ></span
+        ></pre>
+      <input
+        id="regex-filter-input"
+        type="text"
+        bind:value={pattern}
+        on:keydown={handleKeyDown}
+        on:paste={handlePaste}
+        on:scroll={followScroll}
+        on:input={followScroll}
+        on:keyup={followScroll}
+        on:select={followScroll}
+        aria-label="Regex pattern"
+        placeholder={PLACEHOLDER}
+        spellcheck="false"
+        autocomplete="off"
+        autocapitalize="off"
+        class="pattern-input caret-gh-fg-default dark:caret-gh-fg-dark-default"
+      />
+    </div>
     <button
       on:click={apply}
       class="px-4 py-1.5 text-sm font-medium rounded
@@ -214,43 +192,86 @@
 </div>
 
 <style>
-  .regex-input {
+  /* The input and the coloured copy behind it share font, padding and
+     line height, so each character of the copy sits under the same
+     character of the input. */
+  .pattern-input,
+  .pattern-overlay {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: 1.5rem;
     white-space: pre;
-    overflow-x: auto;
   }
 
-  .regex-input:empty:before {
-    content: attr(data-placeholder);
+  .pattern-input {
+    position: relative;
+    display: block;
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: transparent;
+  }
+
+  .pattern-input::placeholder {
     color: #9ca3af;
+    opacity: 1;
   }
 
-  /* Prism.js regex syntax highlighting, inside the pattern box. */
-  .regex-input :global(.token.char-class) {
+  /* A see-through selection, so the coloured copy shows under it. */
+  .pattern-input::selection {
+    background-color: rgba(84, 174, 255, 0.35);
+  }
+
+  .pattern-overlay {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* Clips the copy at the padding, as the input clips its own text. */
+  .pattern-overlay-clip {
+    display: block;
+    overflow: hidden;
+  }
+
+  .pattern-overlay-text {
+    display: inline-block;
+  }
+
+  /* Prism's regex tokens. A token inside a character class carries the
+     class's classes before its own, so the inner types (escape, char-set)
+     are listed after the outer one and win. No rule changes a glyph's
+     width, which would move the copy away from the caret. */
+  .pattern-overlay :global(.token.char-class) {
     color: #0ea5e9;
   }
 
-  .regex-input :global(.token.quantifier) {
+  .pattern-overlay :global(.token.quantifier) {
     color: #f59e0b;
   }
 
-  .regex-input :global(.token.anchor) {
+  .pattern-overlay :global(.token.anchor) {
     color: #8b5cf6;
   }
 
-  .regex-input :global(.token.group) {
+  .pattern-overlay :global(.token.group) {
     color: #10b981;
-    font-weight: 600;
   }
 
-  .regex-input :global(.token.alternation) {
+  .pattern-overlay :global(.token.alternation) {
     color: #ef4444;
   }
 
-  .regex-input :global(.token.escape) {
+  .pattern-overlay :global(.token.escape) {
     color: #06b6d4;
   }
 
-  .regex-input :global(.token.char-set) {
+  .pattern-overlay :global(.token.char-set) {
     color: #8b5cf6;
   }
 </style>
