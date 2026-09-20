@@ -71,8 +71,9 @@ way.
 - **The equivalent command.** The status bar shows the `rx` command the
   backend reports for the last answer, with a copy button and a list of
   recent commands.
-- **Themes**: system, light and dark for the app (the header button steps
-  through them), and a choice of editor themes.
+- **Themes**: system, light and dark for the app (each click on the
+  header button changes the look: it switches between system and the
+  theme the system does not show), and a choice of editor themes.
 
 ### Keyboard shortcuts
 
