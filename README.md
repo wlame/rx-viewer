@@ -176,10 +176,10 @@ header shows and the backends read to name the bundle they cache:
 ### Backends only install a compatible viewer
 
 Each backend accepts a range of viewer versions and does not install a
-release outside it. Today both rx-go (`internal/frontend/compat.go`) and
-rx-python accept `0.2.0 <= v < 0.4.0`. A minor version past that range
-needs a backend release that widens it first; see the parity rules in
-`AGENTS.md`.
+release outside it. Today rx-go (`internal/frontend/compat.go`) accepts
+`0.2.0 <= v < 0.5.0`, and rx-python, which is paused, `0.2.0 <= v < 0.4.0`.
+A minor version past that range needs a backend release that widens it
+first; see the parity rules in `AGENTS.md`.
 
 ## Release workflow
 
