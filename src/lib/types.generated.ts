@@ -35,7 +35,7 @@ export interface paths {
         put?: never;
         /**
          * Compress file to seekable zstd format (background task)
-         * @description Creates a background task that encodes the file to .zst. Poll /v1/tasks/{id} for progress. The input path and the effective output path are both validated against --search-root.
+         * @description Creates a background task that encodes the file to .zst. The output holds the input's text: a gzip, bzip2, xz or zstd input is decompressed first. A compound archive (.tar.gz and its kin), a seekable zstd input without force, and an output path that is the input file are refused with 400. Poll /v1/tasks/{id} for progress. The input path and the effective output path are both validated against --search-root.
          */
         post: operations["compress"];
         delete?: never;
@@ -211,7 +211,7 @@ export interface components {
              */
             compression_level: number;
             /**
-             * @description Overwrite the output file if it exists.
+             * @description Overwrite the output file if it exists, and re-encode an input that is already seekable zstd (refused otherwise).
              * @default false
              */
             force: boolean;
