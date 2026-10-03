@@ -60,6 +60,9 @@ function answers(...sequence: SamplesAnswer[]) {
   });
 }
 
+/** The result of the build the polls below complete with. */
+const BUILT = { line_index: [[1, 0]], line_count: 4242 } as unknown as IndexTaskResult;
+
 /** Polls that report the given progress values and then end as `outcome` says. */
 function polls(progress: (number | null)[], outcome: 'completed' | Error = 'completed') {
   const join = vi.fn(
@@ -70,7 +73,7 @@ function polls(progress: (number | null)[], outcome: 'completed' | Error = 'comp
     ) => {
       for (const value of progress) options.onStatus?.(status(value));
       if (outcome instanceof Error) throw outcome;
-      return {} as IndexTaskResult;
+      return BUILT;
     },
   );
   return { join };
@@ -149,6 +152,25 @@ describe('samplesAfterIndexBuild', () => {
     expect(isAbortError(error)).toBe(true);
     expect(request).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('the Prefer header', () => {
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    'asks for a 202 (respond-async) only when the contract has the build: %s',
+    async (supported, sent) => {
+      const request = answers(LINES);
+      await samplesAfterIndexBuild(
+        PATH,
+        request,
+        {},
+        deps({ supportsIndexBuild: () => supported }),
+      );
+      expect(request).toHaveBeenCalledWith(undefined, sent);
+    },
+  );
 });
 
 describe('indexBuildLabel', () => {

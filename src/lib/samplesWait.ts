@@ -47,6 +47,11 @@ const MAX_INDEX_BUILDS = 3;
  * The samples `request` answers, after following any index build the
  * backend answers with first.
  *
+ * `request` is told whether to send `Prefer: respond-async`: only when
+ * the backend's contract has the build, since only then can a 202 be
+ * followed. Without it the backend waits for the build and answers the
+ * lines.
+ *
  * A build that fails does not fail the lookup: asked again, the backend
  * reads the file without an index, slower and with the same lines.
  * Rejects with an AbortError when `options.signal` aborts, with the
@@ -55,21 +60,22 @@ const MAX_INDEX_BUILDS = 3;
  */
 export async function samplesAfterIndexBuild(
   path: string,
-  request: (signal?: AbortSignal) => Promise<SamplesAnswer>,
+  request: (signal: AbortSignal | undefined, respondAsync: boolean) => Promise<SamplesAnswer>,
   options: SamplesWaitOptions = {},
   deps: SamplesWaitDeps = APP_DEPS,
 ): Promise<SamplesResponse> {
   const { signal, onIndexBuild } = options;
+  const respondAsync = deps.supportsIndexBuild();
   // TaskPolls.join wants a signal; a caller that cannot abort gets one that never does.
   const pollSignal = signal ?? new AbortController().signal;
 
   for (let builds = 0; ; builds++) {
-    const answer = await request(signal);
+    const answer = await request(signal, respondAsync);
     if (answer.kind === 'samples') {
       if (builds > 0) onIndexBuild?.(null);
       return answer.samples;
     }
-    if (!deps.supportsIndexBuild()) {
+    if (!respondAsync) {
       throw new Error(
         `The backend answered 202 for the samples of ${path}, which its contract does not have`,
       );
@@ -101,7 +107,7 @@ export function loadSamples(
 ): Promise<SamplesResponse> {
   return samplesAfterIndexBuild(
     path,
-    (signal) => api.getSamples(path, ranges, context, { signal }),
+    (signal, respondAsync) => api.getSamples(path, ranges, context, { signal, respondAsync }),
     options,
   );
 }
@@ -115,7 +121,8 @@ export function loadSamplesByOffset(
 ): Promise<SamplesResponse> {
   return samplesAfterIndexBuild(
     path,
-    (signal) => api.getSamplesByOffset(path, offsets, context, { signal }),
+    (signal, respondAsync) =>
+      api.getSamplesByOffset(path, offsets, context, { signal, respondAsync }),
     options,
   );
 }

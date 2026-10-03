@@ -412,7 +412,8 @@ describe('a file whose line index is being built', () => {
       json: async () => body,
       text: async () => JSON.stringify(body),
     });
-    const spy = vi.fn(async (url: string) => {
+    const preferSent: (string | undefined)[] = [];
+    const spy = vi.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
       if (url.startsWith('/health')) return json(200, { contract_version: '1.4' });
       if (url.includes('/v1/tasks/')) {
         buildSeen.push(get(files).openFiles.find((f) => f.path === path)?.indexBuild);
@@ -425,9 +426,10 @@ describe('a file whose line index is being built', () => {
           completed_at: null,
           error: null,
           progress: 1,
-          result: { line_index: [[1, 0]], line_count: lineCount },
+          result: { line_index: [[1, 0]], line_count: lineCount, anomalies: null },
         });
       }
+      if (url.includes('/v1/samples')) preferSent.push(init?.headers?.Prefer);
       if (url.includes('/v1/samples') && samplesAsked++ === 0) {
         return json(202, {
           task_id: 't1',
@@ -441,12 +443,12 @@ describe('a file whose line index is being built', () => {
     });
     vi.stubGlobal('fetch', spy);
     await health.check();
-    return { spy, buildSeen };
+    return { spy, buildSeen, preferSent };
   }
 
   it('shows the build while it runs, then loads the window', async () => {
     const path = '/logs/big.log.gz';
-    const { buildSeen } = await serveAfterABuild(path, 50);
+    const { buildSeen, preferSent } = await serveAfterABuild(path, 50);
 
     await files.openFile(path, { isIndexed: false });
 
@@ -457,5 +459,6 @@ describe('a file whose line index is being built', () => {
     expect(file.indexBuild).toBeNull();
     expect(lineNumbers(path)[0]).toBe(1);
     expect(everyLineReadsItsNumber(path)).toBe(true);
+    expect(preferSent).toEqual(['respond-async', 'respond-async']);
   });
 });

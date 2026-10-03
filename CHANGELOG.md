@@ -27,7 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the same cancellable poll the Analyze and Index menus use,
   and the window loads when the build ends. A build that fails still
   loads the window, read without an index. Closing the file or moving
-  on stops the wait, not the build.
+  on stops the wait, not the build. Samples requests carry
+  `Prefer: respond-async` only to a backend whose contract has the build
+  (1.4); without the header a backend waits for the build and answers
+  the lines.
 
 ## [0.4.0] - 2026-10-03
 

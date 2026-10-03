@@ -92,8 +92,24 @@ const HTTP_ACCEPTED = 202;
 export type SamplesAnswer =
   { kind: 'samples'; samples: SamplesResponse } | { kind: 'building'; task: IndexTaskResponse };
 
-async function fetchSamples(url: string, options?: RequestInit): Promise<SamplesAnswer> {
-  const { status, body } = await fetchJsonAnswer<SamplesResponse | IndexTaskResponse>(url, options);
+/**
+ * Options of a samples request. `respondAsync` sends `Prefer:
+ * respond-async`, without which the backend never answers 202: it waits
+ * for the build and answers the lines, as a 1.3 backend does.
+ */
+export interface SamplesRequestOptions extends RequestOptions {
+  respondAsync?: boolean;
+}
+
+async function fetchSamples(
+  url: string,
+  options: SamplesRequestOptions = {},
+): Promise<SamplesAnswer> {
+  const { respondAsync, ...request } = options;
+  const { status, body } = await fetchJsonAnswer<SamplesResponse | IndexTaskResponse>(url, {
+    ...request,
+    ...(respondAsync ? { headers: { Prefer: 'respond-async' } } : {}),
+  });
   if (status === HTTP_ACCEPTED) return { kind: 'building', task: body as IndexTaskResponse };
   return { kind: 'samples', samples: body as SamplesResponse };
 }
@@ -157,7 +173,7 @@ export const api = {
     path: string,
     ranges: string[],
     context?: number,
-    options?: RequestOptions,
+    options?: SamplesRequestOptions,
   ): Promise<SamplesAnswer> {
     const params = new URLSearchParams({
       path,
@@ -185,7 +201,7 @@ export const api = {
     path: string,
     offsets: number[],
     context?: number,
-    options?: RequestOptions,
+    options?: SamplesRequestOptions,
   ): Promise<SamplesAnswer> {
     const params = new URLSearchParams({
       path,

@@ -283,6 +283,16 @@ describe('samples answers', () => {
     await expect(call()).resolves.toEqual({ kind: 'building', task });
   });
 
+  it.each([
+    [true, 'respond-async'],
+    [false, undefined],
+  ])('sends Prefer when respondAsync is %s', async (respondAsync, prefer) => {
+    const spy = stubFetch({ json: async () => samples });
+    await api.getSamples('/var/log/app.log', ['5'], undefined, { respondAsync });
+    await api.getSamplesByOffset('/var/log/app.log', [40], undefined, { respondAsync });
+    for (const call of spy.mock.calls) expect(call[1].headers.Prefer).toBe(prefer);
+  });
+
   it('reads a 200 as the lines', async () => {
     stubFetch({ json: async () => samples });
     await expect(api.getSamples('/var/log/app.log', ['5'])).resolves.toEqual({
