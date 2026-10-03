@@ -1,12 +1,13 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { loadSamples } from '../samplesWait';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
 import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
-import type { OpenFile, FileMatch, IndexResponse, SamplesResponse } from '../types';
+import type { OpenFile, FileMatch, IndexBuild, IndexResponse, SamplesResponse } from '../types';
 import { commandLog } from './commands';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
@@ -196,6 +197,7 @@ function createFilesStore() {
       anomalySummary: null,
       selectedAnomalyCategory: null,
       anchorLine: scrollToLine ?? 1,
+      indexBuild: null,
     };
 
     // Add file to the end and make it active
@@ -236,11 +238,27 @@ function createFilesStore() {
       update((s) => ({
         ...s,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, loading: false, error: errorMessage } : f,
+          f.path === path ? { ...f, loading: false, error: errorMessage, indexBuild: null } : f,
         ),
       }));
     }
     console.error('Failed to load file:', e);
+  }
+
+  /**
+   * Show the index build a window load of `path` waits for, or clear it
+   * with null.
+   */
+  function showIndexBuild(path: string, build: IndexBuild | null) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, indexBuild: build } : f)),
+    }));
+  }
+
+  /** The options of a window load of `path`: its signal, and the build it may wait for. */
+  function loadOptions(path: string, signal: AbortSignal) {
+    return { signal, onIndexBuild: (build: IndexBuild | null) => showIndexBuild(path, build) };
   }
 
   /**
@@ -266,6 +284,7 @@ function createFilesStore() {
               ...bounds,
               totalLines: window.lineCount ?? f.totalLines,
               loading: false,
+              indexBuild: null,
               isCompressed: response.is_compressed,
               compressionFormat: response.compression_format,
               anchorLine: clampAnchor(f.anchorLine, bounds),
@@ -293,7 +312,7 @@ function createFilesStore() {
     try {
       const range = `1-${totalLines}`;
       const response = await fileLoads.run(path, (signal) =>
-        api.getSamples(path, [range], undefined, { signal }),
+        loadSamples(path, [range], undefined, loadOptions(path, signal)),
       );
       if (response === SUPERSEDED) return;
 
@@ -328,7 +347,7 @@ function createFilesStore() {
 
     try {
       const response = await fileLoads.run(path, (signal) =>
-        api.getSamples(path, [centerLine.toString()], contextLines, { signal }),
+        loadSamples(path, [centerLine.toString()], contextLines, loadOptions(path, signal)),
       );
       if (response === SUPERSEDED) return;
 
@@ -380,7 +399,7 @@ function createFilesStore() {
     try {
       const range = `${startLine}-${endLine}`;
       const response = await fileLoads.run(path, (signal) =>
-        api.getSamples(path, [range], undefined, { signal }),
+        loadSamples(path, [range], undefined, loadOptions(path, signal)),
       );
       if (response === SUPERSEDED) return;
 
@@ -493,7 +512,7 @@ function createFilesStore() {
 
       // Request line -1 with context to get the last lines
       const response = await fileLoads.run(path, (signal) =>
-        api.getSamples(path, ['-1'], context, { signal }),
+        loadSamples(path, ['-1'], context, loadOptions(path, signal)),
       );
       if (response === SUPERSEDED) return;
 

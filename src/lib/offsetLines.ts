@@ -16,7 +16,7 @@
  * why it does not jump: the backend's own sentence when it refuses or
  * fails, or noLineAtOffset when its answer has no line at that byte.
  */
-import { api } from './api';
+import { loadSamplesByOffset } from './samplesWait';
 import { resolveMatchLine } from './utils/matchLine';
 import { LatestRequest, SUPERSEDED, isAbortError } from './utils/latestRequest';
 import type { TraceResponse } from './types';
@@ -135,7 +135,7 @@ export class OffsetLineResolver {
       Promise.all(
         [...offsetsByFile].map(async ([filePath, offsets]) => {
           try {
-            const samples = await api.getSamplesByOffset(filePath, offsets, 0, { signal });
+            const samples = await loadSamplesByOffset(filePath, offsets, 0, { signal });
             if (signal.aborted) return;
             const { lines, reasons } = lookupsFromAnswer(filePath, offsets, samples.offsets);
             if (Object.keys(lines).length > 0) onLines(lines);
@@ -158,7 +158,7 @@ export class OffsetLineResolver {
   async resolveOne(filePath: string, offset: number): Promise<OffsetLookup | typeof SUPERSEDED> {
     try {
       const samples = await this.single.run((signal) =>
-        api.getSamplesByOffset(filePath, [offset], 0, { signal }),
+        loadSamplesByOffset(filePath, [offset], 0, { signal }),
       );
       if (samples === SUPERSEDED) return SUPERSEDED;
       const key = offsetKey(filePath, offset);

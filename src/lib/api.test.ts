@@ -264,3 +264,30 @@ describe('the API token', () => {
     expect(get(tokenRequired)).toBe(false);
   });
 });
+
+describe('samples answers', () => {
+  const task = {
+    task_id: 't1',
+    status: 'running',
+    message: 'Building the line index',
+    path: '/var/log/app.log',
+    started_at: '2026-10-03T00:00:00.000000Z',
+  };
+  const samples = { path: '/var/log/app.log', samples: { '5': ['LINE 5'] } };
+
+  it.each([
+    ['lines', () => api.getSamples('/var/log/app.log', ['5'])],
+    ['offsets', () => api.getSamplesByOffset('/var/log/app.log', [40])],
+  ])('reads a 202 by %s as the index build it names', async (_mode, call) => {
+    stubFetch({ status: 202, statusText: 'Accepted', json: async () => task });
+    await expect(call()).resolves.toEqual({ kind: 'building', task });
+  });
+
+  it('reads a 200 as the lines', async () => {
+    stubFetch({ json: async () => samples });
+    await expect(api.getSamples('/var/log/app.log', ['5'])).resolves.toEqual({
+      kind: 'samples',
+      samples,
+    });
+  });
+});

@@ -18,6 +18,7 @@
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import { acceptsTyping } from '$lib/utils/keyTargets';
   import { isShortcut } from '$lib/utils/shortcuts';
+  import { indexBuildLabel } from '$lib/samplesWait';
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
@@ -383,8 +384,13 @@
   <!-- Content container with Monaco Editor -->
   <div class="flex-1 min-h-0 relative">
     {#if file.loading && file.lines.length === 0}
-      <div class="flex items-center justify-center h-full">
+      <div class="flex flex-col items-center justify-center h-full gap-3">
         <Spinner size="lg" />
+        {#if file.indexBuild}
+          <p class="text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted" role="status">
+            {indexBuildLabel(file.indexBuild)}
+          </p>
+        {/if}
       </div>
     {:else if file.error}
       <div
@@ -408,7 +414,9 @@
           class="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle rounded-full px-3 py-1 shadow-md flex items-center gap-2"
         >
           <Spinner size="sm" />
-          <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">Loading...</span>
+          <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted" role="status">
+            {file.indexBuild ? indexBuildLabel(file.indexBuild) : 'Loading...'}
+          </span>
         </div>
       {/if}
 

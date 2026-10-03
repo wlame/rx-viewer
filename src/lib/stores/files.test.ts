@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import { commandLog } from './commands';
 import { files } from './files';
+import { health } from './health';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -382,5 +383,79 @@ describe('the equivalent command of a file window', () => {
     await files.loadMore('/logs/a.log', 'after');
 
     expect(commands()).toEqual(['rx samples /logs/a.log --lines=1-1000']);
+  });
+});
+
+describe('a file whose line index is being built', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Answers as rx-go 1.4 does for a large file without an index: the
+   * first samples request gets 202 with the build's task, the task is
+   * complete at the first poll, and the request asked again gets the
+   * lines. `buildSeen` records what the open file showed while the task
+   * was polled.
+   */
+  async function serveAfterABuild(path: string, lineCount: number) {
+    const serveLines = serveFileOf(lineCount).getMockImplementation()!;
+    const buildSeen: unknown[] = [];
+    let samplesAsked = 0;
+    const json = (status: number, body: unknown) => ({
+      ok: true,
+      status,
+      statusText: status === 202 ? 'Accepted' : 'OK',
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+    });
+    const spy = vi.fn(async (url: string) => {
+      if (url.startsWith('/health')) return json(200, { contract_version: '1.4' });
+      if (url.includes('/v1/tasks/')) {
+        buildSeen.push(get(files).openFiles.find((f) => f.path === path)?.indexBuild);
+        return json(200, {
+          task_id: 't1',
+          status: 'completed',
+          path,
+          operation: 'index',
+          started_at: null,
+          completed_at: null,
+          error: null,
+          progress: 1,
+          result: { line_index: [[1, 0]], line_count: lineCount },
+        });
+      }
+      if (url.includes('/v1/samples') && samplesAsked++ === 0) {
+        return json(202, {
+          task_id: 't1',
+          status: 'running',
+          message: 'Building the line index',
+          path,
+          started_at: null,
+        });
+      }
+      return serveLines(url);
+    });
+    vi.stubGlobal('fetch', spy);
+    await health.check();
+    return { spy, buildSeen };
+  }
+
+  it('shows the build while it runs, then loads the window', async () => {
+    const path = '/logs/big.log.gz';
+    const { buildSeen } = await serveAfterABuild(path, 50);
+
+    await files.openFile(path, { isIndexed: false });
+
+    expect(buildSeen).toEqual([{ taskId: 't1', progress: null }]);
+    const file = openedFile(path);
+    expect(file.error).toBeNull();
+    expect(file.loading).toBe(false);
+    expect(file.indexBuild).toBeNull();
+    expect(lineNumbers(path)[0]).toBe(1);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
   });
 });

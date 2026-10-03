@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answers `GET /v1/samples` with `202` and the task building the file's
   line index, and reports that task's `progress` (contract 1.4).
 
+- Opening a file, jumping to a line, paging and resolving a search
+  match's line wait for the file's line index when a 1.4 backend
+  answers `GET /v1/samples` with `202`: the file's view says "Building
+  the line index…" with the build's progress, the task is followed
+  through the same cancellable poll the Analyze and Index menus use,
+  and the window loads when the build ends. A build that fails still
+  loads the window, read without an index. Closing the file or moving
+  on stops the wait, not the build.
+
 ## [0.4.0] - 2026-10-03
 
 ### Changed

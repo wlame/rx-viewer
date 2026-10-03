@@ -166,6 +166,13 @@ export interface RegexFilter {
 }
 
 /** Represents an open file in the editor */
+/** How far the build of a file's line index has got (`samplesWait.ts`). */
+export interface IndexBuild {
+  taskId: string;
+  /** Share of the file read so far, 0 to 1; null while the backend does not say. */
+  progress: number | null;
+}
+
 export interface OpenFile {
   path: string;
   name: string;
@@ -193,6 +200,11 @@ export interface OpenFile {
   selectedAnomalyCategory: string | null; // Currently selected category for highlighting (null = none)
   /** The line the URL names for this file; the rule is in `utils/anchorLine.ts`. */
   anchorLine: number;
+  /**
+   * The build of the file's line index a window load is waiting for, or
+   * null. Set while the backend answers 202 (`samplesWait.ts`).
+   */
+  indexBuild: IndexBuild | null;
 }
 
 /** Match info for highlighting in file viewer */

@@ -67,7 +67,38 @@ function errorMessageFrom(body: string, statusText: string): string {
   return text;
 }
 
+/** A successful answer's status and its parsed body. */
+interface JsonAnswer<T> {
+  status: number;
+  body: T;
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  return (await fetchJsonAnswer<T>(url, options)).body;
+}
+
+/**
+ * The status of a successful answer: 200 is the result, 202 says the
+ * backend accepted the request and names the task that will make it
+ * possible.
+ */
+const HTTP_ACCEPTED = 202;
+
+/**
+ * What `/v1/samples` answered: the lines, or the build of the file's line
+ * index the backend is waiting for (a 202, from contract 1.4 on). After a
+ * build, the same request is asked again; `samplesWait.ts` does that.
+ */
+export type SamplesAnswer =
+  { kind: 'samples'; samples: SamplesResponse } | { kind: 'building'; task: IndexTaskResponse };
+
+async function fetchSamples(url: string, options?: RequestInit): Promise<SamplesAnswer> {
+  const { status, body } = await fetchJsonAnswer<SamplesResponse | IndexTaskResponse>(url, options);
+  if (status === HTTP_ACCEPTED) return { kind: 'building', task: body as IndexTaskResponse };
+  return { kind: 'samples', samples: body as SamplesResponse };
+}
+
+async function fetchJsonAnswer<T>(url: string, options?: RequestInit): Promise<JsonAnswer<T>> {
   // A /v1 request waits while the backend speaks a contract this viewer
   // would misread; /health is how the viewer finds that out, so it never waits.
   if (url.startsWith(API_BASE)) await contractGate.pass(options?.signal);
@@ -94,7 +125,7 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
     );
   }
 
-  return response.json();
+  return { status: response.status, body: await response.json() };
 }
 
 export const api = {
@@ -115,7 +146,8 @@ export const api = {
   },
 
   /**
-   * Get file content samples for specific line ranges
+   * Get file content samples for specific line ranges, or the index build
+   * the backend waits for first; `samplesWait.ts` follows the build.
    * @param path - File path
    * @param ranges - Array of line ranges in format "start-end" (e.g., ["1-100", "200-300"])
    *                 Can also include negative numbers like "-1" for end of file
@@ -126,7 +158,7 @@ export const api = {
     ranges: string[],
     context?: number,
     options?: RequestOptions,
-  ): Promise<SamplesResponse> {
+  ): Promise<SamplesAnswer> {
     const params = new URLSearchParams({
       path,
       lines: ranges.join(','),
@@ -134,7 +166,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
-    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`, options);
+    return fetchSamples(`${API_BASE}/samples?${params}`, options);
   },
 
   /**
@@ -142,7 +174,8 @@ export const api = {
    *
    * A trace match always carries an absolute byte offset, even when the
    * backend could not say which file line it is on (see resolveMatchLine).
-   * The response's `offsets` map answers offset -> line number.
+   * The response's `offsets` map answers offset -> line number. Like
+   * getSamples, it may answer with an index build to wait for.
    *
    * @param path - File path
    * @param offsets - Absolute byte offsets
@@ -153,7 +186,7 @@ export const api = {
     offsets: number[],
     context?: number,
     options?: RequestOptions,
-  ): Promise<SamplesResponse> {
+  ): Promise<SamplesAnswer> {
     const params = new URLSearchParams({
       path,
       offsets: offsets.join(','),
@@ -161,7 +194,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
-    return fetchJson<SamplesResponse>(`${API_BASE}/samples?${params}`, options);
+    return fetchSamples(`${API_BASE}/samples?${params}`, options);
   },
 
   /**
