@@ -222,7 +222,7 @@ export interface components {
             frame_size: string;
             /** @description Path to the input file. Must be inside a configured --search-root. */
             input_path: string;
-            /** @description Path for the output .zst file (default: input_path + ".zst"). Must be inside a configured --search-root. */
+            /** @description Path for the output .zst file (default: beside the input, named like it with a compression suffix .gz, .gzip, .bz2, .bzip2, .xz, .zst or .zstd replaced by .zst, or with .zst appended: app.log.gz gives app.log.zst). Must be inside a configured --search-root. */
             output_path?: string;
         };
         CompressTaskResult: {
