@@ -937,7 +937,10 @@ export interface operations {
                 /** @description Context lines after each offset (-1 = default 3) */
                 after_context?: number;
             };
-            header?: never;
+            header?: {
+                /** @description RFC 7240 preferences. respond-async lets the server answer 202 with the task building the file's line index when the build outlasts RX_SAMPLES_WAIT_SECONDS; without it the request waits for the build and answers 200. */
+                Prefer?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -952,9 +955,11 @@ export interface operations {
                     "application/json": components["schemas"]["SamplesResponse"];
                 };
             };
-            /** @description The file's line index is being built and did not finish within the server's wait (RX_SAMPLES_WAIT_SECONDS). The body names the build's task: poll GET /v1/tasks/{task_id} until it ends, then send the same request again. */
+            /** @description Sent only to a request with `Prefer: respond-async`: the file's line index is being built and did not finish within the server's wait (RX_SAMPLES_WAIT_SECONDS). The body names the build's task: poll GET /v1/tasks/{task_id} until it ends, then send the same request again. */
             202: {
                 headers: {
+                    /** @description respond-async: the server applied the preference the request sent (RFC 7240). */
+                    "Preference-Applied"?: string;
                     [name: string]: unknown;
                 };
                 content: {
