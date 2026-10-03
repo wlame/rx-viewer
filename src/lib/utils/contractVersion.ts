@@ -67,6 +67,12 @@ export const CONTRACT_FEATURES = {
    * and `no_recursive` on /v1/trace.
    */
   traceContextAndSwitches: 4,
+  /**
+   * `GET /v1/samples` answers 202 with the task building the file's line
+   * index when the build outlasts the server's wait, and
+   * `GET /v1/tasks/{id}` reports the build's `progress`.
+   */
+  samplesIndexBuild: 4,
 } as const;
 
 export type ContractFeature = keyof typeof CONTRACT_FEATURES;

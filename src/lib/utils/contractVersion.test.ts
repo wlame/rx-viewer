@@ -83,4 +83,11 @@ describe('contractSupports', () => {
     expect(contractSupports(checkContractVersion('1.4'), 'traceContextAndSwitches')).toBe(true);
     expect(contractSupports(checkContractVersion('1.3'), 'traceContextAndSwitches')).toBe(false);
   });
+
+  // An older backend builds the index inside the samples request and
+  // never answers 202.
+  it('reports the samples index build from contract 1.4', () => {
+    expect(contractSupports(checkContractVersion('1.4'), 'samplesIndexBuild')).toBe(true);
+    expect(contractSupports(checkContractVersion('1.3'), 'samplesIndexBuild')).toBe(false);
+  });
 });

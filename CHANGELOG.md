@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backend has them. No part of the interface sends them yet; a 1.3
   backend ignores them.
 
+- `contractSupports(…, 'samplesIndexBuild')` tells whether a backend
+  answers `GET /v1/samples` with `202` and the task building the file's
+  line index, and reports that task's `progress` (contract 1.4).
+
 ## [0.4.0] - 2026-10-03
 
 ### Changed
