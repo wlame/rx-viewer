@@ -4,6 +4,7 @@ import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import { commandLog } from './commands';
 import { files } from './files';
 import { health } from './health';
+import { tree } from './tree';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -460,5 +461,19 @@ describe('a file whose line index is being built', () => {
     expect(lineNumbers(path)[0]).toBe(1);
     expect(everyLineReadsItsNumber(path)).toBe(true);
     expect(preferSent).toEqual(['respond-async', 'respond-async']);
+  });
+
+  it('takes the line count and the indexed mark from the index the build made', async () => {
+    const path = '/logs/huge.log.gz';
+    await serveAfterABuild(path, 5000);
+    const markIndexed = vi.spyOn(tree, 'markIndexed');
+
+    await files.openFile(path, { isIndexed: false });
+
+    const file = openedFile(path);
+    expect(file.isIndexed).toBe(true);
+    expect(file.totalLines).toBe(5000);
+    expect(markIndexed).toHaveBeenCalledWith(path, 5000);
+    markIndexed.mockRestore();
   });
 });

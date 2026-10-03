@@ -1,7 +1,8 @@
 import { get } from 'svelte/store';
 import { api, type RequestOptions, type SamplesAnswer } from './api';
 import { health } from './stores/health';
-import type { IndexBuild, SamplesResponse, TaskStatus } from './types';
+import { tree } from './stores/tree';
+import type { IndexBuild, IndexTaskResult, SamplesResponse, TaskStatus } from './types';
 import { contractSupports } from './utils/contractVersion';
 import { isAbortError } from './utils/latestRequest';
 import { taskPolls, type TaskPolls } from './utils/taskPolling';
@@ -22,6 +23,8 @@ export interface SamplesWaitOptions {
   signal?: AbortSignal;
   /** Called with the build while the lookup waits for one, and with null when the lines arrive. */
   onIndexBuild?: (build: IndexBuild | null) => void;
+  /** Called with the index a followed build completed with, before the lines are asked again. */
+  onIndexBuilt?: (index: IndexTaskResult) => void;
 }
 
 /** What the wait needs from the rest of the app; tests pass their own. */
@@ -29,11 +32,14 @@ export interface SamplesWaitDeps {
   polls: Pick<TaskPolls, 'join'>;
   /** Whether the backend's contract has the samples index build. */
   supportsIndexBuild: () => boolean;
+  /** Marks the file indexed in the tree, with its line count when known. */
+  markIndexed: (path: string, lineCount: number | null) => void;
 }
 
 const APP_DEPS: SamplesWaitDeps = {
   polls: taskPolls,
   supportsIndexBuild: () => contractSupports(get(health).contract, 'samplesIndexBuild'),
+  markIndexed: (path, lineCount) => tree.markIndexed(path, lineCount),
 };
 
 /**
@@ -50,7 +56,8 @@ const MAX_INDEX_BUILDS = 3;
  * `request` is told whether to send `Prefer: respond-async`: only when
  * the backend's contract has the build, since only then can a 202 be
  * followed. Without it the backend waits for the build and answers the
- * lines.
+ * lines. A build that completes marks the file indexed in the tree and
+ * goes to `options.onIndexBuilt`, as an Index from the tree's menu does.
  *
  * A build that fails does not fail the lookup: asked again, the backend
  * reads the file without an index, slower and with the same lines.
@@ -64,7 +71,7 @@ export async function samplesAfterIndexBuild(
   options: SamplesWaitOptions = {},
   deps: SamplesWaitDeps = APP_DEPS,
 ): Promise<SamplesResponse> {
-  const { signal, onIndexBuild } = options;
+  const { signal, onIndexBuild, onIndexBuilt } = options;
   const respondAsync = deps.supportsIndexBuild();
   // TaskPolls.join wants a signal; a caller that cannot abort gets one that never does.
   const pollSignal = signal ?? new AbortController().signal;
@@ -87,10 +94,12 @@ export async function samplesAfterIndexBuild(
     const taskId = answer.task.task_id;
     onIndexBuild?.({ taskId, progress: null });
     try {
-      await deps.polls.join(path, taskId, {
+      const index = await deps.polls.join(path, taskId, {
         signal: pollSignal,
         onStatus: (task: TaskStatus) => onIndexBuild?.({ taskId, progress: task.progress }),
       });
+      deps.markIndexed(path, index.line_count ?? null);
+      onIndexBuilt?.(index);
     } catch (error) {
       if (isAbortError(error) || signal?.aborted) throw error;
       // The build failed or its task is gone; the next request answers anyway.

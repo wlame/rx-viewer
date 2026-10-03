@@ -80,7 +80,7 @@ function polls(progress: (number | null)[], outcome: 'completed' | Error = 'comp
 }
 
 function deps(overrides: Partial<SamplesWaitDeps> = {}): SamplesWaitDeps {
-  return { polls: polls([]), supportsIndexBuild: () => true, ...overrides };
+  return { polls: polls([]), supportsIndexBuild: () => true, markIndexed: vi.fn(), ...overrides };
 }
 
 describe('samplesAfterIndexBuild', () => {
@@ -154,7 +154,7 @@ describe('samplesAfterIndexBuild', () => {
   });
 });
 
-describe('the Prefer header', () => {
+describe('the Prefer header and the index a build leaves', () => {
   it.each([
     [true, true],
     [false, false],
@@ -171,6 +171,22 @@ describe('the Prefer header', () => {
       expect(request).toHaveBeenCalledWith(undefined, sent);
     },
   );
+
+  it('marks the file indexed and hands on the index a followed build completed with', async () => {
+    const wait = deps();
+    const onIndexBuilt = vi.fn();
+    await samplesAfterIndexBuild(PATH, answers(building(), LINES), { onIndexBuilt }, wait);
+    expect(wait.markIndexed).toHaveBeenCalledWith(PATH, 4242);
+    expect(onIndexBuilt).toHaveBeenCalledWith(BUILT);
+  });
+
+  it('marks nothing after a build that failed', async () => {
+    const wait = deps({ polls: polls([], new Error('build index: disk full')) });
+    const onIndexBuilt = vi.fn();
+    await samplesAfterIndexBuild(PATH, answers(building(), LINES), { onIndexBuilt }, wait);
+    expect(wait.markIndexed).not.toHaveBeenCalled();
+    expect(onIndexBuilt).not.toHaveBeenCalled();
+  });
 });
 
 describe('indexBuildLabel', () => {

@@ -30,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on stops the wait, not the build. Samples requests carry
   `Prefer: respond-async` only to a backend whose contract has the build
   (1.4); without the header a backend waits for the build and answers
-  the lines.
+  the lines. When the build ends, the tree marks the file indexed and the
+  open file takes its line count and anomalies from the new index, as
+  after an Index from the tree's menu.
 
 ## [0.4.0] - 2026-10-03
 

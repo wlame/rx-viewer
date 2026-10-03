@@ -256,9 +256,17 @@ function createFilesStore() {
     }));
   }
 
-  /** The options of a window load of `path`: its signal, and the build it may wait for. */
+  /**
+   * The options of a window load of `path`: its signal, the build it may
+   * wait for, and the index that build leaves, which gives the file its
+   * line count and anomalies as an Index from the tree's menu does.
+   */
   function loadOptions(path: string, signal: AbortSignal) {
-    return { signal, onIndexBuild: (build: IndexBuild | null) => showIndexBuild(path, build) };
+    return {
+      signal,
+      onIndexBuild: (build: IndexBuild | null) => showIndexBuild(path, build),
+      onIndexBuilt: (index: IndexResponse) => applyIndex(path, index),
+    };
   }
 
   /**
