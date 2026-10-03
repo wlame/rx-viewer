@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The viewer knows contract 1.4: its wire types carry the `context`,
+  `before_context`, `after_context`, `no_cache`, `no_index` and
+  `no_recursive` parameters of `GET /v1/trace`, and
+  `contractSupports(…, 'traceContextAndSwitches')` tells whether a
+  backend has them. No part of the interface sends them yet; a 1.3
+  backend ignores them.
+
 ## [0.4.0] - 2026-10-03
 
 ### Changed

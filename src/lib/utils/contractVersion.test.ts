@@ -75,4 +75,12 @@ describe('contractSupports', () => {
     expect(contractSupports({ kind: 'unknown' }, 'traceMatchingFlags')).toBe(false);
     expect(contractSupports(checkContractVersion('2.5'), 'traceMatchingFlags')).toBe(false);
   });
+
+  // The context window and the no_cache, no_index and no_recursive
+  // parameters of /v1/trace arrived in contract 1.4. A 1.3 backend
+  // ignores them and answers without the window.
+  it('reports the trace context window and switches from contract 1.4', () => {
+    expect(contractSupports(checkContractVersion('1.4'), 'traceContextAndSwitches')).toBe(true);
+    expect(contractSupports(checkContractVersion('1.3'), 'traceContextAndSwitches')).toBe(false);
+  });
 });

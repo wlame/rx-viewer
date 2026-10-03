@@ -62,6 +62,11 @@ export function checkContractVersion(version: string | null | undefined): Contra
 export const CONTRACT_FEATURES = {
   /** `ignore_case`, `word_regexp`, `line_regexp`, `fixed_strings`, `pcre2` on /v1/trace. */
   traceMatchingFlags: 3,
+  /**
+   * `context`, `before_context`, `after_context`, `no_cache`, `no_index`
+   * and `no_recursive` on /v1/trace.
+   */
+  traceContextAndSwitches: 4,
 } as const;
 
 export type ContractFeature = keyof typeof CONTRACT_FEATURES;
