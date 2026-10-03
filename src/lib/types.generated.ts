@@ -535,6 +535,11 @@ export interface components {
             error: string | null;
             operation: string;
             path: string;
+            /**
+             * Format: double
+             * @description Share of the task's input read so far, from 0 to 1. Null for a task that does not report it: a compress task, an index task that reused a stored index, or one that has not started reading.
+             */
+            progress: number | null;
             /** @description The task's result once it completes: IndexTaskResult for an index task, CompressTaskResult for a compress task. Null until then. */
             result: components["schemas"]["IndexTaskResult"] | components["schemas"]["CompressTaskResult"] | null;
             started_at: string | null;
@@ -945,6 +950,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SamplesResponse"];
+                };
+            };
+            /** @description The file's line index is being built and did not finish within the server's wait (RX_SAMPLES_WAIT_SECONDS). The body names the build's task: poll GET /v1/tasks/{task_id} until it ends, then send the same request again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
                 };
             };
             /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */

@@ -60,6 +60,7 @@ function task(status: string, result: TaskStatus['result'] = null, error?: strin
     started_at: null,
     completed_at: null,
     error: error ?? null,
+    progress: null,
     result,
   };
 }
