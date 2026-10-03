@@ -1089,6 +1089,18 @@ export interface operations {
                 fixed_strings?: boolean;
                 /** @description Use the PCRE2 engine, for look-around and backreferences (ripgrep -P) */
                 pcre2?: boolean;
+                /** @description Context lines before and after each match (rx trace --context). Fills context_lines, before_context and after_context of the answer. */
+                context?: number;
+                /** @description Context lines before each match (rx trace --before); wins over context, 0 included. -1 = the context value. */
+                before_context?: number;
+                /** @description Context lines after each match (rx trace --after); wins over context, 0 included. -1 = the context value. */
+                after_context?: number;
+                /** @description Neither read nor write the trace cache (rx trace --no-cache) */
+                no_cache?: boolean;
+                /** @description Read and write no line index; a match a capped scan left unnumbered is numbered by counting lines from the start of the file (rx trace --no-index) */
+                no_index?: boolean;
+                /** @description Search only the files directly inside a directory path, not its subdirectories (rx trace --no-recursive) */
+                no_recursive?: boolean;
             };
             header?: never;
             path?: never;
