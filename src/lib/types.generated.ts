@@ -255,6 +255,8 @@ export interface components {
             /** Format: int64 */
             absolute_offset: number;
             line_text: string;
+            /** @description True when line_text holds only the first RX_MAX_LINE_TEXT_BYTES bytes of a longer line. */
+            line_text_truncated: boolean;
             /** Format: int64 */
             relative_line_number: number;
         };
@@ -444,12 +446,16 @@ export interface components {
             absolute_line_number: number;
             file: string;
             line_text: string | null;
+            /** @description True when line_text holds only the first RX_MAX_LINE_TEXT_BYTES bytes of a longer line. */
+            line_text_truncated: boolean;
             /** Format: int64 */
             offset: number;
             pattern: string;
             /** Format: int64 */
             relative_line_number: number | null;
             submatches: components["schemas"]["Submatch"][] | null;
+            /** @description True when submatches may leave some of the line's submatches out: the line had more than RX_MAX_SUBMATCHES_PER_LINE, or line_text is cut and the list covers only the text it holds. */
+            submatches_truncated: boolean;
         };
         SamplesResponse: {
             /** Format: int64 */

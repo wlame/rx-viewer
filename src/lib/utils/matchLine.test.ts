@@ -11,7 +11,9 @@ function makeMatch(overrides: Partial<TraceMatch> = {}): TraceMatch {
     relative_line_number: 12,
     absolute_line_number: -1,
     line_text: 'error happened here',
+    line_text_truncated: false,
     submatches: [],
+    submatches_truncated: false,
     ...overrides,
   };
 }
