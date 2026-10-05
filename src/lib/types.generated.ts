@@ -516,6 +516,10 @@ export interface components {
              */
             min: number;
         };
+        SkippedFile: {
+            path: string;
+            reason: string;
+        };
         Submatch: {
             /** Format: int64 */
             end: number;
@@ -576,6 +580,8 @@ export interface components {
             };
             request_id: string;
             scanned_files: string[];
+            /** @description Why each path of skipped_files was passed over or not searched in full, one entry per path in the same order. */
+            skip_reasons: components["schemas"]["SkippedFile"][];
             skipped_files: string[];
             /** Format: double */
             time: number;

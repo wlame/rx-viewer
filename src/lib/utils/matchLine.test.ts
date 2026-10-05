@@ -28,6 +28,7 @@ function makeResponse(overrides: Partial<TraceResponse> = {}): TraceResponse {
     matches: [],
     scanned_files: [],
     skipped_files: [],
+    skip_reasons: [],
     max_results: null,
     file_chunks: { f1: 1 },
     context_lines: {},
