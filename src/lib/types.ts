@@ -163,6 +163,12 @@ export interface TreeNode extends TreeEntry {
 export interface FileLine {
   lineNumber: number;
   content: string;
+  /**
+   * The line's effective timestamp as the samples answer gives it
+   * (`line_timestamps`): ms since the epoch, a UTC instant, or null for
+   * a line without one. Absent when the answer carried no timestamps.
+   */
+  timestampMs?: number | null;
 }
 
 /** Regex filter configuration for content transformation */
