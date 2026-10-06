@@ -30,6 +30,7 @@ function indexResult(fields: Partial<IndexTaskResult> = {}): IndexTaskResult {
     anomaly_count: 0,
     anomaly_summary: null,
     anomalies: null,
+    time_summary: null,
     cli_command: `rx index ${PATH}`,
     success: true,
     ...fields,

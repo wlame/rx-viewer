@@ -362,6 +362,8 @@ export interface components {
              * @description Size of the file on disk.
              */
             size_bytes: number;
+            /** @description The timestamps of the file's lines; null when no timestamp format is recognized. */
+            time_summary: components["schemas"]["TimeSummary"];
         };
         IndexTaskResult: {
             /** @description Whether the line statistics and anomalies were computed. */
@@ -411,6 +413,8 @@ export interface components {
              */
             size_bytes: number;
             success: boolean;
+            /** @description The timestamps of the file's lines; null when no timestamp format is recognized. */
+            time_summary: components["schemas"]["TimeSummary"];
         };
         /** @description A line-index checkpoint: the 1-based line number and the byte offset where that line starts in the file's text. An entry of a seekable-zstd index has a third element, the 0-based index of the frame holding the line. */
         LineIndexEntry: [
@@ -556,6 +560,40 @@ export interface components {
             status: string;
             task_id: string;
         };
+        TimeSummary: {
+            /**
+             * Format: int64
+             * @description How many lines carry a timestamp more than one second earlier than the latest one before them.
+             */
+            backward_steps: number;
+            /**
+             * Format: int64
+             * @description The timestamp of the first line that carries one, in ms; null when no line carries one.
+             */
+            first_ms: number | null;
+            /**
+             * @description The timestamp format of the lines.
+             * @enum {string}
+             */
+            format: "iso" | "clf" | "ctime" | "syslog" | "slash" | "dotted" | "epoch";
+            /** @description Whether most timestamps carry a zone, so the values are UTC instants; false means wall-clock time read as UTC. */
+            has_zone: boolean;
+            /**
+             * Format: int64
+             * @description The timestamp of the last line that carries one, in ms; null when no line carries one.
+             */
+            last_ms: number | null;
+            /**
+             * Format: int64
+             * @description The largest such step back, in ms; 0 when there is none.
+             */
+            max_backward_ms: number;
+            /**
+             * Format: int64
+             * @description How many lines carry a timestamp.
+             */
+            timestamped_lines: number;
+        } | null;
         TraceResponse: {
             /** Format: int64 */
             after_context: number | null;
