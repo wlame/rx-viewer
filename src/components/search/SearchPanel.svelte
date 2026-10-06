@@ -1,9 +1,8 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { trace, tree, files, health } from '$lib/stores';
+  import { trace, tree, files, health, backendHas } from '$lib/stores';
   import { searchRequest } from '$lib/stores/trace';
   import { searchFocusRequested } from '$lib/stores/layout';
-  import { contractSupports } from '$lib/utils/contractVersion';
   import { isShortcut } from '$lib/utils/shortcuts';
   import {
     DEFAULT_SEARCH_TOGGLES,
@@ -32,12 +31,10 @@
     searchFocusRequested.set(false);
   }
 
-  // A backend on an older contract ignores the matching flags, so the
+  // A backend that does not list the matching flags ignores them, so the
   // toggles are disabled there rather than shown doing nothing.
-  $: flagsSupported = contractSupports($health.contract, 'traceMatchingFlags');
-  $: togglesUnavailable = flagsSupported
-    ? null
-    : 'This backend does not take match options (it needs API contract 1.3 or newer)';
+  $: flagsSupported = backendHas('trace_matching_flags', $health);
+  $: togglesUnavailable = flagsSupported ? null : 'This backend does not take match options';
 
   $: searchRoots = $tree.roots.map((r) => r.path);
   $: hasRoots = searchRoots.length > 0;

@@ -53,38 +53,3 @@ export function checkContractVersion(version: string | null | undefined): Contra
         : 'Update the backend, or use a viewer release from its era.'),
   };
 }
-
-/**
- * The contract minor that introduced each optional feature the viewer
- * uses. A backend on an older minor of the same major lacks it: an older
- * rx-go, or rx-python, which is paused on 1.1.
- */
-export const CONTRACT_FEATURES = {
-  /** `ignore_case`, `word_regexp`, `line_regexp`, `fixed_strings`, `pcre2` on /v1/trace. */
-  traceMatchingFlags: 3,
-  /**
-   * `context`, `before_context`, `after_context`, `no_cache`, `no_index`
-   * and `no_recursive` on /v1/trace.
-   */
-  traceContextAndSwitches: 4,
-  /**
-   * `GET /v1/samples` answers 202 with the task building the file's line
-   * index when the build outlasts the server's wait, and
-   * `GET /v1/tasks/{id}` reports the build's `progress`.
-   */
-  samplesIndexBuild: 4,
-} as const;
-
-export type ContractFeature = keyof typeof CONTRACT_FEATURES;
-
-/**
- * Whether the backend has `feature`. An unknown version counts as not
- * having it: that backend predates `contract_version`, and so every
- * feature listed here.
- */
-export function contractSupports(
-  contract: ContractCompatibility,
-  feature: ContractFeature,
-): boolean {
-  return contract.kind === 'ok' && contract.minor >= CONTRACT_FEATURES[feature];
-}

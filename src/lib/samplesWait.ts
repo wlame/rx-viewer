@@ -1,17 +1,16 @@
-import { get } from 'svelte/store';
 import { api, type RequestOptions, type SamplesAnswer } from './api';
-import { health } from './stores/health';
+import { backendHas } from './stores/health';
 import { tree } from './stores/tree';
 import type { IndexBuild, IndexTaskResult, SamplesResponse, TaskStatus } from './types';
-import { contractSupports } from './utils/contractVersion';
 import { isAbortError } from './utils/latestRequest';
 import { taskPolls, type TaskPolls } from './utils/taskPolling';
 
 /**
  * Samples of a file whose line index the backend is still building.
  *
- * From contract 1.4 on, `GET /v1/samples` builds a missing index as a
- * background task and waits for it only a few seconds. A longer build
+ * A backend that lists the `samples_index_build` feature on `/health`
+ * builds a missing index as a background task and waits for it only a
+ * few seconds. A longer build
  * gets a 202 naming the task; the lookup follows that task through the
  * app's shared, cancellable task poll, then asks for the same lines
  * again, which the backend now answers from the index.
@@ -30,7 +29,7 @@ export interface SamplesWaitOptions {
 /** What the wait needs from the rest of the app; tests pass their own. */
 export interface SamplesWaitDeps {
   polls: Pick<TaskPolls, 'join'>;
-  /** Whether the backend's contract has the samples index build. */
+  /** Whether the backend has the samples index build. */
   supportsIndexBuild: () => boolean;
   /** Marks the file indexed in the tree, with its line count when known. */
   markIndexed: (path: string, lineCount: number | null) => void;
@@ -38,7 +37,7 @@ export interface SamplesWaitDeps {
 
 const APP_DEPS: SamplesWaitDeps = {
   polls: taskPolls,
-  supportsIndexBuild: () => contractSupports(get(health).contract, 'samplesIndexBuild'),
+  supportsIndexBuild: () => backendHas('samples_index_build'),
   markIndexed: (path, lineCount) => tree.markIndexed(path, lineCount),
 };
 
@@ -54,7 +53,7 @@ const MAX_INDEX_BUILDS = 3;
  * backend answers with first.
  *
  * `request` is told whether to send `Prefer: respond-async`: only when
- * the backend's contract has the build, since only then can a 202 be
+ * the backend has the build, since only then can a 202 be
  * followed. Without it the backend waits for the build and answers the
  * lines. A build that completes marks the file indexed in the tree and
  * goes to `options.onIndexBuilt`, as an Index from the tree's menu does.
@@ -63,7 +62,7 @@ const MAX_INDEX_BUILDS = 3;
  * reads the file without an index, slower and with the same lines.
  * Rejects with an AbortError when `options.signal` aborts, with the
  * request's own error, and when the backend answers 202 although its
- * contract does not have the build, or keeps answering 202.
+ * features do not list the build, or keeps answering 202.
  */
 export async function samplesAfterIndexBuild(
   path: string,
@@ -84,7 +83,7 @@ export async function samplesAfterIndexBuild(
     }
     if (!respondAsync) {
       throw new Error(
-        `The backend answered 202 for the samples of ${path}, which its contract does not have`,
+        `The backend answered 202 for the samples of ${path}, which it does not list as a feature`,
       );
     }
     if (builds >= MAX_INDEX_BUILDS) {

@@ -1,4 +1,4 @@
-export { health } from './health';
+export { health, backendHas } from './health';
 export { tree } from './tree';
 export { files } from './files';
 export { trace } from './trace';

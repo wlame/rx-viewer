@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  checkContractVersion,
-  contractSupports,
-  SUPPORTED_CONTRACT_MAJOR,
-} from './contractVersion';
+import { checkContractVersion, SUPPORTED_CONTRACT_MAJOR } from './contractVersion';
 
 describe('checkContractVersion', () => {
   it('accepts the contract major this viewer was built against', () => {
@@ -55,39 +51,5 @@ describe('checkContractVersion', () => {
 
   it('tolerates surrounding whitespace', () => {
     expect(checkContractVersion(` ${SUPPORTED_CONTRACT_MAJOR}.2 `).kind).toBe('ok');
-  });
-});
-
-describe('contractSupports', () => {
-  // The matching-flag parameters of /v1/trace arrived in contract 1.3. A
-  // backend on an older minor ignores them, which would show a
-  // case-sensitive answer under a "match case: off" toggle.
-  it('reports a feature as supported from the minor that introduced it', () => {
-    expect(contractSupports(checkContractVersion('1.3'), 'traceMatchingFlags')).toBe(true);
-    expect(contractSupports(checkContractVersion('1.10'), 'traceMatchingFlags')).toBe(true);
-  });
-
-  it('reports a feature as missing on an older minor', () => {
-    expect(contractSupports(checkContractVersion('1.2'), 'traceMatchingFlags')).toBe(false);
-  });
-
-  it('reports a feature as missing when the version is unknown or incompatible', () => {
-    expect(contractSupports({ kind: 'unknown' }, 'traceMatchingFlags')).toBe(false);
-    expect(contractSupports(checkContractVersion('2.5'), 'traceMatchingFlags')).toBe(false);
-  });
-
-  // The context window and the no_cache, no_index and no_recursive
-  // parameters of /v1/trace arrived in contract 1.4. A 1.3 backend
-  // ignores them and answers without the window.
-  it('reports the trace context window and switches from contract 1.4', () => {
-    expect(contractSupports(checkContractVersion('1.4'), 'traceContextAndSwitches')).toBe(true);
-    expect(contractSupports(checkContractVersion('1.3'), 'traceContextAndSwitches')).toBe(false);
-  });
-
-  // An older backend builds the index inside the samples request and
-  // never answers 202.
-  it('reports the samples index build from contract 1.4', () => {
-    expect(contractSupports(checkContractVersion('1.4'), 'samplesIndexBuild')).toBe(true);
-    expect(contractSupports(checkContractVersion('1.3'), 'samplesIndexBuild')).toBe(false);
   });
 });

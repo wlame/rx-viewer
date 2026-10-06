@@ -37,8 +37,8 @@ export type TraceQuery = operations['trace']['parameters']['query'];
 
 /**
  * ripgrep's matching flags as trace parameters (`ignore_case=true` is
- * `rx trace --ignore-case`). They arrived in contract 1.3; check
- * `contractSupports(…, 'traceMatchingFlags')` before relying on them.
+ * `rx trace --ignore-case`). Check `backendHas('trace_matching_flags')`
+ * before relying on them.
  */
 export type TraceMatchingFlags = Pick<
   TraceQuery,

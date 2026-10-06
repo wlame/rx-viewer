@@ -61,10 +61,14 @@ interchangeable backends, no vendoring.
    holds every `/v1` request (the first ones wait for the first `/health`
    answer) until `/health`, asked every 10 s meanwhile, reports a
    supported major. Every request goes through `fetchJson`, so it passes
-   the gate; do not call `fetch` for `/v1` directly. Bump it together with rx-go's `ContractVersion`. A
-   feature a later minor added — the trace matching flags of 1.3 — is
-   listed in `CONTRACT_FEATURES` there; check `contractSupports()` before
-   using it, since an older backend ignores what it does not know.
+   the gate; do not call `fetch` for `/v1` directly. Bump it together with rx-go's `ContractVersion`.
+8. **Check a feature before using it.** `/health` lists the features the
+   backend serves (`features`, such as `trace_matching_flags` or
+   `time_range`). Ask `backendHas(name)` (`src/lib/stores/health.ts`)
+   before sending a parameter or calling an endpoint a feature names; a
+   component passes `$health` so it reacts to the answer. A backend that
+   lists no features has none of them, and the viewer shows nothing
+   extra for it.
 
 ## Quick orientation
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The viewer reads which optional features a backend serves from the
+  `features` list of `GET /health`, in place of a table of contract
+  minor versions. The search's match options and the samples index build
+  (`Prefer: respond-async`) are used when the backend lists
+  `trace_matching_flags` and `samples_index_build`; a backend that lists
+  no features gets neither, as a backend on an older contract did. The
+  contract major check is unchanged.
+
 ## [0.5.0] - 2026-10-05
 
 ### Added

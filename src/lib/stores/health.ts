@@ -1,4 +1,4 @@
-import { derived, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import { api } from '../api';
 import { contractGate } from '../contractGate';
 import type { HealthResponse } from '../types';
@@ -11,7 +11,7 @@ import { checkContractVersion, type ContractCompatibility } from '../utils/contr
  */
 export const BLOCKED_RECHECK_MS = 10_000;
 
-interface HealthState {
+export interface HealthState {
   connected: boolean;
   loading: boolean;
   error: string | null;
@@ -22,6 +22,31 @@ interface HealthState {
    * of showing wrong data.
    */
   contract: ContractCompatibility;
+  /**
+   * The features the backend listed on `/health`; empty before the first
+   * answer, after a failed one and for a backend that lists none.
+   */
+  features: readonly string[];
+}
+
+/**
+ * The names of the features the viewer asks a backend about. The backend
+ * lists every feature its build serves on `/health`; a name it does not
+ * list is a feature it lacks.
+ */
+export type BackendFeature =
+  | 'trace_matching_flags'
+  | 'trace_context_and_switches'
+  | 'samples_index_build'
+  | 'samples_timestamps'
+  | 'line_timestamps'
+  | 'time_range';
+
+/** The feature list of a `/health` answer; anything but a list of names is none. */
+function featuresOf(data: HealthResponse): readonly string[] {
+  const listed: unknown = data.features;
+  if (!Array.isArray(listed)) return [];
+  return listed.filter((name): name is string => typeof name === 'string');
 }
 
 function createHealthStore() {
@@ -31,6 +56,7 @@ function createHealthStore() {
     error: null,
     data: null,
     contract: { kind: 'unknown' },
+    features: [],
   });
 
   let checkInterval: ReturnType<typeof setInterval> | null = null;
@@ -63,7 +89,14 @@ function createHealthStore() {
     try {
       const data = await api.getHealth();
       contract = checkContractVersion(data.contract_version);
-      set({ connected: true, loading: false, error: null, data, contract });
+      set({
+        connected: true,
+        loading: false,
+        error: null,
+        data,
+        contract,
+        features: featuresOf(data),
+      });
     } catch (e) {
       // Nothing was read, so nothing is known about the contract.
       contract = { kind: 'unknown' };
@@ -73,6 +106,7 @@ function createHealthStore() {
         error: e instanceof Error ? e.message : 'Connection failed',
         data: null,
         contract,
+        features: [],
       });
     }
     lastContract = contract;
@@ -143,6 +177,19 @@ function createHealthStore() {
 }
 
 export const health = createHealthStore();
+
+/**
+ * Whether the backend serves `name`: whether its last `/health` answer
+ * listed it. Before an answer, after a failed one and for a backend that
+ * lists no features, every feature reads as absent. A component passes
+ * `$health` so that it reacts when the answer arrives.
+ */
+export function backendHas(
+  name: BackendFeature,
+  state: Pick<HealthState, 'features'> = get(health),
+): boolean {
+  return state.features.includes(name);
+}
 
 /**
  * True while the backend speaks a contract major this viewer cannot read.

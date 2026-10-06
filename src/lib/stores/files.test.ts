@@ -415,7 +415,9 @@ describe('a file whose line index is being built', () => {
     });
     const preferSent: (string | undefined)[] = [];
     const spy = vi.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
-      if (url.startsWith('/health')) return json(200, { contract_version: '1.4' });
+      if (url.startsWith('/health')) {
+        return json(200, { contract_version: '1.5', features: ['samples_index_build'] });
+      }
       if (url.includes('/v1/tasks/')) {
         buildSeen.push(get(files).openFiles.find((f) => f.path === path)?.indexBuild);
         return json(200, {
