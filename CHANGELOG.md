@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Each open file keeps its time range: when it opens, a backend that
+  lists `time_range` is asked `GET /v1/time-range` for it once, and asked
+  again when a line index build for the file ends, or after the first
+  window of a compressed file whose range waited for its index. A failed
+  call never holds up the file. Nothing shows the range yet.
+
 ### Changed
 
 - The viewer reads which optional features a backend serves from the

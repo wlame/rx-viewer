@@ -39,6 +39,7 @@ function openFile(overrides: Partial<OpenFile>): OpenFile {
     selectedAnomalyCategory: null,
     anchorLine: 1,
     indexBuild: null,
+    timeRange: null,
     ...overrides,
   };
 }

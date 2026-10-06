@@ -8,6 +8,7 @@ import type {
   IndexResponse,
   IndexTaskResponse,
   DetectorsResponse,
+  TimeRangeResponse,
 } from './types';
 import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
 import { getApiToken, tokenRequired } from './utils/apiToken';
@@ -211,6 +212,16 @@ export const api = {
       params.set('context', context.toString());
     }
     return fetchSamples(`${API_BASE}/samples?${params}`, options);
+  },
+
+  /**
+   * When a file's first and last timestamped lines were written, and how
+   * the file writes a time. Check `backendHas('time_range')` first.
+   * @param path - File path
+   */
+  async getTimeRange(path: string, options?: RequestOptions): Promise<TimeRangeResponse> {
+    const params = new URLSearchParams({ path });
+    return fetchJson<TimeRangeResponse>(`${API_BASE}/time-range?${params}`, options);
   },
 
   /**

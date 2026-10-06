@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { contractGate } from '../contractGate';
 import { loadSamples } from '../samplesWait';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
@@ -7,8 +8,16 @@ import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
 import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
-import type { OpenFile, FileMatch, IndexBuild, IndexResponse, SamplesResponse } from '../types';
+import type {
+  OpenFile,
+  FileMatch,
+  IndexBuild,
+  IndexResponse,
+  SamplesResponse,
+  TimeRangeResponse,
+} from '../types';
 import { commandLog } from './commands';
+import { backendHas } from './health';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
 
@@ -22,6 +31,9 @@ import { forgetPane } from './paneMemory';
  * one tab does not cancel another tab's.
  */
 const fileLoads = new LatestRequestMap();
+
+/** The time-range request of each open file; a newer one supersedes an older one. */
+const timeRangeLoads = new LatestRequestMap();
 
 /**
  * The first and last loaded line of a window, and whether paging may go
@@ -122,6 +134,50 @@ function createFilesStore() {
   }
 
   /**
+   * Ask the backend for a file's time range and keep it on the file,
+   * superseding any ask still out for it. A backend that does not list
+   * `time_range` is asked nothing. The features are known once the
+   * contract gate opens: a file named in the link opens before the
+   * first `/health` answer. A failed call leaves the range as it was
+   * (null for a file that has none yet); the file opens all the same.
+   */
+  async function loadTimeRange(path: string) {
+    try {
+      const range = await timeRangeLoads.run(path, async (signal) => {
+        await contractGate.pass(signal);
+        if (!backendHas('time_range')) return null;
+        return api.getTimeRange(path, { signal });
+      });
+      if (range === SUPERSEDED || range === null) return;
+      setTimeRange(path, range);
+    } catch (e) {
+      if (isAbortError(e)) return;
+      console.debug('File time range fetch failed (non-critical):', path, e);
+    }
+  }
+
+  /** Keep a time range on the file it belongs to; a file that is not open is left alone. */
+  function setTimeRange(path: string, timeRange: TimeRangeResponse) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, timeRange } : f)),
+    }));
+  }
+
+  /**
+   * Whether a file's first window should be followed by another ask for
+   * its range. The backend builds the line index of every compressed file
+   * it reads, sometimes inside the samples answer with no build to
+   * follow, and a compressed file's range is unknown (`source: none`)
+   * until it has that index.
+   */
+  function rangeWaitsForIndex(path: string): boolean {
+    const file = get({ subscribe }).openFiles.find((f) => f.path === path);
+    if (!file || !file.isCompressed) return false;
+    return file.timeRange === null || file.timeRange.source === 'none';
+  }
+
+  /**
    * Take a file's line count and anomalies from its index. A file that is
    * not open is left alone.
    */
@@ -198,6 +254,7 @@ function createFilesStore() {
       selectedAnomalyCategory: null,
       anchorLine: scrollToLine ?? 1,
       indexBuild: null,
+      timeRange: null,
     };
 
     // Add file to the end and make it active
@@ -209,6 +266,8 @@ function createFilesStore() {
 
     // Fetch file index in background to get total line count and anomalies
     fetchFileIndex(path, isIndexed);
+    // The time range loads beside the window and never holds it up.
+    void loadTimeRange(path);
 
     // Load initial content
     if (scrollToLine) {
@@ -218,6 +277,8 @@ function createFilesStore() {
       // When opening a file, always start from line 1
       await loadLinesFromStart(path, LINES_PER_PAGE);
     }
+
+    if (rangeWaitsForIndex(path)) void loadTimeRange(path);
   }
 
   /**
@@ -265,7 +326,12 @@ function createFilesStore() {
     return {
       signal,
       onIndexBuild: (build: IndexBuild | null) => showIndexBuild(path, build),
-      onIndexBuilt: (index: IndexResponse) => applyIndex(path, index),
+      onIndexBuilt: (index: IndexResponse) => {
+        applyIndex(path, index);
+        // The range may now come from the index: a compressed file's
+        // range is known only from there.
+        void loadTimeRange(path);
+      },
     };
   }
 
@@ -560,6 +626,7 @@ function createFilesStore() {
   function closeFile(path: string) {
     // Cancel anything still loading for this file and drop its slot.
     fileLoads.forget(path);
+    timeRangeLoads.forget(path);
     forgetPane(path);
 
     update((s) => ({

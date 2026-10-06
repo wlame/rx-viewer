@@ -17,6 +17,16 @@ type Schemas = components['schemas'];
  */
 export type HealthResponse = Schemas['HealthResponse'];
 
+/**
+ * `GET /v1/time-range`: when a file's first and last timestamped lines
+ * were written, as UTC instants in ms, with what the viewer needs to show
+ * a time the way the file writes it (`format`, `example`, `day_first`,
+ * `display_zone`). `format` is null for a file without timestamps, and
+ * `first_ms`/`last_ms` are null while they are unknown (`source: none`
+ * for a compressed file that has no line index yet).
+ */
+export type TimeRangeResponse = Schemas['TimeRangeResponse'];
+
 /** One file or directory in a `GET /v1/tree` listing; `type` is `file` or `directory`. */
 export type TreeEntry = Schemas['TreeEntry'];
 
@@ -205,6 +215,12 @@ export interface OpenFile {
    * null. Set while the backend answers 202 (`samplesWait.ts`).
    */
   indexBuild: IndexBuild | null;
+  /**
+   * The file's time range, asked once when the file opens and again when
+   * a line index build for it ends; null while unknown, when the call
+   * failed, and for a backend that does not list `time_range`.
+   */
+  timeRange: TimeRangeResponse | null;
 }
 
 /** Match info for highlighting in file viewer */

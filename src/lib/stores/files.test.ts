@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
+import { contractGate } from '../contractGate';
 import { commandLog } from './commands';
 import { files } from './files';
 import { health } from './health';
@@ -30,7 +31,7 @@ function setLocation(search: string) {
  * `-1` is the last line, and the answer is keyed by that line. The
  * requested context is echoed back unchanged.
  */
-function serveFileOf(lineCount: number, { withCommand = false } = {}) {
+function serveFileOf(lineCount: number, { withCommand = false, compressed = false } = {}) {
   const spy = vi.fn(async (url: string) => {
     const params = new URL(url, 'http://localhost').searchParams;
     const lines = params.get('lines') ?? '';
@@ -60,8 +61,8 @@ function serveFileOf(lineCount: number, { withCommand = false } = {}) {
       after_context: context,
       lines: {},
       offsets: {},
-      is_compressed: false,
-      compression_format: null,
+      is_compressed: compressed,
+      compression_format: compressed ? 'gzip' : null,
       cli_command: withCommand ? `rx samples ${params.get('path')} --lines=${lines}` : null,
     };
     return {
@@ -477,5 +478,246 @@ describe('a file whose line index is being built', () => {
     expect(file.totalLines).toBe(5000);
     expect(markIndexed).toHaveBeenCalledWith(path, 5000);
     markIndexed.mockRestore();
+  });
+});
+
+/** A JSON answer as `fetch` gives it. */
+function jsonAnswer(status: number, body: unknown) {
+  return {
+    ok: status < 400,
+    status,
+    statusText: status === 202 ? 'Accepted' : status < 400 ? 'OK' : 'Internal Server Error',
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+/** rx-go's `GET /v1/time-range` answer for the playground's middleware.log, under `path`. */
+function middlewareRange(path: string, source: 'index' | 'scan' | 'none' = 'scan') {
+  const known = source !== 'none';
+  return {
+    path,
+    format: 'iso',
+    has_zone: false,
+    day_first: null,
+    display_zone: 'UTC',
+    example: '2025-12-10 07:00:04.574',
+    first_ms: known ? 1765350004574 : null,
+    last_ms: known ? 1765353604390 : null,
+    source,
+    cli_command: `rx time-range ${path}`,
+  };
+}
+
+/** Lets every pending answer and the store updates after it run. */
+function settle() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('the time range of an open file', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(async () => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    // The health store is shared: leave it with no features for the next test.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
+    );
+    await health.check();
+    contractGate.reset();
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A backend listing `features` that serves a file of `lineCount`
+   * `LINE <n>` lines, its line index build when `building`, and each
+   * `GET /v1/time-range` with the next of `ranges` (the last one
+   * repeats). `rangeAsks` counts the time-range requests.
+   */
+  async function serveBackend(options: {
+    features: string[];
+    ranges: (path: string) => { status: number; body: unknown }[];
+    lineCount?: number;
+    compressed?: boolean;
+    building?: boolean;
+    /** Whether /health is asked now; false leaves the first answer to the test. */
+    answerHealth?: boolean;
+  }) {
+    const {
+      features,
+      ranges,
+      lineCount = 50,
+      compressed = false,
+      building = false,
+      answerHealth = true,
+    } = options;
+    const serveLines = serveFileOf(lineCount, { compressed }).getMockImplementation()!;
+    let rangeAsks = 0;
+    let samplesAsked = 0;
+    const spy = vi.fn(async (url: string) => {
+      if (url.startsWith('/health')) return jsonAnswer(200, { contract_version: '1.5', features });
+      const params = new URL(url, 'http://localhost').searchParams;
+      const path = params.get('path') ?? '';
+      if (url.includes('/v1/time-range')) {
+        const answers = ranges(path);
+        const { status, body } = answers[Math.min(rangeAsks++, answers.length - 1)];
+        return jsonAnswer(status, body);
+      }
+      if (url.includes('/v1/tasks/')) {
+        return jsonAnswer(200, {
+          task_id: 't1',
+          status: 'completed',
+          path,
+          operation: 'index',
+          started_at: null,
+          completed_at: null,
+          error: null,
+          progress: 1,
+          result: { line_index: [[1, 0]], line_count: lineCount, anomalies: null },
+        });
+      }
+      if (url.includes('/v1/samples') && building && samplesAsked++ === 0) {
+        return jsonAnswer(202, {
+          task_id: 't1',
+          status: 'running',
+          message: 'Building the line index',
+          path,
+          started_at: null,
+        });
+      }
+      return serveLines(url);
+    });
+    vi.stubGlobal('fetch', spy);
+    if (answerHealth) await health.check();
+    return { spy, rangeAsks: () => rangeAsks };
+  }
+
+  it('asks for the range once when the file opens and keeps it on the file', async () => {
+    const path = '/logs/middleware.log';
+    const { rangeAsks } = await serveBackend({
+      features: ['time_range'],
+      ranges: (p) => [{ status: 200, body: middlewareRange(p) }],
+    });
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+    await files.openFile(path);
+    await settle();
+
+    expect(openedFile(path).timeRange).toEqual(middlewareRange(path));
+    expect(rangeAsks()).toBe(1);
+  });
+
+  it('asks nothing of a backend that does not list time_range', async () => {
+    const path = '/logs/middleware.log';
+    const { rangeAsks } = await serveBackend({
+      features: ['samples_index_build'],
+      ranges: (p) => [{ status: 200, body: middlewareRange(p) }],
+    });
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    expect(openedFile(path).timeRange).toBeNull();
+    expect(rangeAsks()).toBe(0);
+  });
+
+  it('leaves the range null and opens the file when the call fails', async () => {
+    const path = '/logs/middleware.log';
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    await serveBackend({
+      features: ['time_range'],
+      ranges: () => [{ status: 500, body: { detail: 'boom' } }],
+    });
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    const file = openedFile(path);
+    expect(file.timeRange).toBeNull();
+    expect(file.error).toBeNull();
+    expect(lineNumbers(path)[0]).toBe(1);
+    expect(debug).toHaveBeenCalledWith(
+      'File time range fetch failed (non-critical):',
+      path,
+      expect.anything(),
+    );
+    debug.mockRestore();
+  });
+
+  it('asks again when a line index build for the file ends', async () => {
+    const path = '/logs/big.log';
+    const { rangeAsks } = await serveBackend({
+      features: ['time_range', 'samples_index_build'],
+      ranges: (p) => [
+        { status: 200, body: middlewareRange(p, 'scan') },
+        { status: 200, body: middlewareRange(p, 'index') },
+      ],
+      building: true,
+    });
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    expect(openedFile(path).timeRange?.source).toBe('index');
+    expect(rangeAsks()).toBe(2);
+  });
+
+  it('asks again after the first window of a compressed file whose range waited for its index', async () => {
+    // The backend indexes every compressed file it reads; a small one is
+    // indexed inside the samples answer, with no build to follow.
+    const path = '/logs/small.log.gz';
+    const { rangeAsks } = await serveBackend({
+      features: ['time_range', 'samples_index_build'],
+      ranges: (p) => [
+        { status: 200, body: middlewareRange(p, 'none') },
+        { status: 200, body: middlewareRange(p, 'index') },
+      ],
+      compressed: true,
+    });
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    expect(openedFile(path).timeRange).toEqual(middlewareRange(path, 'index'));
+    expect(rangeAsks()).toBe(2);
+  });
+
+  it('asks once for a compressed file whose range is already known', async () => {
+    const path = '/logs/app.log.zst';
+    const { rangeAsks } = await serveBackend({
+      features: ['time_range'],
+      ranges: (p) => [{ status: 200, body: middlewareRange(p, 'scan') }],
+      compressed: true,
+    });
+
+    files.openFile(path, { isIndexed: false });
+    await settle();
+    await settle();
+
+    expect(openedFile(path).timeRange?.source).toBe('scan');
+    expect(rangeAsks()).toBe(1);
+  });
+
+  it('asks for the range of a file opened before the first /health answer', async () => {
+    // A file named in the link opens while the app's first /health is out.
+    const path = '/logs/middleware.log';
+    contractGate.hold();
+    const { rangeAsks } = await serveBackend({
+      features: ['time_range'],
+      ranges: (p) => [{ status: 200, body: middlewareRange(p) }],
+      answerHealth: false,
+    });
+
+    const opening = files.openFile(path, { isIndexed: false });
+    await settle();
+    expect(rangeAsks()).toBe(0);
+    await health.check();
+    await opening;
+    await settle();
+
+    expect(openedFile(path).timeRange).toEqual(middlewareRange(path));
+    expect(rangeAsks()).toBe(1);
   });
 });
