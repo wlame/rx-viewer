@@ -96,7 +96,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get context lines around byte offsets or line numbers
+         * Get context lines around byte offsets, line numbers or times
          * @description Use this endpoint to view actual content around matches from /v1/trace.
          */
         get: operations["samples"];
@@ -479,7 +479,24 @@ export interface components {
             samples: {
                 [key: string]: string[] | null;
             };
+            /** @description The file's timestamp format, in every mode; null when no format is recognized in the first mebibyte of its text. */
+            time_format: components["schemas"]["SamplesTimeFormat"];
+            /** @description Each time query of a timestamps request mapped to the line it found: the first line whose own timestamp is at or after the time, or a range's first line; -1 when there is none (its sample is null). Empty in the other modes. */
+            timestamps: {
+                [key: string]: number;
+            };
         };
+        SamplesTimeFormat: {
+            /** @description The zone a timestamp without one is read in: RX_LOG_TZ (default UTC) for a file whose timestamps carry no zone, UTC for one whose timestamps do. */
+            assumed_zone: string;
+            /**
+             * @description The timestamp format of the lines.
+             * @enum {string}
+             */
+            format: "iso" | "clf" | "ctime" | "syslog" | "slash" | "dotted" | "epoch";
+            /** @description Whether most timestamps carry a zone. */
+            has_zone: boolean;
+        } | null;
         SandboxError: {
             /** @description Machine code, repeated from error for single-key clients. */
             detail: string;
@@ -980,6 +997,8 @@ export interface operations {
                 offsets?: string;
                 /** @description Comma-separated 1-based line numbers or ranges */
                 lines?: string;
+                /** @description A time or time range (T, T1..T2, ..T2, T1..); repeat the parameter for several, at most 1000. Each answers the first line whose own timestamp is at or after the time, with context, or a range's lines without context. A value is never split at commas. */
+                timestamps?: string[] | null;
                 /** @description Context lines before AND after each offset (-1 = default 3) */
                 context?: number;
                 /** @description Context lines before each offset (-1 = default 3) */

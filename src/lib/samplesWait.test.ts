@@ -21,6 +21,8 @@ const SAMPLES: SamplesResponse = {
   is_compressed: false,
   compression_format: null,
   cli_command: `rx samples ${PATH} --lines=5`,
+  timestamps: {},
+  time_format: null,
 };
 
 function building(taskId = 't1'): SamplesAnswer {
