@@ -17,6 +17,7 @@ export const SHORTCUT_SCOPES = {
   filePane: 'In the open file',
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
+  timeline: 'On the timeline bar',
   openPanel: 'While a panel is open',
 } as const;
 
@@ -52,6 +53,12 @@ export type ShortcutId =
   | 'applyFilter'
   | 'closeFilter'
   | 'openTreeItem'
+  | 'timelineStep'
+  | 'timelineBigStep'
+  | 'timelineEnds'
+  | 'timelineJump'
+  | 'timelineCancel'
+  | 'timelineScrub'
   | 'closeHistory'
   | 'closeAnalysis';
 
@@ -73,6 +80,8 @@ const MOD_LABEL = '⌘/Ctrl';
 const KEY_LABELS: Readonly<Record<string, string>> = {
   Escape: 'Esc',
   ' ': 'Space',
+  ArrowLeft: '←',
+  ArrowRight: '→',
 };
 
 /** The help dialog's label for a key press. */
@@ -209,6 +218,45 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'filterField',
     description: 'Close the filter bar (an applied filter stays)',
     chord: { key: 'Escape' },
+  },
+  {
+    id: 'timelineStep',
+    scope: 'timeline',
+    description: 'Move the time by 1/200 of the bar, to a whole second',
+    chord: { key: 'ArrowLeft', shift: false },
+    otherChords: [{ key: 'ArrowRight', shift: false }],
+  },
+  {
+    id: 'timelineBigStep',
+    scope: 'timeline',
+    description: 'Move the time by 1/20 of the bar, to a whole second',
+    chord: { key: 'ArrowLeft', shift: true },
+    otherChords: [{ key: 'ArrowRight', shift: true }],
+  },
+  {
+    id: 'timelineEnds',
+    scope: 'timeline',
+    description: 'Move the time to the start or the end of the bar',
+    chord: { key: 'Home' },
+    otherChords: [{ key: 'End' }],
+  },
+  {
+    id: 'timelineJump',
+    scope: 'timeline',
+    description: 'Go to that time in the open file (also in the Go to time box)',
+    chord: { key: 'Enter' },
+  },
+  {
+    id: 'timelineCancel',
+    scope: 'timeline',
+    description: 'Put the time back where the open file is',
+    chord: { key: 'Escape' },
+  },
+  {
+    id: 'timelineScrub',
+    scope: 'timeline',
+    description: 'Go to the time under the pointer when the button is released',
+    gesture: 'Drag or click',
   },
   {
     id: 'closeHistory',

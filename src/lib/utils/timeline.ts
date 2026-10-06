@@ -103,6 +103,37 @@ export function timelineBands(
   return bands;
 }
 
+/** Where the bands sit, one lane per file: each lane's top and the height they take, in px. */
+export interface LaneLayout {
+  bandHeight: number;
+  tops: number[];
+  height: number;
+}
+
+/**
+ * The lane sizes by the number of lanes: the bands thin as files are
+ * added, so the lanes stay inside the bar. Files past the last row's
+ * count share the lanes from the first one again.
+ */
+const LANE_SIZES: readonly { upTo: number; bandHeight: number; gap: number }[] = [
+  { upTo: 3, bandHeight: 3, gap: 2 },
+  { upTo: 6, bandHeight: 2, gap: 1 },
+  { upTo: 10, bandHeight: 1, gap: 1 },
+];
+
+/**
+ * The lanes of `count` bands. Files whose spans overlap, such as two
+ * logs of the same hour, are each seen in a lane of their own.
+ */
+export function laneLayout(count: number): LaneLayout {
+  const largest = LANE_SIZES[LANE_SIZES.length - 1];
+  const size = LANE_SIZES.find((row) => count <= row.upTo) ?? largest;
+  const lanes = Math.max(1, Math.min(count, largest.upTo));
+  const pitch = size.bandHeight + size.gap;
+  const tops = Array.from({ length: count }, (_, i) => (i % lanes) * pitch);
+  return { bandHeight: size.bandHeight, tops, height: lanes * pitch - size.gap };
+}
+
 /** A keyboard move along the axis. */
 export type TimelineStep = 'earlier' | 'later' | 'muchEarlier' | 'muchLater' | 'start' | 'end';
 

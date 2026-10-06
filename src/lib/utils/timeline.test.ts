@@ -5,6 +5,7 @@ import {
   fractionOf,
   instantAt,
   isPointAxis,
+  laneLayout,
   steppedInstant,
   timelineAxis,
   timelineBands,
@@ -214,5 +215,31 @@ describe('effectiveTimeAt', () => {
     expect(effectiveTimeAt(before, 2)).toBe(100);
     expect(effectiveTimeAt(after, 1003)).toBe(5_000);
     expect(effectiveTimeAt(after, 1001)).toBeNull();
+  });
+});
+
+describe('laneLayout', () => {
+  it('gives one file a 3 px lane', () => {
+    expect(laneLayout(1)).toEqual({ bandHeight: 3, tops: [0], height: 3 });
+  });
+
+  it('stacks files that share an hour in lanes with a gap', () => {
+    expect(laneLayout(2)).toEqual({ bandHeight: 3, tops: [0, 5], height: 8 });
+  });
+
+  it('thins the lanes as files are added and stays under 20 px', () => {
+    for (let count = 1; count <= 30; count++) {
+      const { height, tops, bandHeight } = laneLayout(count);
+      expect(height).toBeLessThanOrEqual(20);
+      expect(tops).toHaveLength(count);
+      expect(bandHeight).toBeGreaterThan(0);
+    }
+    expect(laneLayout(6).bandHeight).toBe(2);
+  });
+
+  it('puts the files past the last lane back in the first lanes', () => {
+    const { tops } = laneLayout(12);
+    expect(tops[10]).toBe(tops[0]);
+    expect(tops[11]).toBe(tops[1]);
   });
 });

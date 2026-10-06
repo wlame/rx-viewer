@@ -48,6 +48,7 @@ describe('KeyboardShortcuts help', () => {
   it.each([
     ['the file tree', 'Enter or Space'],
     ['a panel is open', 'Esc'],
+    ['the timeline bar', 'Shift+← or Shift+→'],
   ])('lists the keys used in %s', async (scopeWords, label) => {
     const { target } = await openHelp();
 

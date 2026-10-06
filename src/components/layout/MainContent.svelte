@@ -1,8 +1,10 @@
 <script lang="ts">
   import { files } from '$lib/stores';
-  import { activeOpenFile } from '$lib/stores/files';
+  import { activeOpenFile, type TimeQuery } from '$lib/stores/files';
+  import { backendHas, health } from '$lib/stores/health';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
+  import TimelineBar from './TimelineBar.svelte';
 
   let draggedIndex: number | null = null;
   let dragOverIndex: number | null = null;
@@ -10,6 +12,12 @@
   // The same rule picks the file the URL names, so the two cannot differ.
   $: activeFile = activeOpenFile($files);
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
+
+  /** A jump from the timeline bar moves the file the editor shows. */
+  async function jumpActiveFileToTime(query: TimeQuery) {
+    if (!activeFile) return { kind: 'unsupported' } as const;
+    return files.jumpToTime(activeFile.path, query);
+  }
 
   function selectTab(index: number) {
     const file = $files.openFiles[index];
@@ -149,6 +157,13 @@
         </button>
       {/each}
     </div>
+
+    <TimelineBar
+      openFiles={$files.openFiles}
+      {activeFile}
+      canJump={backendHas('samples_timestamps', $health)}
+      jump={jumpActiveFileToTime}
+    />
 
     <!-- The active file's editor, built again for each tab so no state of one
          tab reaches another; each tab's own state is kept in paneMemory. -->

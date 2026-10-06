@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again when a line index build for the file ends, or after the first
   window of a compressed file whose range waited for its index. A failed
   call never holds up the file. Nothing shows the range yet.
+- A timeline bar under the tab strip, shown when the backend lists
+  `samples_timestamps` and an open file has timestamps: one time axis
+  from the earliest first time to the latest last time of the open
+  files, a thin band for each file (the active one highlighted, its
+  path on hover), and a thumb at the active file's position, the time of
+  its anchor line. Hovering shows the time under the pointer, dragging a
+  live time, both written the way the active file writes its
+  timestamps; releasing or clicking moves the active file to the first
+  line at or after that time. The focused bar takes ←/→ (1/200 of the
+  axis), Shift+←/→ (1/20), Home/End and Enter, stepping to whole
+  seconds. The Go to time box beside it sends what is typed (a full
+  timestamp, a time of day, a timestamp pasted from a line) as it is,
+  and shows the backend's message when it refuses the value.
 - A link can name a time: `time=2025-12-10T07:30:00.000Z` (RFC 3339 in
   UTC with milliseconds) with no `line` opens the file at the first line
   at or after that instant, asked of a backend that lists

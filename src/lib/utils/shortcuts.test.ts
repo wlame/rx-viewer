@@ -198,6 +198,19 @@ describe('the shortcut list', () => {
   it.each([
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
     ['openPanel', 'While a panel is open', ['closeHistory', 'closeAnalysis'], ['Esc', 'Esc']],
+    [
+      'timeline',
+      'On the timeline bar',
+      [
+        'timelineStep',
+        'timelineBigStep',
+        'timelineEnds',
+        'timelineJump',
+        'timelineCancel',
+        'timelineScrub',
+      ],
+      ['← or →', 'Shift+← or Shift+→', 'Home or End', 'Enter', 'Esc', 'Drag or click'],
+    ],
   ])('lists the %s keys in their own group', (scope, title, ids, labels) => {
     const group = shortcutsByScope().find((g) => g.scope === scope);
 
