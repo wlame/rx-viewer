@@ -13,6 +13,28 @@ import { formatInFileLayout } from './timeFormat';
 /** What the timeline needs to know of an open file. */
 export type TimelineFile = Pick<OpenFile, 'timeRange'>;
 
+/** What the time features read about a file's line index. */
+export type PendingIndexFile = Pick<OpenFile, 'name' | 'pendingIndex'>;
+
+/** Why the time features are off while a file has no line index, by the reason. */
+const PENDING_INDEX_REASONS: Record<
+  NonNullable<OpenFile['pendingIndex']>,
+  (name: string) => string
+> = {
+  building: (name) => `The line index of ${name} is being built`,
+  failed: (name) => `The line index of ${name} could not be built`,
+};
+
+/**
+ * Why the timeline, the Go to time box and the stash cannot jump `file`
+ * yet: it wants a line index and has none. Null when they can, and
+ * without a file.
+ */
+export function pendingIndexReason(file: PendingIndexFile | undefined): string | null {
+  if (!file?.pendingIndex) return null;
+  return PENDING_INDEX_REASONS[file.pendingIndex](file.name);
+}
+
 /** The span of the axis, as UTC instants in ms; `startMs <= endMs`. */
 export interface TimeAxis {
   startMs: number;

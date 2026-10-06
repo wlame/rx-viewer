@@ -228,6 +228,19 @@ export interface OpenFile {
    */
   indexBuild: IndexBuild | null;
   /**
+   * Why the file has no line index it needs yet: `building` while a
+   * build runs (a samples answer named one, or a load waits for one),
+   * `failed` when the build followed in the background failed; null
+   * when it has its index or needs none. Jumps by time stay off while
+   * it is set. Only an index clears it.
+   */
+  pendingIndex: 'building' | 'failed' | null;
+  /**
+   * The build of the file's line index that a samples answer named and
+   * the file follows in the background while its lines show, or null.
+   */
+  backgroundIndexBuild: IndexBuild | null;
+  /**
    * The file's time range, asked once when the file opens and again when
    * a line index build for it ends; null while unknown, when the call
    * failed, and for a backend that does not list `time_range`.

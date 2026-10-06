@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { api, ApiError } from '../api';
 import { contractGate } from '../contractGate';
+import { IndexBuildFollows } from '../indexBuildFollows';
 import { loadSamples, loadSamplesByTime } from '../samplesWait';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
@@ -9,6 +10,7 @@ import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/sampleWindow';
 import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
+import { taskPolls } from '../utils/taskPolling';
 import type {
   OpenFile,
   FileMatch,
@@ -23,6 +25,7 @@ import { backendHas } from './health';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
 import { timeCursor } from './timeCursor';
+import { tree } from './tree';
 
 /**
  * A time to jump to: an instant (UTC ms), sent as RFC 3339 with ms and
@@ -43,6 +46,9 @@ const fileLoads = new LatestRequestMap();
 
 /** The time-range request of each open file; a newer one supersedes an older one. */
 const timeRangeLoads = new LatestRequestMap();
+
+/** The line index build each open file follows in the background. */
+const indexFollows = new IndexBuildFollows(taskPolls);
 
 /** The status of the backend's refusal of a request it cannot read, such as an unknown `file_tz`. */
 const HTTP_BAD_REQUEST = 400;
@@ -307,14 +313,18 @@ function createFilesStore() {
   function rangeWaitsForIndex(path: string): boolean {
     const file = get({ subscribe }).openFiles.find((f) => f.path === path);
     if (!file || !file.isCompressed) return false;
+    // A build followed in the background asks for the range when it ends.
+    if (file.pendingIndex === 'building') return false;
     return file.timeRange === null || file.timeRange.source === 'none';
   }
 
   /**
    * Take a file's line count and anomalies from its index. A file that is
-   * not open is left alone.
+   * not open is left alone. The file waits for no index any more: a build
+   * it followed in the background is no longer followed.
    */
   function applyIndex(path: string, indexData: IndexResponse) {
+    indexFollows.stop(path);
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
@@ -324,6 +334,8 @@ function createFilesStore() {
           totalLines: indexData.line_count ?? f.totalLines,
           isIndexed: true,
           fileType: indexData.file_type ?? f.fileType,
+          pendingIndex: null,
+          backgroundIndexBuild: null,
           anomalies: indexData.anomalies ?? null,
           anomalySummary: countAnomaliesByCategory(indexData.anomalies),
         };
@@ -390,6 +402,8 @@ function createFilesStore() {
       selectedAnomalyCategory: null,
       anchorLine: scrollToLine ?? 1,
       indexBuild: null,
+      pendingIndex: null,
+      backgroundIndexBuild: null,
       timeRange: null,
       isReadingTimeRange: false,
       timeJump: null,
@@ -455,15 +469,57 @@ function createFilesStore() {
     }));
   }
 
+  /** Set some fields of the open file `path`; a file that is not open is left alone. */
+  function setFileFields(path: string, fields: Partial<OpenFile>) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, ...fields } : f)),
+    }));
+  }
+
+  /**
+   * Follow the line index build a samples answer for `path` names, while
+   * the file shows its lines: the file is marked as waiting for its index
+   * and shows the build's progress. When the build ends the index is
+   * applied as after an Index from the tree's menu, and the file's time
+   * range is asked again; a failed build is said in a quiet notice and the
+   * file stays without an index. An answer that names no build changes
+   * nothing: only an index ends the wait.
+   */
+  function followIndexBuild(path: string, response: SamplesResponse) {
+    // A backend older than the field leaves it out.
+    const build = response.index_build ?? null;
+    if (build === null || !isOpen(path)) return;
+    setFileFields(path, { pendingIndex: 'building' });
+    indexFollows.follow(path, build.task_id, {
+      onStatus: (progress) => setFileFields(path, { backgroundIndexBuild: progress }),
+      onBuilt: (index) => {
+        tree.markIndexed(path, index.line_count ?? null);
+        applyIndex(path, index);
+        void loadTimeRange(path);
+      },
+      onFailed: (error) => {
+        setFileFields(path, { pendingIndex: 'failed', backgroundIndexBuild: null });
+        const name = path.split('/').pop() ?? path;
+        const reason = error instanceof Error ? error.message : String(error);
+        notifications.info(`The line index of ${name} could not be built: ${reason}`);
+      },
+    });
+  }
+
   /**
    * The options of a window load of `path`: its signal, the build it may
    * wait for, and the index that build leaves, which gives the file its
-   * line count and anomalies as an Index from the tree's menu does.
+   * line count and anomalies as an Index from the tree's menu does. A
+   * load that waits for a build marks the file as waiting for its index.
    */
   function loadOptions(path: string, signal: AbortSignal) {
     return {
       signal,
-      onIndexBuild: (build: IndexBuild | null) => showIndexBuild(path, build),
+      onIndexBuild: (build: IndexBuild | null) => {
+        showIndexBuild(path, build);
+        if (build !== null) setFileFields(path, { pendingIndex: 'building' });
+      },
       onIndexBuilt: (index: IndexResponse) => {
         applyIndex(path, index);
         // The range may now come from the index: a compressed file's
@@ -507,6 +563,7 @@ function createFilesStore() {
           : f,
       ),
     }));
+    followIndexBuild(path, response);
   }
 
   /**
@@ -645,6 +702,7 @@ function createFilesStore() {
           };
         }),
       }));
+      followIndexBuild(path, response);
     } catch (e) {
       // A superseded load was cancelled on purpose. The load that
       // replaced this one owns the loading flag now.
@@ -860,6 +918,7 @@ function createFilesStore() {
     // Cancel anything still loading for this file and drop its slot.
     fileLoads.forget(path);
     timeRangeLoads.forget(path);
+    indexFollows.stop(path);
     forgetPane(path);
 
     update((s) => ({

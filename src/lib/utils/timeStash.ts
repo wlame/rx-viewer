@@ -1,5 +1,11 @@
 import type { OpenFile } from '../types';
-import { hasTimeFormat, sideOfAxis, timelineAxis, type TimeAxis } from './timeline';
+import {
+  hasTimeFormat,
+  pendingIndexReason,
+  sideOfAxis,
+  timelineAxis,
+  type TimeAxis,
+} from './timeline';
 
 /**
  * The timestamps stash: up to seven moments a user saved from the time
@@ -66,7 +72,7 @@ export function normalizeStash(instants: readonly number[]): number[] {
 }
 
 /** What the stash needs to know of the file a jump would move. */
-export type StashFile = Pick<OpenFile, 'name' | 'timeRange'>;
+export type StashFile = Pick<OpenFile, 'name' | 'timeRange' | 'pendingIndex'>;
 
 /** Whether an entry can jump the active file, and why not when it cannot. */
 export type StashEntryState = { isEnabled: true } | { isEnabled: false; reason: string };
@@ -91,6 +97,10 @@ const DISABLED_WHEN: readonly {
 }[] = [
   { applies: (e) => e.file === undefined, reason: () => 'Open a file to go to this time' },
   { applies: (e) => !e.canJump, reason: () => 'The backend cannot jump to a time' },
+  {
+    applies: (e) => pendingIndexReason(e.file) !== null,
+    reason: (e) => pendingIndexReason(e.file) ?? '',
+  },
   {
     applies: (e) => e.file?.timeRange === null,
     reason: (e) => `The time range of ${e.name} is not known yet`,

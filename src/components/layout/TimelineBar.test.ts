@@ -52,6 +52,8 @@ function openFile(path: string, overrides: Partial<OpenFile> = {}): OpenFile {
     anchorLine: 1,
     indexBuild: null,
     fileType: null,
+    pendingIndex: null,
+    backgroundIndexBuild: null,
     timeRange: null,
     isReadingTimeRange: false,
     timeJump: null,
@@ -431,6 +433,75 @@ describe('TimelineBar text box', () => {
     await typeAndEnter(target, '');
 
     expect(jump).not.toHaveBeenCalled();
+  });
+});
+
+describe('TimelineBar while the line index is built', () => {
+  const building = (file: OpenFile) => ({
+    ...file,
+    lines: stampedLines(1, [HOUR_START]),
+    anchorLine: 1,
+    pendingIndex: 'building' as const,
+  });
+
+  it('shows the axis but neither scrubs nor jumps, and says why', async () => {
+    const { target, jump } = mount({ activeFile: building(middleware) });
+    const slider = sliderOf(target);
+
+    expect(slider.getAttribute('aria-disabled')).toBe('true');
+    expect(slider.title).toBe('The line index of middleware.log is being built');
+    await pointer(slider, 'pointerdown', TRACK_WIDTH / 2);
+    await pointer(slider, 'pointerup', TRACK_WIDTH / 2);
+    await keyDown(slider, { key: 'End' });
+    await keyDown(slider, { key: 'Enter' });
+    await settle();
+
+    expect(jump).not.toHaveBeenCalled();
+  });
+
+  it('disables the Go to time box with the reason', async () => {
+    const { target, jump } = mount({ activeFile: building(middleware) });
+    const input = target.querySelector<HTMLInputElement>('input[aria-label="Go to time"]');
+
+    expect(input?.disabled).toBe(true);
+    expect(input?.title).toBe('The line index of middleware.log is being built');
+    input!.value = '07:30';
+    input!.dispatchEvent(new Event('input', { bubbles: true }));
+    await keyDown(input!, { key: 'Enter' });
+    expect(jump).not.toHaveBeenCalled();
+  });
+
+  it('says the index is being built where a compressed file has no range yet', () => {
+    const unknown = openFile('/logs/core.log.gz', {
+      timeRange: { ...rangeOf('/logs/core.log.gz', 0, 0), first_ms: null, last_ms: null },
+      pendingIndex: 'building',
+    });
+    const { target } = mount({ activeFile: unknown });
+
+    expect(target.querySelector('[data-index-pending]')?.textContent?.trim()).toBe(
+      'The line index of core.log.gz is being built',
+    );
+  });
+
+  it('enables the axis and the box once the index is there', async () => {
+    const { target, jump } = mount({ activeFile: building(middleware) });
+
+    bar?.$set({ activeFile: { ...building(middleware), pendingIndex: null } });
+    await tick();
+    const slider = sliderOf(target);
+    await pointer(slider, 'pointerdown', 0);
+    await pointer(slider, 'pointerup', 0);
+    await settle();
+
+    expect(slider.getAttribute('aria-disabled')).toBe('false');
+    expect(target.querySelector<HTMLInputElement>('input')?.disabled).toBe(false);
+    expect(jump).toHaveBeenCalledWith(HOUR_START);
+  });
+
+  it('says the index could not be built after a failed build', () => {
+    const { target } = mount({ activeFile: { ...building(middleware), pendingIndex: 'failed' } });
+
+    expect(sliderOf(target).title).toBe('The line index of middleware.log could not be built');
   });
 });
 

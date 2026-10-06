@@ -186,6 +186,7 @@
               isCompressed={file.isCompressed}
               compressionFormat={file.compressionFormat}
               isIndexed={null}
+              indexBuild={file.backgroundIndexBuild}
             />
             <button
               class="p-0.5 rounded hover:bg-gh-danger-subtle dark:hover:bg-gh-danger-dark-subtle

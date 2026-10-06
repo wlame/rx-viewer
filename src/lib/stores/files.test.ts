@@ -553,6 +553,7 @@ describe('a file whose line index is being built', () => {
   async function serveAfterABuild(path: string, lineCount: number) {
     const serveLines = serveFileOf(lineCount).getMockImplementation()!;
     const buildSeen: unknown[] = [];
+    const pendingSeen: unknown[] = [];
     let samplesAsked = 0;
     const json = (status: number, body: unknown) => ({
       ok: true,
@@ -567,7 +568,9 @@ describe('a file whose line index is being built', () => {
         return json(200, { contract_version: '1.5', features: ['samples_index_build'] });
       }
       if (url.includes('/v1/tasks/')) {
-        buildSeen.push(get(files).openFiles.find((f) => f.path === path)?.indexBuild);
+        const waiting = get(files).openFiles.find((f) => f.path === path);
+        buildSeen.push(waiting?.indexBuild);
+        pendingSeen.push(waiting?.pendingIndex);
         return json(200, {
           task_id: 't1',
           status: 'completed',
@@ -594,7 +597,7 @@ describe('a file whose line index is being built', () => {
     });
     vi.stubGlobal('fetch', spy);
     await health.check();
-    return { spy, buildSeen, preferSent };
+    return { spy, buildSeen, pendingSeen, preferSent };
   }
 
   it('shows the build while it runs, then loads the window', async () => {
@@ -611,6 +614,16 @@ describe('a file whose line index is being built', () => {
     expect(lineNumbers(path)[0]).toBe(1);
     expect(everyLineReadsItsNumber(path)).toBe(true);
     expect(preferSent).toEqual(['respond-async', 'respond-async']);
+  });
+
+  it('keeps the time features off while it waits for the build, and on after', async () => {
+    const path = '/logs/big.log.gz';
+    const { pendingSeen } = await serveAfterABuild(path, 50);
+
+    await files.openFile(path, { isIndexed: false });
+
+    expect(pendingSeen).toEqual(['building']);
+    expect(openedFile(path).pendingIndex).toBeNull();
   });
 
   it('takes the line count and the indexed mark from the index the build made', async () => {
@@ -870,6 +883,231 @@ describe('the time range of an open file', () => {
     expect(openedFile(path).timeRange).toEqual(middlewareRange(path));
     expect(openedFile(path).isReadingTimeRange).toBe(false);
     expect(rangeAsks()).toBe(1);
+  });
+});
+
+describe('a line index built in the background', () => {
+  /** An instant inside middleware.log's range. */
+  const INSIDE_MS = 1765351000000;
+
+  beforeEach(() => setLocation(''));
+
+  afterEach(async () => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
+    );
+    await health.check();
+    contractGate.reset();
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * rx-go answering from the head of a large file: every samples answer
+   * names the build `t9` until the test ends it with `endBuild`, and the
+   * first status request of the task waits for that end. The time range
+   * comes from a scan (`none` for a compressed file) until the build
+   * ends, and from the index after.
+   */
+  async function serveBuildInBackground(options: { compressed?: boolean; lineCount?: number }) {
+    const { compressed = false, lineCount = 50 } = options;
+    const serveLines = serveFileOf(lineCount, { compressed }).getMockImplementation()!;
+    let isBuilt = false;
+    let rangeAsks = 0;
+    const taskSignals: AbortSignal[] = [];
+    let endTask: (status: 'completed' | 'failed') => void = () => {};
+    const taskEnded = new Promise<'completed' | 'failed'>((resolve) => (endTask = resolve));
+
+    const spy = vi.fn(async (url: string, init?: { signal?: AbortSignal }) => {
+      const params = new URL(url, 'http://localhost').searchParams;
+      const path = params.get('path') ?? '';
+      if (url.startsWith('/health')) {
+        return jsonAnswer(200, {
+          contract_version: '1.6',
+          features: ['samples_index_build', 'time_range', 'samples_timestamps'],
+        });
+      }
+      if (url.includes('/v1/index')) return jsonAnswer(404, { detail: 'no index' });
+      if (url.includes('/v1/time-range')) {
+        rangeAsks++;
+        const source = isBuilt ? 'index' : compressed ? 'none' : 'scan';
+        return jsonAnswer(200, middlewareRange(path, source));
+      }
+      if (url.includes('/v1/tasks/')) {
+        if (init?.signal) taskSignals.push(init.signal);
+        const status = await taskEnded;
+        isBuilt = status === 'completed';
+        return jsonAnswer(200, {
+          task_id: 't9',
+          status,
+          path: '/logs/core.log',
+          operation: 'index',
+          started_at: null,
+          completed_at: null,
+          error: status === 'failed' ? 'no space left on device' : null,
+          progress: 1,
+          result:
+            status === 'completed'
+              ? { line_index: [[1, 0]], line_count: 42_554_368, anomalies: null, file_type: 'text' }
+              : null,
+        });
+      }
+      const answer = await serveLines(url);
+      const body = await answer.json();
+      const indexBuild = isBuilt
+        ? null
+        : {
+            task_id: 't9',
+            status: 'running',
+            path,
+            started_at: null,
+            message: `Building the line index of ${path} in the background`,
+          };
+      return jsonAnswer(200, { ...body, index_build: indexBuild });
+    });
+    vi.stubGlobal('fetch', spy);
+    await health.check();
+    return {
+      spy,
+      taskSignals,
+      rangeAsks: () => rangeAsks,
+      endBuild: async (status: 'completed' | 'failed') => {
+        endTask(status);
+        await settle();
+        await settle();
+      },
+    };
+  }
+
+  function stashInside(path: string) {
+    return stashEntryState(INSIDE_MS, openedFile(path), true);
+  }
+
+  it('shows the lines at once, follows the build and keeps the time features off', async () => {
+    const path = '/logs/core.log';
+    const { taskSignals } = await serveBuildInBackground({});
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    const file = openedFile(path);
+    expect(lineNumbers(path)[0]).toBe(1);
+    expect(file.loading).toBe(false);
+    expect(file.indexBuild).toBeNull();
+    expect(file.pendingIndex).toBe('building');
+    expect(file.backgroundIndexBuild).toEqual({ taskId: 't9', progress: null });
+    expect(file.timeRange?.source).toBe('scan');
+    expect(taskSignals).toHaveLength(1);
+    expect(stashInside(path)).toEqual({
+      isEnabled: false,
+      reason: 'The line index of core.log is being built',
+    });
+  });
+
+  it('applies the index when the build ends, asks the range again and turns the time features on', async () => {
+    const path = '/logs/core.log';
+    const markIndexed = vi.spyOn(tree, 'markIndexed');
+    const { rangeAsks, endBuild } = await serveBuildInBackground({});
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    await endBuild('completed');
+
+    const file = openedFile(path);
+    expect(file.isIndexed).toBe(true);
+    expect(file.totalLines).toBe(42_554_368);
+    expect(file.fileType).toBe('text');
+    expect(file.pendingIndex).toBeNull();
+    expect(file.backgroundIndexBuild).toBeNull();
+    expect(markIndexed).toHaveBeenCalledWith(path, 42_554_368);
+    expect(file.timeRange?.source).toBe('index');
+    expect(rangeAsks()).toBe(2);
+    expect(stashInside(path)).toEqual({ isEnabled: true });
+    markIndexed.mockRestore();
+  });
+
+  it('says so quietly when the build fails, and keeps the file readable and the time features off', async () => {
+    const path = '/logs/core.log';
+    const { endBuild } = await serveBuildInBackground({});
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    await endBuild('failed');
+
+    const file = openedFile(path);
+    expect(file.pendingIndex).toBe('failed');
+    expect(file.backgroundIndexBuild).toBeNull();
+    expect(file.error).toBeNull();
+    expect(lineNumbers(path)[0]).toBe(1);
+    expect(get(notifications).map((n) => [n.type, n.message])).toEqual([
+      ['info', 'The line index of core.log could not be built: no space left on device'],
+    ]);
+    expect(stashInside(path)).toEqual({
+      isEnabled: false,
+      reason: 'The line index of core.log could not be built',
+    });
+  });
+
+  it('stops following the build when the file is closed', async () => {
+    const path = '/logs/core.log';
+    const markIndexed = vi.spyOn(tree, 'markIndexed');
+    const { taskSignals, endBuild } = await serveBuildInBackground({});
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    files.closeFile(path);
+    await endBuild('completed');
+
+    expect(taskSignals[0].aborted).toBe(true);
+    expect(markIndexed).not.toHaveBeenCalled();
+    expect(get(notifications)).toEqual([]);
+    markIndexed.mockRestore();
+  });
+
+  it('keeps the time features off for a file opened again from a link while its build runs', async () => {
+    // A reload: the answer joins the build that is already running, and
+    // the range from the scan arrives as usual.
+    const path = '/logs/core.log';
+    const { endBuild } = await serveBuildInBackground({ lineCount: 5000 });
+
+    await files.openFile(path, { scrollToLine: 2500 });
+    await settle();
+
+    expect(openedFile(path).timeRange?.source).toBe('scan');
+    expect(openedFile(path).pendingIndex).toBe('building');
+    expect(stashInside(path).isEnabled).toBe(false);
+
+    await endBuild('completed');
+    expect(stashInside(path)).toEqual({ isEnabled: true });
+  });
+
+  it("asks a compressed file's range again only when its build ends", async () => {
+    const path = '/logs/core.log.gz';
+    const { rangeAsks, endBuild } = await serveBuildInBackground({ compressed: true });
+    await files.openFile(path, { isIndexed: false, compressionFormat: 'gzip' });
+    await settle();
+    expect(rangeAsks()).toBe(1);
+
+    await endBuild('completed');
+
+    expect(rangeAsks()).toBe(2);
+    expect(openedFile(path).timeRange?.source).toBe('index');
+  });
+
+  it('follows the build once while pages arrive during it', async () => {
+    const path = '/logs/core.log';
+    const { taskSignals } = await serveBuildInBackground({ lineCount: 100_000 });
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    await files.loadMore(path, 'after');
+    await files.loadMore(path, 'after');
+    await settle();
+
+    expect(taskSignals).toHaveLength(1);
+    expect(openedFile(path).endLine).toBe(3000);
   });
 });
 

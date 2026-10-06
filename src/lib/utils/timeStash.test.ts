@@ -31,8 +31,12 @@ function range(firstMs: number | null, lastMs: number | null, format: string | n
   } as TimeRangeResponse;
 }
 
-function fileWith(name: string, timeRange: TimeRangeResponse | null): StashFile {
-  return { name, timeRange };
+function fileWith(
+  name: string,
+  timeRange: TimeRangeResponse | null,
+  pendingIndex: StashFile['pendingIndex'] = null,
+): StashFile {
+  return { name, timeRange, pendingIndex };
 }
 
 /** Eight instants a minute apart, from the hour's start. */
@@ -155,6 +159,24 @@ describe('stashEntryState', () => {
       ms: HOUR_START,
       file: undefined,
       reason: 'Open a file to go to this time',
+    },
+    {
+      case: 'an instant inside the range of a file whose line index is being built',
+      ms: HOUR_START + 30 * MINUTE,
+      file: fileWith('core.log', range(HOUR_START, HOUR_START + HOUR), 'building'),
+      reason: 'The line index of core.log is being built',
+    },
+    {
+      case: 'a file whose line index could not be built',
+      ms: HOUR_START + 30 * MINUTE,
+      file: fileWith('core.log', range(HOUR_START, HOUR_START + HOUR), 'failed'),
+      reason: 'The line index of core.log could not be built',
+    },
+    {
+      case: 'a compressed file whose range waits for the index being built',
+      ms: HOUR_START,
+      file: fileWith('core.log.gz', range(null, null), 'building'),
+      reason: 'The line index of core.log.gz is being built',
     },
   ])('disables $case and says why', ({ ms, file, reason }) => {
     expect(stashEntryState(ms, file, true)).toEqual({ isEnabled: false, reason });

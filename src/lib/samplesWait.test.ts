@@ -3,6 +3,7 @@ import type { SamplesAnswer } from './api';
 import type { IndexTaskResponse, IndexTaskResult, SamplesResponse, TaskStatus } from './types';
 import {
   indexBuildLabel,
+  indexingLabel,
   samplesAfterIndexBuild,
   type IndexBuild,
   type SamplesWaitDeps,
@@ -201,5 +202,15 @@ describe('indexBuildLabel', () => {
     [{ taskId: 't', progress: 1 }, 'Building the line index… 100%'],
   ])('labels %o as %s', (build, label) => {
     expect(indexBuildLabel(build)).toBe(label);
+  });
+});
+
+describe('indexingLabel', () => {
+  it.each([
+    [{ taskId: 't', progress: null }, 'indexing'],
+    [{ taskId: 't', progress: 0.427 }, 'indexing 42%'],
+    [{ taskId: 't', progress: 1 }, 'indexing 100%'],
+  ])('marks %o as %s', (build, label) => {
+    expect(indexingLabel(build)).toBe(label);
   });
 });

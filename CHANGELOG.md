@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A large file without a line index opens at once on a backend that
+  answers from the start of the file and builds the index in the
+  background (rx-go names the build in the samples answer's
+  `index_build`). The file's tab shows `indexing N%` while the build
+  runs. Until it ends, the timeline does not scrub, the Go to time box
+  is disabled and the stash entries do not jump, each with a tooltip
+  that says the line index is being built (an entry's `×` still
+  removes it); paging through the file works as before. When the build
+  ends, the file gets its index as after an Index from the tree: `idx`
+  in the tree and in the editor header, its line count and anomalies,
+  and its time range asked again, and the time features turn on. A
+  failed build is said in a quiet notice, and the file stays readable
+  with the time features off. Closing the file stops following the
+  build. A file opened again while its build runs keeps the time
+  features off until it ends.
+- The editor header shows `idx` for a file with a line index.
+
 - A timestamps stash of up to 7 saved moments, in a row above the tabs.
   The `+` of the time cursor saves the cursor's instant; it is disabled,
   with a tooltip that says why, when the stash holds that instant or is

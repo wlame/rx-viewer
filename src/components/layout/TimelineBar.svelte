@@ -13,6 +13,9 @@
    *
    * Hidden for a backend without time queries and for a file without
    * timestamps; a short note shows while the file's range is being read.
+   * While the file wants a line index and has none (it is being built,
+   * or its build failed) the axis neither scrubs nor jumps and the box is
+   * disabled, each with a tooltip that says why.
    *
    * On a backend that reads a file in a chosen zone (`file_tz`), the
    * bar starts with the file's zone, which opens a picker to choose one
@@ -31,6 +34,7 @@
     isPointAxis,
     sideOfAxis,
     steppedInstant,
+    pendingIndexReason,
     timelineAxis,
     type TimeAxis,
     type TimelineStep,
@@ -100,7 +104,9 @@
   $: isShown = canJump && activeFile !== undefined && (canType || isReadingRange);
   $: axis = timelineAxis(activeFile);
   $: isPoint = axis !== null && isPointAxis(axis);
-  $: canScrub = axis !== null && !isPoint;
+  // Why the file cannot be jumped by time yet, or null when it can.
+  $: blockedReason = pendingIndexReason(activeFile);
+  $: canScrub = axis !== null && !isPoint && blockedReason === null;
 
   $: layout = activeFile?.timeRange;
   $: anchorMs = activeFile ? effectiveTimeAt(activeFile.lines, activeFile.anchorLine) : null;
@@ -138,7 +144,7 @@
 
   function handlePointerMove(event: PointerEvent) {
     if (dragMs !== null) dragMs = pointerInstant(event) ?? dragMs;
-    else if (axis && !isPoint) hoverMs = pointerInstant(event);
+    else if (canScrub) hoverMs = pointerInstant(event);
   }
 
   function handlePointerUp(event: PointerEvent) {
@@ -173,7 +179,7 @@
   }
 
   function handleBoxKey(event: KeyboardEvent) {
-    if (!isShortcut('timelineJump', event)) return;
+    if (blockedReason !== null || !isShortcut('timelineJump', event)) return;
     event.preventDefault();
     if (boxValue.trim() !== '') void jumpTo(boxValue);
   }
@@ -214,6 +220,7 @@
         aria-valuenow={thumbMs ?? axis.startMs}
         aria-valuetext={thumbMs !== null ? labelOf(thumbMs, layout) : 'Position not known'}
         aria-disabled={!canScrub}
+        title={blockedReason ?? undefined}
         class="relative flex-1 min-w-24 self-stretch rounded outline-none touch-none select-none
                focus-visible:ring-1 focus-visible:ring-gh-accent-emphasis dark:focus-visible:ring-gh-accent-dark-emphasis
                {canScrub ? 'cursor-pointer' : 'cursor-default'}"
@@ -294,6 +301,10 @@
           {labelOf(axis.endMs, layout)}
         </span>
       {/if}
+    {:else if blockedReason !== null}
+      <span data-index-pending class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
+        {blockedReason}
+      </span>
     {:else}
       <span class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
         The time range is not known yet
@@ -307,6 +318,8 @@
           placeholder="Go to time"
           spellcheck="false"
           autocomplete="off"
+          disabled={blockedReason !== null}
+          title={blockedReason ?? undefined}
           bind:value={boxValue}
           on:input={() => (boxMessage = null)}
           on:keydown={handleBoxKey}
@@ -319,7 +332,8 @@
             : 'border-gh-border-default dark:border-gh-border-dark-default'}
                text-gh-fg-default dark:text-gh-fg-dark-default
                placeholder:text-gh-fg-subtle dark:placeholder:text-gh-fg-dark-subtle
-               focus:border-gh-accent-emphasis dark:focus:border-gh-accent-dark-emphasis"
+               focus:border-gh-accent-emphasis dark:focus:border-gh-accent-dark-emphasis
+               disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {#if boxMessage !== null}
           <p

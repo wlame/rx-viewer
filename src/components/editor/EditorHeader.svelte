@@ -40,7 +40,7 @@
     <FileBadges
       isCompressed={file.isCompressed}
       compressionFormat={file.compressionFormat}
-      isIndexed={null}
+      isIndexed={file.isIndexed}
     />
     {#if file.lines.length > 0}
       <LineRangeNav

@@ -5,6 +5,7 @@ import {
   fractionOf,
   instantAt,
   isPointAxis,
+  pendingIndexReason,
   sideOfAxis,
   steppedInstant,
   timeLabelFor,
@@ -195,5 +196,27 @@ describe('timeLabelFor', () => {
     for (const file of [timedFile(range(null, null, null)), timedFile(null), undefined]) {
       expect(timeLabelFor(instant, file)).toBe('2025-12-10T07:30:00.000Z');
     }
+  });
+});
+
+describe('pendingIndexReason', () => {
+  it('names nothing for a file with its index or one that needs none', () => {
+    expect(pendingIndexReason({ name: 'core.log', pendingIndex: null })).toBeNull();
+  });
+
+  it('says the line index is being built while it is', () => {
+    expect(pendingIndexReason({ name: 'core.log', pendingIndex: 'building' })).toBe(
+      'The line index of core.log is being built',
+    );
+  });
+
+  it('says the line index could not be built after its build failed', () => {
+    expect(pendingIndexReason({ name: 'core.log', pendingIndex: 'failed' })).toBe(
+      'The line index of core.log could not be built',
+    );
+  });
+
+  it('names nothing without a file', () => {
+    expect(pendingIndexReason(undefined)).toBeNull();
   });
 });

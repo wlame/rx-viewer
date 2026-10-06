@@ -177,6 +177,12 @@ export function loadSamplesByTime(
   );
 }
 
+/** The mark on a file whose line index is built in the background: `indexing 42%`. */
+export function indexingLabel(build: IndexBuild): string {
+  if (build.progress === null) return 'indexing';
+  return `indexing ${Math.floor(build.progress * 100)}%`;
+}
+
 /** What the file's view says while its index is built. */
 export function indexBuildLabel(build: IndexBuild): string {
   const label = 'Building the line index…';
