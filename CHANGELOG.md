@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again reads its times in the same zone. At most 20 files keep a zone;
   invalid entries are dropped. A change rewrites the current history
   entry; Back and Forward keep the zones as they are.
+- A small button before the timeline shows the active file's zone,
+  marked when one was chosen. It opens a picker with the file's own zone
+  (a reset), a field that filters every zone the browser knows and takes
+  a typed offset `±HH:MM`, and the common zones while the field is
+  empty. The arrow keys move through the list, Enter in the field
+  chooses the first zone listed, and Escape or a press outside closes
+  it. The button shows only on a backend that lists `file_tz`.
 
 ### Changed
 

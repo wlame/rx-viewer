@@ -83,6 +83,8 @@ function mount(
     activeFile: OpenFile | undefined;
     canJump?: boolean;
     cursorMs?: number | null;
+    canChooseZone?: boolean;
+    chosenZone?: string | null;
   },
   outcome: TimeJumpOutcome = { kind: 'found', line: 1 },
 ) {
@@ -467,5 +469,49 @@ describe('TimelineBar time cursor', () => {
     const { target } = mount({ activeFile: middleware });
 
     expect(target.querySelector('[data-cursor]')).toBeNull();
+  });
+});
+
+describe('TimelineBar time zone', () => {
+  const zoneButton = (target: HTMLElement) =>
+    target.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
+
+  it("shows the file's zone before the axis on a backend that lists file_tz", () => {
+    const { target } = mount({ activeFile: middleware, canChooseZone: true });
+
+    const button = zoneButton(target);
+    expect(button?.textContent?.trim()).toBe('UTC');
+    const slider = target.querySelector('[role="slider"]')!;
+    expect(button!.compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('marks the zone chosen for the file', () => {
+    const berlin = openFile('/logs/middleware.log', {
+      timeRange: { ...middleware.timeRange!, display_zone: 'Europe/Berlin' },
+    });
+    const { target } = mount({
+      activeFile: berlin,
+      canChooseZone: true,
+      chosenZone: 'Europe/Berlin',
+    });
+
+    expect(zoneButton(target)?.dataset.chosen).toBe('true');
+    expect(zoneButton(target)?.textContent?.trim()).toBe('Europe/Berlin');
+  });
+
+  it('shows no zone on a backend without file_tz', () => {
+    const { target } = mount({ activeFile: middleware });
+
+    expect(target.querySelector('[role="slider"]')).not.toBeNull();
+    expect(zoneButton(target)).toBeNull();
+  });
+
+  it("shows the zone while the file's range is not known, so a chosen zone can be reset", () => {
+    const unknown = openFile('/logs/app.log.gz', {
+      timeRange: { ...middleware.timeRange!, first_ms: null, last_ms: null, source: 'none' },
+    });
+    const { target } = mount({ activeFile: unknown, canChooseZone: true, chosenZone: 'UTC' });
+
+    expect(zoneButton(target)).not.toBeNull();
   });
 });

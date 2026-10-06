@@ -211,6 +211,12 @@ describe('the shortcut list', () => {
       ],
       ['← or →', 'Shift+← or Shift+→', 'Home or End', 'Enter', 'Esc', 'Drag or click'],
     ],
+    [
+      'zonePicker',
+      "In the picker of a file's time zone",
+      ['zoneMove', 'zoneChoose', 'zoneClose'],
+      ['↓ or ↑', 'Enter', 'Esc'],
+    ],
   ])('lists the %s keys in their own group', (scope, title, ids, labels) => {
     const group = shortcutsByScope().find((g) => g.scope === scope);
 

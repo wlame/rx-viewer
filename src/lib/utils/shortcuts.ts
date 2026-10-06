@@ -18,6 +18,7 @@ export const SHORTCUT_SCOPES = {
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
   timeline: 'On the timeline bar',
+  zonePicker: "In the picker of a file's time zone",
   openPanel: 'While a panel is open',
 } as const;
 
@@ -59,6 +60,9 @@ export type ShortcutId =
   | 'timelineJump'
   | 'timelineCancel'
   | 'timelineScrub'
+  | 'zoneMove'
+  | 'zoneChoose'
+  | 'zoneClose'
   | 'closeHistory'
   | 'closeAnalysis';
 
@@ -82,6 +86,8 @@ const KEY_LABELS: Readonly<Record<string, string>> = {
   ' ': 'Space',
   ArrowLeft: '←',
   ArrowRight: '→',
+  ArrowDown: '↓',
+  ArrowUp: '↑',
 };
 
 /** The help dialog's label for a key press. */
@@ -257,6 +263,25 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'timeline',
     description: 'Go to the time under the pointer when the button is released',
     gesture: 'Drag or click',
+  },
+  {
+    id: 'zoneMove',
+    scope: 'zonePicker',
+    description: 'Move down or up through the listed zones and the filter field',
+    chord: { key: 'ArrowDown' },
+    otherChords: [{ key: 'ArrowUp' }],
+  },
+  {
+    id: 'zoneChoose',
+    scope: 'zonePicker',
+    description: 'In the filter field: read the file in the first listed zone or the typed offset',
+    chord: { key: 'Enter' },
+  },
+  {
+    id: 'zoneClose',
+    scope: 'zonePicker',
+    description: 'Close the picker and keep the zone',
+    chord: { key: 'Escape' },
   },
   {
     id: 'closeHistory',

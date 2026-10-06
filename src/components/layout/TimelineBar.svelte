@@ -13,11 +13,16 @@
    *
    * Hidden for a backend without time queries and for a file without
    * timestamps; a short note shows while the file's range is being read.
+   *
+   * On a backend that reads a file in a chosen zone (`file_tz`), the
+   * bar starts with the file's zone, which opens a picker to choose one
+   * or to go back to the file's own.
    */
   import type { OpenFile, TimeRangeResponse } from '$lib/types';
   import type { TimeJumpOutcome, TimeQuery } from '$lib/stores/files';
   import { formatInFileLayout } from '$lib/utils/timeFormat';
   import { isShortcut, type ShortcutId } from '$lib/utils/shortcuts';
+  import FileZoneControl from './FileZoneControl.svelte';
   import {
     effectiveTimeAt,
     fractionOf,
@@ -39,6 +44,12 @@
   export let jump: (query: TimeQuery) => Promise<TimeJumpOutcome>;
   /** The time cursor (UTC ms), or null when none is set. */
   export let cursorMs: number | null;
+  /** Whether the backend reads a file in a chosen zone (`file_tz`). */
+  export let canChooseZone = false;
+  /** The zone chosen for the active file, or null when it is read in its own. */
+  export let chosenZone: string | null = null;
+  /** Read the active file in a zone, or in its own with null. */
+  export let chooseZone: (zone: string | null) => void = () => {};
 
   /** The arrow and Home/End keys: which shortcut row and key make which step. */
   const KEY_STEPS: readonly { id: ShortcutId; key: string; step: TimelineStep }[] = [
@@ -174,6 +185,14 @@
            bg-gh-canvas-default dark:bg-gh-canvas-dark-default
            border-b border-gh-border-default dark:border-gh-border-dark-default"
   >
+    {#if canType && canChooseZone && activeFile}
+      <FileZoneControl
+        fileName={activeFile.name}
+        shownZone={layout?.display_zone ?? null}
+        {chosenZone}
+        choose={chooseZone}
+      />
+    {/if}
     {#if !canType}
       <span data-reading-range class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
         Reading the time range…

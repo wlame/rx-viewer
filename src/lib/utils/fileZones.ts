@@ -23,6 +23,9 @@ export interface FileZone {
 /** The most files that keep a chosen zone. */
 export const MAX_FILE_ZONES = 20;
 
+/** What a person reads when a zone cannot be kept because every file holding one is open. */
+export const FILE_ZONES_FULL = `A zone is kept for at most ${MAX_FILE_ZONES} files, and each of them is open: reset the zone of one first`;
+
 /** The zones the picker lists before anything is typed. */
 export const COMMON_ZONES: readonly string[] = [
   'UTC',

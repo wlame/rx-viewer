@@ -1,10 +1,12 @@
 <script lang="ts">
   import { files } from '$lib/stores';
   import { activeOpenFile, type TimeQuery } from '$lib/stores/files';
+  import { fileZones } from '$lib/stores/fileZones';
   import { backendHas, health } from '$lib/stores/health';
   import { notifications } from '$lib/stores/notifications';
   import { timeCursor } from '$lib/stores/timeCursor';
   import { timeStash } from '$lib/stores/timeStash';
+  import { FILE_ZONES_FULL, fileZoneOf } from '$lib/utils/fileZones';
   import { STASH_ADD_LABEL, STASH_REFUSALS, stashAddRefusal } from '$lib/utils/timeStash';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -20,6 +22,15 @@
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
   $: canJump = backendHas('samples_timestamps', $health);
+  $: canChooseZone = backendHas('file_tz', $health);
+  $: chosenZone = activeFile ? fileZoneOf($fileZones, activeFile.path) : null;
+
+  /** Read the active file in `zone`, or in its own with null; say so when it cannot be kept. */
+  async function chooseActiveFileZone(zone: string | null) {
+    if (!activeFile) return;
+    const isKept = await files.setFileZone(activeFile.path, zone);
+    if (!isKept) notifications.info(FILE_ZONES_FULL);
+  }
 
   /**
    * A jump from the timeline bar or a stash entry moves the file the
@@ -209,7 +220,15 @@
       {/if}
     </div>
 
-    <TimelineBar {activeFile} {canJump} jump={jumpActiveFileToTime} cursorMs={$timeCursor} />
+    <TimelineBar
+      {activeFile}
+      {canJump}
+      jump={jumpActiveFileToTime}
+      cursorMs={$timeCursor}
+      {canChooseZone}
+      {chosenZone}
+      chooseZone={chooseActiveFileZone}
+    />
 
     <!-- The active file's editor, built again for each tab so no state of one
          tab reaches another; each tab's own state is kept in paneMemory. -->
