@@ -469,6 +469,10 @@ export interface components {
             cli_command: string | null;
             compression_format: string | null;
             is_compressed: boolean;
+            /** @description Each key of samples mapped to the effective timestamp of each line of its sample, in order: milliseconds since the Unix epoch as a UTC instant, or null for a line without one. A line's effective timestamp is its own, or the own timestamp of the nearest earlier line that has one when that line starts at most RX_TIMESTAMP_LOOKBACK_KB KiB before it; a zone-less file's wall clock is read in RX_LOG_TZ. A key whose sample is null maps to null. The whole field is null when the file has no timestamp format. Present in every mode. */
+            line_timestamps: {
+                [key: string]: (number | null)[] | null;
+            } | null;
             lines: {
                 [key: string]: number;
             };

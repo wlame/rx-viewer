@@ -23,6 +23,7 @@ const SAMPLES: SamplesResponse = {
   cli_command: `rx samples ${PATH} --lines=5`,
   timestamps: {},
   time_format: null,
+  line_timestamps: null,
 };
 
 function building(taskId = 't1'): SamplesAnswer {
