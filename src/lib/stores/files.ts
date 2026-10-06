@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { api } from '../api';
+import { api, ApiError } from '../api';
 import { contractGate } from '../contractGate';
 import { loadSamples, loadSamplesByTime } from '../samplesWait';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
@@ -18,6 +18,7 @@ import type {
   TimeRangeResponse,
 } from '../types';
 import { commandLog } from './commands';
+import { fileZones, requestZoneOf } from './fileZones';
 import { backendHas } from './health';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
@@ -42,6 +43,9 @@ const fileLoads = new LatestRequestMap();
 
 /** The time-range request of each open file; a newer one supersedes an older one. */
 const timeRangeLoads = new LatestRequestMap();
+
+/** The status of the backend's refusal of a request it cannot read, such as an unknown `file_tz`. */
+const HTTP_BAD_REQUEST = 400;
 
 /**
  * The first and last loaded line of a window, and whether paging may go
@@ -189,15 +193,21 @@ function createFilesStore() {
    * first `/health` answer. A failed call leaves the range as it was
    * (null for a file that has none yet); the file opens all the same.
    * The file is marked as reading its range until the last ask ends.
+   *
+   * The ask carries the file's chosen zone. A zone the backend refuses
+   * (400) is dropped with a notice, and the file is read again as its
+   * lines write times.
    */
   async function loadTimeRange(path: string) {
     setReadingTimeRange(path, true);
     let range: TimeRangeResponse | null = null;
+    let sentZone: string | undefined;
     try {
       const answer = await timeRangeLoads.run(path, async (signal) => {
         await contractGate.pass(signal);
         if (!backendHas('time_range')) return null;
-        return api.getTimeRange(path, { signal });
+        sentZone = requestZoneOf(path);
+        return api.getTimeRange(path, { signal, fileTz: sentZone });
       });
       // A newer ask for the file took over, and ends the reading.
       if (answer === SUPERSEDED) return;
@@ -205,6 +215,11 @@ function createFilesStore() {
     } catch (e) {
       // Cancelled by a newer ask or by closing the file.
       if (isAbortError(e)) return;
+      if (sentZone !== undefined && e instanceof ApiError && e.status === HTTP_BAD_REQUEST) {
+        setReadingTimeRange(path, false);
+        void dropRefusedZone(path, sentZone, e.message);
+        return;
+      }
       console.debug('File time range fetch failed (non-critical):', path, e);
     }
     update((s) => ({
@@ -213,6 +228,60 @@ function createFilesStore() {
         f.path === path ? { ...f, timeRange: range ?? f.timeRange, isReadingTimeRange: false } : f,
       ),
     }));
+  }
+
+  /**
+   * Drop the zone chosen for `path` after the backend refused it, say so,
+   * and read the file again as its lines write times. A zone chosen since
+   * the refused one was sent stays.
+   */
+  async function dropRefusedZone(path: string, zone: string, reason: string) {
+    if (fileZones.zoneOf(path) !== zone) return;
+    fileZones.clear(path);
+    const name = path.split('/').pop() ?? path;
+    notifications.error(`Cannot read ${name} in the zone ${zone}: ${reason}`, 5000);
+    await readAgainInItsZone(path);
+  }
+
+  /** Whether `path` is open. */
+  function isOpen(path: string): boolean {
+    return get({ subscribe }).openFiles.some((f) => f.path === path);
+  }
+
+  /**
+   * Read `path`'s timestamps as wall clock in `zone`, or as its lines
+   * write them with null; the choice is kept for the file when it is not
+   * open. An open file asks for its time range again and loads its window
+   * again around its anchor line, so the times of its lines and the
+   * status bar's command follow the zone; it stays on that line, and a
+   * jump by time it was at ends. Returns false when the zone cannot be
+   * kept: not a zone, or every file holding one is open and no more fit.
+   */
+  async function setFileZone(path: string, zone: string | null): Promise<boolean> {
+    if (zone === null) {
+      fileZones.clear(path);
+    } else if (!fileZones.set(path, zone, isOpen)) {
+      return false;
+    }
+    await readAgainInItsZone(path);
+    return true;
+  }
+
+  /**
+   * Ask an open file's time range and its window around its anchor line
+   * again, each in the zone its requests now carry. The file stays on its
+   * line and is no longer where a jump by time put it.
+   */
+  async function readAgainInItsZone(path: string) {
+    const file = get({ subscribe }).openFiles.find((f) => f.path === path);
+    if (!file) return;
+    const line = file.anchorLine;
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, ...movedByLine(line) } : f)),
+    }));
+    void loadTimeRange(path);
+    await loadLinesAroundCenter(path, line, JUMP_CONTEXT);
   }
 
   /** Mark a file as reading its time range, or done reading it. */
@@ -1041,6 +1110,7 @@ function createFilesStore() {
     jumpToEnd,
     jumpToTime,
     clearTimeCursor,
+    setFileZone,
     setMatches,
     clearMatches,
     clearScrollPosition,

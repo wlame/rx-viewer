@@ -5,7 +5,8 @@
  * active file, the line its view is anchored on or the time it jumped
  * to, its highlighting,
  * filter and anomaly category, the sidebar tab, the last search,
- * whether its results show byte offsets, and the timestamps stash. Each
+ * whether its results show byte offsets, the timestamps stash, and the
+ * time zones chosen for files. Each
  * key has one row in
  * `CODECS`, which reads it as untrusted input (a missing or invalid
  * value gives that key's default) and writes it back, leaving a value at
@@ -17,6 +18,12 @@
  * (`apiToken.ts`).
  */
 import type { TraceMatchingFlags } from '../types';
+import {
+  normalizeFileZones,
+  parseFileZoneParam,
+  serializeFileZoneParam,
+  type FileZone,
+} from './fileZones';
 import { SEARCH_TOGGLES } from './searchToggles';
 import { normalizeStash } from './timeStash';
 
@@ -75,6 +82,11 @@ export interface ViewState {
   search: SearchState | null;
   /** The timestamps stash: up to seven instants (UTC ms), each once, in time order. */
   stash: readonly number[];
+  /**
+   * The time zone chosen for each file, open or not, oldest choice
+   * first: at most twenty files, each once.
+   */
+  fileZones: readonly FileZone[];
 }
 
 /** The view of a link with no parameters. */
@@ -89,6 +101,7 @@ export const DEFAULT_VIEW: ViewState = {
   offsets: false,
   search: null,
   stash: [],
+  fileZones: [],
 };
 
 /** One URL parameter written as name and value. */
@@ -162,6 +175,20 @@ function parseStash(params: URLSearchParams): number[] {
 function serializeStash(stash: readonly number[]): Param[] {
   if (stash.length === 0) return [];
   return [['stash', stash.map((ms) => new Date(ms).toISOString()).join(',')]];
+}
+
+/**
+ * The file zones a URL names: one repeated `ftz=<zone>@<path>` each. An
+ * entry that names no valid zone and path is dropped; of a path named
+ * twice the first is kept, and the first twenty are.
+ */
+function parseFileZones(params: URLSearchParams): FileZone[] {
+  const entries = params.getAll('ftz').map(parseFileZoneParam);
+  return normalizeFileZones(entries.filter((entry): entry is FileZone => entry !== null));
+}
+
+function serializeFileZones(fileZones: readonly FileZone[]): Param[] {
+  return fileZones.map((fileZone) => ['ftz', serializeFileZoneParam(fileZone)]);
 }
 
 /** The search flag parameters the panel can set, named as /v1/trace names them. */
@@ -292,6 +319,12 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     parse: parseStash,
     serialize: serializeStash,
   },
+  // Choosing or resetting a file's zone rewrites the current entry.
+  fileZones: {
+    names: ['ftz'],
+    parse: parseFileZones,
+    serialize: serializeFileZones,
+  },
 };
 
 const VIEW_KEYS = Object.keys(CODECS) as (keyof ViewState)[];
@@ -355,7 +388,7 @@ function isStepKey<K extends keyof ViewState>(
  * any key changed in a way that is a step (opening a file, running a
  * search, switching the sidebar tab, a jump by time), otherwise a
  * replace (the line, the highlighting, the filter, the category, the
- * offsets switch, the stash).
+ * offsets switch, the stash, the file zones).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';

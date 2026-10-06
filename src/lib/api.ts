@@ -98,15 +98,31 @@ export type SamplesAnswer =
  * respond-async`, without which the backend never answers 202: it waits
  * for the build and answers the lines, as a 1.3 backend does.
  */
-export interface SamplesRequestOptions extends RequestOptions {
+export interface SamplesRequestOptions extends FileZoneRequestOptions {
   respondAsync?: boolean;
+}
+
+/**
+ * Options of a request that reads a file's timestamps. `fileTz` reads
+ * them as wall clock in that zone (`file_tz`); check
+ * `backendHas('file_tz')` first. Without it the file is read as its
+ * lines write times.
+ */
+export interface FileZoneRequestOptions extends RequestOptions {
+  fileTz?: string;
+}
+
+/** Add `file_tz` to `params` when a zone is given. */
+function withFileTz(params: URLSearchParams, fileTz: string | undefined): URLSearchParams {
+  if (fileTz) params.set('file_tz', fileTz);
+  return params;
 }
 
 async function fetchSamples(
   url: string,
   options: SamplesRequestOptions = {},
 ): Promise<SamplesAnswer> {
-  const { respondAsync, ...request } = options;
+  const { respondAsync, fileTz: _fileTz, ...request } = options;
   const { status, body } = await fetchJsonAnswer<SamplesResponse | IndexTaskResponse>(url, {
     ...request,
     ...(respondAsync ? { headers: { Prefer: 'respond-async' } } : {}),
@@ -183,6 +199,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
+    withFileTz(params, options?.fileTz);
     return fetchSamples(`${API_BASE}/samples?${params}`, options);
   },
 
@@ -211,6 +228,7 @@ export const api = {
     if (context !== undefined) {
       params.set('context', context.toString());
     }
+    withFileTz(params, options?.fileTz);
     return fetchSamples(`${API_BASE}/samples?${params}`, options);
   },
 
@@ -231,6 +249,7 @@ export const api = {
     options?: SamplesRequestOptions,
   ): Promise<SamplesAnswer> {
     const params = new URLSearchParams({ path, timestamps: value, context: String(context) });
+    withFileTz(params, options?.fileTz);
     return fetchSamples(`${API_BASE}/samples?${params}`, options);
   },
 
@@ -239,9 +258,13 @@ export const api = {
    * the file writes a time. Check `backendHas('time_range')` first.
    * @param path - File path
    */
-  async getTimeRange(path: string, options?: RequestOptions): Promise<TimeRangeResponse> {
-    const params = new URLSearchParams({ path });
-    return fetchJson<TimeRangeResponse>(`${API_BASE}/time-range?${params}`, options);
+  async getTimeRange(
+    path: string,
+    options: FileZoneRequestOptions = {},
+  ): Promise<TimeRangeResponse> {
+    const { fileTz, ...request } = options;
+    const params = withFileTz(new URLSearchParams({ path }), fileTz);
+    return fetchJson<TimeRangeResponse>(`${API_BASE}/time-range?${params}`, request);
   },
 
   /**

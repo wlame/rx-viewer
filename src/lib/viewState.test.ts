@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { fileZones } from './stores/fileZones';
 import { files } from './stores/files';
 import { health } from './stores/health';
 import { timeCursor } from './stores/timeCursor';
@@ -347,6 +348,7 @@ describe('restoreView', () => {
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
+      fileZones: [],
     };
 
     await restoreView(view);
@@ -702,5 +704,98 @@ describe('the stash in the URL', () => {
 
     expect(get(timeStash)).toEqual([first]);
     await vi.waitFor(() => expect(stashParam()).toBe('2025-12-10T07:30:00.000Z'));
+  });
+});
+
+describe('the file zones in the URL', () => {
+  let stopSync: () => void = () => {};
+  const path = '/logs/small.log';
+  const notOpen = '/logs/user@host/other.log';
+  const zoneParams = () => new URLSearchParams(window.location.search).getAll('ftz');
+  /** The file_tz of every samples and time-range request for `file`, in order. */
+  const sentZones = (file: string) =>
+    vi
+      .mocked(fetch)
+      .mock.calls.map(([url]) => new URL(String(url), 'http://localhost').searchParams)
+      .filter((params) => params.get('path') === file)
+      .map((params) => params.get('file_tz'));
+
+  beforeEach(async () => {
+    serveBackend(['time_range', 'file_tz']);
+    await health.check();
+  });
+
+  afterEach(async () => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    fileZones.replace([]);
+    serveBackend();
+    await health.check();
+    vi.unstubAllGlobals();
+  });
+
+  it('rewrites the current entry when a zone is chosen or reset and adds none', async () => {
+    const browser = stubBrowserHistory();
+    stopSync = startViewSync();
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    const entries = browser.entries.length;
+
+    await files.setFileZone(path, 'Europe/Berlin');
+    expect(zoneParams()).toEqual([`Europe/Berlin@${path}`]);
+
+    await files.setFileZone(path, null);
+    expect(zoneParams()).toEqual([]);
+    expect(browser.entries).toHaveLength(entries);
+  });
+
+  it('keeps the zones over a reload and sends them for a file the link opens', async () => {
+    stubWindow();
+    stopSync = startViewSync();
+    fileZones.replace([
+      { path, zone: 'Europe/Berlin' },
+      { path: notOpen, zone: '+05:30' },
+    ]);
+    const link = `${window.location.search}&file=${encodeURIComponent(path)}`;
+    stopSync();
+
+    fileZones.replace([]);
+    stubWindow(link);
+    vi.mocked(fetch).mockClear();
+    await loadView(readViewState());
+
+    expect(get(fileZones)).toEqual([
+      { path, zone: 'Europe/Berlin' },
+      { path: notOpen, zone: '+05:30' },
+    ]);
+    await vi.waitFor(() => expect(sentZones(path)).toEqual(['Europe/Berlin', 'Europe/Berlin']));
+  });
+
+  it('drops the invalid entries of a link and writes the zones it kept', async () => {
+    const query = new URLSearchParams([
+      ['ftz', 'Mars/Base@/logs/a.log'],
+      ['ftz', `UTC@${path}`],
+      ['ftz', 'no-separator'],
+    ]);
+    stubWindow(`?${query}`);
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(fileZones)).toEqual([{ path, zone: 'UTC' }]);
+    expect(zoneParams()).toEqual([`UTC@${path}`]);
+  });
+
+  it('keeps the zones on Back and Forward', async () => {
+    const browser = stubBrowserHistory();
+    stopSync = startViewSync();
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
+    await files.setFileZone('/logs/big.log', '-03:00');
+
+    browser.back();
+    await vi.waitFor(() => expect(get(files).activeFilePath).toBe(path));
+
+    expect(get(fileZones)).toEqual([{ path: '/logs/big.log', zone: '-03:00' }]);
+    await vi.waitFor(() => expect(zoneParams()).toEqual(['-03:00@/logs/big.log']));
   });
 });

@@ -26,6 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewrites the current history entry; Back and Forward keep the stash as
   it is. Invalid entries are dropped, and the rest are kept once each, in
   time order, the earliest 7.
+- A time zone can be chosen for a file, on a backend that lists the
+  `file_tz` feature: the file's timestamps are then read as wall clock in
+  that zone, whatever zone its lines write. Every samples and time-range
+  request for the file carries `file_tz`, so its range, its jumps by
+  time, the times of its lines, the stash entries it enables and the
+  status bar's equivalent command (`--file-tz=…`) follow the zone.
+  Choosing or resetting a zone asks for the range again and loads the
+  window around the anchor line again; the file stays on that line. A
+  zone the backend refuses is dropped with a notice.
+- The link keeps the chosen zones as repeated `ftz=<zone>@<path>`, split
+  on the first `@`, also for files that are not open, so a file opened
+  again reads its times in the same zone. At most 20 files keep a zone;
+  invalid entries are dropped. A change rewrites the current history
+  entry; Back and Forward keep the zones as they are.
 
 ### Changed
 

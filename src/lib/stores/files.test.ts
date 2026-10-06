@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
+import { stashEntryState } from '../utils/timeStash';
 import { contractGate } from '../contractGate';
 import { commandLog } from './commands';
+import { fileZones } from './fileZones';
 import { files } from './files';
 import { health } from './health';
 import { notifications } from './notifications';
@@ -979,5 +981,233 @@ describe('a jump by time', () => {
     await files.jumpToTime(path, stampOf(500));
     await files.jumpToEnd(path);
     expect(openedFile(path).timeJump).toBeNull();
+  });
+});
+
+describe('a time zone chosen for a file', () => {
+  const path = '/logs/middleware.log';
+  const other = '/logs/postgresql.log';
+  const HOUR = 3_600_000;
+  const BERLIN_WINTER_OFFSET = HOUR;
+
+  beforeEach(() => setLocation(''));
+
+  afterEach(async () => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    fileZones.replace([]);
+    timeCursor.clear();
+    commandLog.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
+    );
+    await health.check();
+    contractGate.reset();
+    for (const notice of get(notifications)) notifications.dismiss(notice.id);
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A backend listing `features` that serves 10,000 `LINE <n>` lines and
+   * answers `GET /v1/time-range` for middleware.log the way rx-go does:
+   * under `file_tz=Europe/Berlin` its zone-less wall clock is an hour
+   * earlier as an instant, and a zone in `refused` is answered 400.
+   * Every request's parameters are kept, by endpoint.
+   */
+  async function serveZones(
+    options: { features?: string[]; refused?: string[]; answerHealth?: boolean } = {},
+  ) {
+    const {
+      features = ['time_range', 'file_tz', 'samples_timestamps'],
+      refused = [],
+      answerHealth = true,
+    } = options;
+    const serveLines = serveFileOf(10_000, { withCommand: true }).getMockImplementation()!;
+    const samples: URLSearchParams[] = [];
+    const ranges: URLSearchParams[] = [];
+    const spy = vi.fn(async (url: string) => {
+      if (url.startsWith('/health')) return jsonAnswer(200, { contract_version: '1.6', features });
+      const params = new URL(url, 'http://localhost').searchParams;
+      const zone = params.get('file_tz');
+      const isRangeAsk = url.includes('/v1/time-range');
+      (isRangeAsk ? ranges : samples).push(params);
+      if (zone !== null && refused.includes(zone)) {
+        return jsonAnswer(400, { detail: `Invalid file_tz "${zone}": not a zone name` });
+      }
+      if (isRangeAsk) {
+        const range = middlewareRange(params.get('path') ?? '');
+        if (zone !== 'Europe/Berlin') return jsonAnswer(200, range);
+        return jsonAnswer(200, {
+          ...range,
+          display_zone: zone,
+          first_ms: range.first_ms! - BERLIN_WINTER_OFFSET,
+          last_ms: range.last_ms! - BERLIN_WINTER_OFFSET,
+          cli_command: `${range.cli_command} --file-tz=${zone}`,
+        });
+      }
+      const value = params.get('timestamps');
+      if (value !== null) {
+        // Every time finds line 420; its window is lines 320 to 520.
+        const content = Array.from({ length: 201 }, (_, i) => `LINE ${320 + i}`);
+        return jsonAnswer(200, {
+          path: params.get('path'),
+          samples: { [value]: content },
+          line_timestamps: { [value]: null },
+          timestamps: { [value]: 420 },
+          before_context: 100,
+          after_context: 100,
+          lines: {},
+          offsets: {},
+          is_compressed: false,
+          compression_format: null,
+          cli_command: null,
+        });
+      }
+      const answer = await serveLines(url);
+      const body = await answer.json();
+      const suffix = zone === null ? '' : ` --file-tz=${zone}`;
+      return jsonAnswer(200, { ...body, cli_command: `${body.cli_command}${suffix}` });
+    });
+    vi.stubGlobal('fetch', spy);
+    if (answerHealth) await health.check();
+    const zonesOf = (asked: URLSearchParams[], file: string) =>
+      asked.filter((p) => p.get('path') === file).map((p) => p.get('file_tz'));
+    return {
+      samplesZones: (file: string) => zonesOf(samples, file),
+      rangeZones: (file: string) => zonesOf(ranges, file),
+    };
+  }
+
+  it('asks for the range again in the chosen zone, and without a zone after a reset', async () => {
+    const { rangeZones } = await serveZones();
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    await files.setFileZone(path, 'Europe/Berlin');
+    await settle();
+    expect(openedFile(path).timeRange?.display_zone).toBe('Europe/Berlin');
+    expect(openedFile(path).timeRange?.first_ms).toBe(1765350004574 - BERLIN_WINTER_OFFSET);
+
+    await files.setFileZone(path, null);
+    await settle();
+    expect(openedFile(path).timeRange?.display_zone).toBe('UTC');
+    expect(rangeZones(path)).toEqual([null, 'Europe/Berlin', null]);
+  });
+
+  it('sends file_tz on every samples request of that file and on no other file', async () => {
+    const { samplesZones } = await serveZones();
+    await files.openFile(other, { isIndexed: false });
+    await files.openFile(path, { isIndexed: false });
+
+    await files.setFileZone(path, '+02:00');
+    await files.loadMore(path, 'after');
+    await files.jumpToLine(path, 5_000);
+    await files.jumpToEnd(path);
+    await files.jumpToLine(other, 5_000);
+
+    expect(samplesZones(path)).toEqual([null, '+02:00', '+02:00', '+02:00', '+02:00']);
+    expect(samplesZones(other)).toEqual([null, null]);
+  });
+
+  it('loads the window again in the zone, so the status bar shows its command', async () => {
+    await serveZones();
+    await files.openFile(path, { isIndexed: false });
+    await files.jumpToLine(path, 420);
+
+    await files.setFileZone(path, 'Europe/Berlin');
+
+    const file = openedFile(path);
+    expect(file.anchorLine).toBe(420);
+    expect(file.startLine).toBe(320);
+    expect(get(commandLog)[0].command).toBe(
+      `rx samples ${path} --lines=420 --file-tz=Europe/Berlin`,
+    );
+  });
+
+  it('keeps the zone of a file that is not open and uses it when the file opens', async () => {
+    const { samplesZones, rangeZones } = await serveZones();
+
+    await files.setFileZone(path, 'Europe/Berlin');
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    expect(samplesZones(path)).toEqual(['Europe/Berlin']);
+    expect(rangeZones(path)).toEqual(['Europe/Berlin']);
+  });
+
+  it('sends the zone of a file opened from a link before the first /health answer', async () => {
+    contractGate.hold();
+    const { samplesZones, rangeZones } = await serveZones({ answerHealth: false });
+    fileZones.replace([{ path, zone: 'Europe/Berlin' }]);
+
+    const opening = files.openFile(path, { isIndexed: false });
+    await settle();
+    await health.check();
+    await opening;
+    await settle();
+
+    expect(samplesZones(path)).toEqual(['Europe/Berlin']);
+    expect(rangeZones(path)).toEqual(['Europe/Berlin']);
+  });
+
+  it('sends no file_tz to a backend that does not list it', async () => {
+    const { samplesZones, rangeZones } = await serveZones({ features: ['time_range'] });
+    fileZones.replace([{ path, zone: 'Europe/Berlin' }]);
+
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    expect(samplesZones(path)).toEqual([null]);
+    expect(rangeZones(path)).toEqual([null]);
+  });
+
+  it('drops a zone the backend refuses and reads the file as its lines write times', async () => {
+    const { rangeZones } = await serveZones({ refused: ['Asia/Kolkata'] });
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+
+    await files.setFileZone(path, 'Asia/Kolkata');
+    // The file is read again in the background after the refusal.
+    await vi.waitFor(() => {
+      expect(rangeZones(path)).toEqual([null, 'Asia/Kolkata', null]);
+      expect(openedFile(path).loading).toBe(false);
+    });
+
+    expect(get(fileZones)).toEqual([]);
+    expect(openedFile(path).timeRange?.display_zone).toBe('UTC');
+    expect(openedFile(path).error).toBeNull();
+    expect(get(notifications).map((n) => n.message)).toEqual([
+      expect.stringContaining('Asia/Kolkata'),
+    ]);
+  });
+
+  it('enables the stash entries inside the range read in the chosen zone', async () => {
+    await serveZones();
+    await files.openFile(path, { isIndexed: false });
+    await settle();
+    const beforeFirstUtc = Date.UTC(2025, 11, 10, 6, 30);
+    const afterFirstUtc = Date.UTC(2025, 11, 10, 7, 30);
+    const enabled = () =>
+      [beforeFirstUtc, afterFirstUtc].map(
+        (ms) => stashEntryState(ms, openedFile(path), true).isEnabled,
+      );
+    expect(enabled()).toEqual([false, true]);
+
+    await files.setFileZone(path, 'Europe/Berlin');
+    await settle();
+
+    expect(enabled()).toEqual([true, false]);
+  });
+
+  it('ends a jump by time of the file and keeps its line when the zone changes', async () => {
+    await serveZones();
+    await files.openFile(path, { isIndexed: false });
+    await files.jumpToTime(path, Date.UTC(2025, 11, 10, 7, 30));
+    expect(openedFile(path).timeJump).not.toBeNull();
+
+    await files.setFileZone(path, 'Europe/Berlin');
+
+    expect(openedFile(path).timeJump).toBeNull();
+    expect(openedFile(path).anchorLine).toBe(420);
   });
 });

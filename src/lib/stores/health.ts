@@ -40,7 +40,8 @@ export type BackendFeature =
   | 'samples_index_build'
   | 'samples_timestamps'
   | 'line_timestamps'
-  | 'time_range';
+  | 'time_range'
+  | 'file_tz';
 
 /** The feature list of a `/health` answer; anything but a list of names is none. */
 function featuresOf(data: HealthResponse): readonly string[] {

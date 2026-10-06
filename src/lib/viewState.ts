@@ -1,5 +1,6 @@
 import { derived, get } from 'svelte/store';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
+import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { timeStash } from './stores/timeStash';
@@ -27,10 +28,10 @@ import type { OpenFile, TreeNode } from './types';
  * describes, on page load and when Back or Forward moves through the
  * entries.
  *
- * The timestamps stash is read from the URL on page load only
- * (`loadView`). A moment saved after an entry was made is not in that
- * entry, so Back and Forward keep the stash as it is and write it into
- * the entry they reach.
+ * The timestamps stash and the file zones are read from the URL on page
+ * load only (`loadView`). A moment saved or a zone chosen after an entry
+ * was made is not in that entry, so Back and Forward keep both as they
+ * are and write them into the entry they reach.
  */
 
 /** The part of the view that belongs to the active file. */
@@ -63,13 +64,14 @@ export function fileViewOf(file: OpenFile | undefined): FileView {
 
 /** The view the stores describe now. */
 const currentView = derived(
-  [files, sidebarTab, searchShowsOffsets, searchRequest, timeStash],
-  ([$files, $tab, $offsets, $search, $stash]): ViewState => ({
+  [files, sidebarTab, searchShowsOffsets, searchRequest, timeStash, fileZones],
+  ([$files, $tab, $offsets, $search, $stash, $fileZones]): ViewState => ({
     ...fileViewOf(activeOpenFile($files)),
     tab: $tab,
     offsets: $offsets,
     search: $search,
     stash: $stash,
+    fileZones: $fileZones,
   }),
 );
 
@@ -95,7 +97,7 @@ export function startViewSync(): () => void {
       .catch((e) => console.error('Failed to restore the view of a history entry:', e))
       .finally(() => {
         runningRestores -= 1;
-        // The entry holds the stash of its time; the live one replaces it.
+        // The entry holds the stash and the zones of its time; the live ones replace them.
         writeViewState(get(currentView), 'replace');
       });
   };
@@ -207,16 +209,19 @@ async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<v
 
 /**
  * Bring the app to the view of the link it was opened with: the
- * timestamps stash, then everything `restoreView` restores.
+ * timestamps stash and the file zones, then everything `restoreView`
+ * restores. The zones come first, so the first requests for a file the
+ * link opens already read it in its zone.
  */
 export async function loadView(view: ViewState): Promise<void> {
   timeStash.replace(view.stash);
+  fileZones.replace(view.fileZones);
   await restoreView(view);
 }
 
 /**
  * Bring the app to the view a URL describes: the results switch, the
- * search, the sidebar tab and the file. The stash stays as it is. Resolves when the file's lines
+ * search, the sidebar tab and the file. The stash and the file zones stay as they are. Resolves when the file's lines
  * are loaded. A later restore supersedes this one: Back pressed twice
  * ends on the second entry even when the first one's file is slower.
  */

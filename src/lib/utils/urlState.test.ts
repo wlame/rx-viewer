@@ -118,6 +118,34 @@ describe('parseViewState', () => {
     },
   );
 
+  it('reads each ftz as a zone and a path, split on the first @', () => {
+    const query = new URLSearchParams([
+      ['ftz', 'Europe/Berlin@/logs/middleware.log'],
+      ['ftz', '+05:30@/logs/user@host/app.log'],
+    ]);
+
+    expect(parseViewState(`?${query}`).fileZones).toEqual([
+      { path: '/logs/middleware.log', zone: 'Europe/Berlin' },
+      { path: '/logs/user@host/app.log', zone: '+05:30' },
+    ]);
+  });
+
+  it('drops an invalid ftz and keeps the first of a path named twice, at most twenty', () => {
+    const query = new URLSearchParams([
+      ['ftz', 'Mars/Base@/logs/a.log'],
+      ['ftz', 'local@/logs/a.log'],
+      ['ftz', 'UTC'],
+      ['ftz', 'UTC@/logs/0.log'],
+      ...Array.from({ length: 25 }, (_, i) => ['ftz', `+01:00@/logs/${i}.log`]),
+    ]);
+
+    const zones = parseViewState(`?${query}`).fileZones;
+
+    expect(zones).toHaveLength(20);
+    expect(zones[0]).toEqual({ path: '/logs/0.log', zone: 'UTC' });
+    expect(zones.at(-1)).toEqual({ path: '/logs/19.log', zone: '+01:00' });
+  });
+
   it('leaves highlighting to the size-based default when the link has no highlight', () => {
     expect(parseViewState('?file=/a.log').highlight).toBeNull();
   });
@@ -205,6 +233,16 @@ describe('serializeViewState and parseViewState', () => {
         stash: [Date.UTC(2025, 11, 10, 7, 30, 0, 1), Date.UTC(2025, 11, 11, 23, 59, 59, 999)],
       }),
     ],
+    [
+      'zones of two files, one of them not the active one',
+      view({
+        file: '/logs/a.log',
+        fileZones: [
+          { path: '/logs/a.log', zone: 'Europe/Berlin' },
+          { path: '/logs/user@host/b.log', zone: '-03:30' },
+        ],
+      }),
+    ],
     ['a search on its tab', view({ search: plainSearch, tab: 'search' })],
     ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
     ['the Search tab with no search', view({ tab: 'search' })],
@@ -249,6 +287,18 @@ describe('serializeViewState and parseViewState', () => {
     expect(new URLSearchParams(serializeViewState(view({ stash }), '')).get('stash')).toBe(
       '2025-12-10T07:30:00.000Z,2025-12-10T07:45:00.005Z',
     );
+  });
+
+  it('writes each file zone as an ftz of the zone, an @ and the path', () => {
+    const fileZones = [
+      { path: '/logs/a.log', zone: 'Europe/Berlin' },
+      { path: '/logs/b.log', zone: 'UTC' },
+    ];
+
+    expect(new URLSearchParams(serializeViewState(view({ fileZones }), '')).getAll('ftz')).toEqual([
+      'Europe/Berlin@/logs/a.log',
+      'UTC@/logs/b.log',
+    ]);
   });
 
   it('writes a search flag as 1', () => {
@@ -312,6 +362,12 @@ describe('historyModeFor', () => {
         name: 'adding to the stash',
         previous: fileA,
         next: view({ file: '/a.log', stash: [Date.UTC(2025, 11, 10, 7, 30)] }),
+        mode: 'replace',
+      },
+      {
+        name: 'choosing a time zone for a file',
+        previous: fileA,
+        next: view({ file: '/a.log', fileZones: [{ path: '/a.log', zone: 'Europe/Berlin' }] }),
         mode: 'replace',
       },
       {

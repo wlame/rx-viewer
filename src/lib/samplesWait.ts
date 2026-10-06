@@ -1,4 +1,6 @@
 import { api, type RequestOptions, type SamplesAnswer } from './api';
+import { contractGate } from './contractGate';
+import { requestZoneOf } from './stores/fileZones';
 import { backendHas } from './stores/health';
 import { tree } from './stores/tree';
 import type { IndexBuild, IndexTaskResult, SamplesResponse, TaskStatus } from './types';
@@ -106,6 +108,30 @@ export async function samplesAfterIndexBuild(
   }
 }
 
+/**
+ * The samples of `path` that `request` answers, after any index build.
+ * The request waits for the contract gate first, so the backend's
+ * features are known when it decides `Prefer: respond-async` and the
+ * file's `file_tz`: a file named in a link opens before the first
+ * `/health` answer. The zone is read for each request it sends.
+ */
+async function loadFileSamples(
+  path: string,
+  request: (
+    signal: AbortSignal | undefined,
+    respondAsync: boolean,
+    fileTz: string | undefined,
+  ) => Promise<SamplesAnswer>,
+  options: SamplesWaitOptions & RequestOptions,
+): Promise<SamplesResponse> {
+  await contractGate.pass(options.signal);
+  return samplesAfterIndexBuild(
+    path,
+    (signal, respondAsync) => request(signal, respondAsync, requestZoneOf(path)),
+    options,
+  );
+}
+
 /** Lines of `path` by line number or range, after any index build. */
 export function loadSamples(
   path: string,
@@ -113,9 +139,10 @@ export function loadSamples(
   context: number | undefined,
   options: SamplesWaitOptions & RequestOptions = {},
 ): Promise<SamplesResponse> {
-  return samplesAfterIndexBuild(
+  return loadFileSamples(
     path,
-    (signal, respondAsync) => api.getSamples(path, ranges, context, { signal, respondAsync }),
+    (signal, respondAsync, fileTz) =>
+      api.getSamples(path, ranges, context, { signal, respondAsync, fileTz }),
     options,
   );
 }
@@ -127,10 +154,10 @@ export function loadSamplesByOffset(
   context: number | undefined,
   options: SamplesWaitOptions & RequestOptions = {},
 ): Promise<SamplesResponse> {
-  return samplesAfterIndexBuild(
+  return loadFileSamples(
     path,
-    (signal, respondAsync) =>
-      api.getSamplesByOffset(path, offsets, context, { signal, respondAsync }),
+    (signal, respondAsync, fileTz) =>
+      api.getSamplesByOffset(path, offsets, context, { signal, respondAsync, fileTz }),
     options,
   );
 }
@@ -142,9 +169,10 @@ export function loadSamplesByTime(
   context: number,
   options: SamplesWaitOptions & RequestOptions = {},
 ): Promise<SamplesResponse> {
-  return samplesAfterIndexBuild(
+  return loadFileSamples(
     path,
-    (signal, respondAsync) => api.getSamplesByTime(path, value, context, { signal, respondAsync }),
+    (signal, respondAsync, fileTz) =>
+      api.getSamplesByTime(path, value, context, { signal, respondAsync, fileTz }),
     options,
   );
 }
