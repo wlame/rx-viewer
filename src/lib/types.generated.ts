@@ -128,6 +128,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/time-range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the timestamp format and the first and last timestamp of a file
+         * @description The time range of one file for a timeline: its format, its first and last timestamp as UTC instants, the zone its lines show times in and its first timestamp as written. From the file's line index when there is one; otherwise from the head of its text and at most 16 MiB back from its end, or not at all for a stream-compressed file (source none).
+         */
+        get: operations["time_range"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/trace": {
         parameters: {
             query?: never;
@@ -291,6 +311,8 @@ export interface components {
             environment: {
                 [key: string]: string;
             };
+            /** @description The names of the features this build serves, sorted. A client checks whether a name is listed before it uses the feature; the API documentation lists the names. */
+            features: string[];
             go_packages: {
                 [key: string]: string;
             };
@@ -580,6 +602,37 @@ export interface components {
             started_at: string | null;
             status: string;
             task_id: string;
+        };
+        TimeRangeResponse: {
+            /** @description The rx command that gives this answer. */
+            cli_command: string;
+            /** @description For the slash format, whether the day comes before the month; null for every other format. */
+            day_first: boolean | null;
+            /** @description The zone to show this file's times in so that they read as its lines do: RX_LOG_TZ (UTC, an IANA name or ±HH:MM) for a file whose timestamps carry no zone; the offset of the first timestamp (±HH:MM) for one whose timestamps do; null when that offset is unknown. */
+            display_zone: string | null;
+            /** @description The first timestamp as its line writes it, such as 2025-12-10 07:00:04.574: printable ASCII, any other byte written as \xHH, at most 64 bytes; null when no line has a timestamp. */
+            example: string | null;
+            /**
+             * Format: int64
+             * @description The timestamp of the first line that has one, as a UTC instant in ms; null when unknown.
+             */
+            first_ms: number | null;
+            /** @description The timestamp format of the lines: iso, clf, ctime, syslog, slash, dotted or epoch; null when none is recognized in the first mebibyte of the text, and then has_zone, day_first, display_zone, example, first_ms and last_ms are null too. */
+            format: string | null;
+            /** @description Whether most timestamps carry a zone. */
+            has_zone: boolean | null;
+            /**
+             * Format: int64
+             * @description The timestamp of the last line that has one, as a UTC instant in ms; null when unknown: source none, or no timestamped line within the last 16 MiB of the text.
+             */
+            last_ms: number | null;
+            /** @description The file, as the request named it. */
+            path: string;
+            /**
+             * @description How the range was found: index (the file's line index, nothing of the file read), scan (the head of the text and a read back from its end, at most 16 MiB), none (a gzip, bzip2, xz or plain zstd file without an index: first_ms and last_ms are null).
+             * @enum {string}
+             */
+            source: "index" | "scan" | "none";
         };
         TimeSummary: {
             /**
@@ -1136,6 +1189,92 @@ export interface operations {
             };
             /** @description The file, directory, index or task does not exist */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    time_range: {
+        parameters: {
+            query: {
+                /** @description The file whose time range to give */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeRangeResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
