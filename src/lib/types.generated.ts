@@ -137,7 +137,7 @@ export interface paths {
         };
         /**
          * Get the timestamp format and the first and last timestamp of a file
-         * @description The time range of one file for a timeline: its format, its first and last timestamp as UTC instants, the zone its lines show times in and its first timestamp as written. From the file's line index when there is one; otherwise from the head of its text and at most 16 MiB back from its end, or not at all for a stream-compressed file (source none).
+         * @description The time range of one file for a timeline: its format, its first and last timestamp as UTC instants, the zone its lines show times in and its first timestamp as written. From the file's line index when there is one; otherwise from the head of its text and at most 16 MiB back from its end, or not at all for a stream-compressed file (source none). file_tz reads the timestamps as wall clock in a chosen zone; for a file whose timestamps carry zones the index then gives the first timestamp and its last timestamped line is read again at the offset it stores (source none for a stream-compressed file).
          */
         get: operations["time_range"];
         put?: never;
@@ -491,7 +491,7 @@ export interface components {
             cli_command: string | null;
             compression_format: string | null;
             is_compressed: boolean;
-            /** @description Each key of samples mapped to the effective timestamp of each line of its sample, in order: milliseconds since the Unix epoch as a UTC instant, or null for a line without one. A line's effective timestamp is its own, or the own timestamp of the nearest earlier line that has one when that line starts at most RX_TIMESTAMP_LOOKBACK_KB KiB before it; a zone-less file's wall clock is read in RX_LOG_TZ. A key whose sample is null maps to null. The whole field is null when the file has no timestamp format. Present in every mode. */
+            /** @description Each key of samples mapped to the effective timestamp of each line of its sample, in order: milliseconds since the Unix epoch as a UTC instant, or null for a line without one. A line's effective timestamp is its own, or the own timestamp of the nearest earlier line that has one when that line starts at most RX_TIMESTAMP_LOOKBACK_KB KiB before it; a zone-less file's wall clock is read in RX_LOG_TZ, and under the request's file_tz every line's written wall clock is read in that zone. A key whose sample is null maps to null. The whole field is null when the file has no timestamp format. Present in every mode. */
             line_timestamps: {
                 [key: string]: (number | null)[] | null;
             } | null;
@@ -513,7 +513,7 @@ export interface components {
             };
         };
         SamplesTimeFormat: {
-            /** @description The zone a timestamp without one is read in: RX_LOG_TZ (default UTC) for a file whose timestamps carry no zone, UTC for one whose timestamps do. */
+            /** @description The zone a timestamp without one is read in: RX_LOG_TZ (default UTC) for a file whose timestamps carry no zone, UTC for one whose timestamps do; the request's file_tz, whatever the file, when it names one. */
             assumed_zone: string;
             /**
              * @description The timestamp format of the lines.
@@ -608,13 +608,13 @@ export interface components {
             cli_command: string;
             /** @description For the slash format, whether the day comes before the month; null for every other format. */
             day_first: boolean | null;
-            /** @description The zone to show this file's times in so that they read as its lines do: RX_LOG_TZ (UTC, an IANA name or ±HH:MM) for a file whose timestamps carry no zone; the offset of the first timestamp (±HH:MM) for one whose timestamps do; null when that offset is unknown. */
+            /** @description The zone to show this file's times in so that they read as its lines do: RX_LOG_TZ (UTC, an IANA name or ±HH:MM) for a file whose timestamps carry no zone; the offset of the first timestamp (±HH:MM) for one whose timestamps do; null when that offset is unknown. The request's file_tz, whatever the file, when it names one. */
             display_zone: string | null;
             /** @description The first timestamp as its line writes it, such as 2025-12-10 07:00:04.574: printable ASCII, any other byte written as \xHH, at most 64 bytes; null when no line has a timestamp. */
             example: string | null;
             /**
              * Format: int64
-             * @description The timestamp of the first line that has one, as a UTC instant in ms; null when unknown.
+             * @description The timestamp of the first line that has one, as a UTC instant in ms; null when unknown. Under file_tz, the wall clock the line writes read in that zone.
              */
             first_ms: number | null;
             /** @description The timestamp format of the lines: iso, clf, ctime, syslog, slash, dotted or epoch; null when none is recognized in the first mebibyte of the text, and then has_zone, day_first, display_zone, example, first_ms and last_ms are null too. */
@@ -623,13 +623,13 @@ export interface components {
             has_zone: boolean | null;
             /**
              * Format: int64
-             * @description The timestamp of the last line that has one, as a UTC instant in ms; null when unknown: source none, or no timestamped line within the last 16 MiB of the text.
+             * @description The timestamp of the last line that has one, as a UTC instant in ms; null when unknown: source none, or no timestamped line within the last 16 MiB of the text. Under file_tz, the wall clock the line writes read in that zone.
              */
             last_ms: number | null;
             /** @description The file, as the request named it. */
             path: string;
             /**
-             * @description How the range was found: index (the file's line index, nothing of the file read), scan (the head of the text and a read back from its end, at most 16 MiB), none (a gzip, bzip2, xz or plain zstd file without an index: first_ms and last_ms are null).
+             * @description How the range was found: index (the file's line index; nothing of the file read, except under file_tz the last timestamped line of a file whose timestamps carry zones), scan (the head of the text and a read back from its end, at most 16 MiB), none (a gzip, bzip2, xz or plain zstd file without an index, or under file_tz one whose timestamps carry zones: first_ms and last_ms are null).
              * @enum {string}
              */
             source: "index" | "scan" | "none";
@@ -1062,6 +1062,8 @@ export interface operations {
                 before_context?: number;
                 /** @description Context lines after each offset (-1 = default 3) */
                 after_context?: number;
+                /** @description Read the file's timestamps as the wall clock each line writes, in this zone: UTC, an IANA zone name or ±HH:MM (as RX_LOG_TZ takes it). A zone a line writes is ignored, and the zone takes the place of RX_LOG_TZ for this request. Empty or absent: the file is read as its timestamps say. Another value is refused with 400. */
+                file_tz?: string;
             };
             header?: {
                 /** @description RFC 7240 preferences. respond-async lets the server answer 202 with the task building the file's line index when the build outlasts RX_SAMPLES_WAIT_SECONDS; without it the request waits for the build and answers 200. */
@@ -1212,6 +1214,8 @@ export interface operations {
             query: {
                 /** @description The file whose time range to give */
                 path: string;
+                /** @description Read the file's timestamps as the wall clock each line writes, in this zone: UTC, an IANA zone name or ±HH:MM (as RX_LOG_TZ takes it). A zone a line writes is ignored, and the zone takes the place of RX_LOG_TZ for this request. Empty or absent: the file is read as its timestamps say. Another value is refused with 400. */
+                file_tz?: string;
             };
             header?: never;
             path?: never;
