@@ -1,48 +1,20 @@
-import { get, writable } from 'svelte/store';
-import type { TimeCursor, TimeQuery } from '../utils/timeCursor';
+import { writable } from 'svelte/store';
 
 /**
- * The time cursor shared by the open tabs, or null when none is set.
- * `files` sets it on an explicit jump by time and moves each tab to it
- * when the tab is shown (`utils/timeCursor.ts` holds the rule); the
- * timeline bar draws it and clears it.
+ * The time cursor: the instant (UTC ms) of the last explicit jump by
+ * time in any file, or null when none is set. `files` sets it when a
+ * jump by time reads its value; the indicator in the tab row shows it
+ * and clears it, and the timeline bar marks it on the active file's
+ * axis. It never moves a file by itself.
  */
 function createTimeCursorStore() {
-  const store = writable<TimeCursor | null>(null);
-  /** The version of the last cursor set; it only grows, also across a clear. */
-  let lastVersion = 0;
-
-  /** Set the cursor to `query`, as a new version every time, and return it. */
-  function set(query: TimeQuery): TimeCursor {
-    lastVersion += 1;
-    const cursor: TimeCursor = {
-      query,
-      version: lastVersion,
-      instantMs: typeof query === 'number' ? query : null,
-    };
-    store.set(cursor);
-    return cursor;
-  }
-
-  /** Give a typed cursor the instant it found, unless a newer cursor replaced it. */
-  function resolve(version: number, instantMs: number) {
-    store.update((cursor) =>
-      cursor && cursor.version === version && cursor.instantMs === null
-        ? { ...cursor, instantMs }
-        : cursor,
-    );
-  }
-
-  /** The version a place reached now answers: the cursor's, or 0 with none set. */
-  function currentVersion(): number {
-    return get(store)?.version ?? 0;
-  }
+  const store = writable<number | null>(null);
 
   return {
     subscribe: store.subscribe,
-    set,
-    resolve,
-    currentVersion,
+    /** Make `instantMs` the cursor. */
+    set: (instantMs: number) => store.set(instantMs),
+    /** Clear the cursor. */
     clear: () => store.set(null),
   };
 }

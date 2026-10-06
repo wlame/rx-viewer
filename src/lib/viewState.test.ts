@@ -42,8 +42,8 @@ function openFile(overrides: Partial<OpenFile>): OpenFile {
     anchorLine: 1,
     indexBuild: null,
     timeRange: null,
+    isReadingTimeRange: false,
     timeJump: null,
-    cursorVersion: 0,
     ...overrides,
   };
 }
@@ -540,6 +540,17 @@ describe('a jump by time in the URL', () => {
     expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log&line=3200');
   });
 
+  it('rewrites the time with each later jump', async () => {
+    const later = instant + 15 * 60_000;
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.jumpToTime(path, instant);
+
+    await files.jumpToTime(path, later);
+
+    expect(urlParams().get('time')).toBe('2025-12-10T07:45:00.000Z');
+    expect(get(timeCursor)).toBe(later);
+  });
+
   it('returns to the line before a time jump with Back, and to the time with Forward', async () => {
     await files.openFile(path, { fileSize: 1000, isIndexed: false });
     await files.jumpToLine(path, 500);
@@ -555,19 +566,21 @@ describe('a jump by time in the URL', () => {
     expect(timeQueries).toHaveLength(2);
   });
 
-  it('opens a link with a time and no line at the line the time finds', async () => {
+  it('opens a link with a time and no line at the line the time finds, and sets the cursor', async () => {
     await restoreView({ ...DEFAULT_VIEW, file: path, time: instant });
 
     expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z']);
     expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE);
     expect(activeFile()?.timeJump).toBe(instant);
+    expect(get(timeCursor)).toBe(instant);
   });
 
-  it('opens a link with a time and a line at the line', async () => {
+  it('opens a link with a time and a line at the line, and sets no cursor', async () => {
     await restoreView({ ...DEFAULT_VIEW, file: path, line: 42, time: instant });
 
     expect(timeQueries).toEqual([]);
     expect(activeFile()?.anchorLine).toBe(42);
+    expect(get(timeCursor)).toBeNull();
   });
 
   it('opens a link with a time at the start for a backend without time queries', async () => {
@@ -580,43 +593,28 @@ describe('a jump by time in the URL', () => {
     expect(activeFile()?.anchorLine).toBe(1);
     expect(activeFile()?.lines[0]?.lineNumber).toBe(1);
   });
-  it('sets the cursor from a link, and opens a file opened later at the cursor', async () => {
+  it('moves no other file to the time of a link', async () => {
     serveBackend(['samples_timestamps', 'time_range']);
     await health.check();
-
     await restoreView({ ...DEFAULT_VIEW, file: path, time: instant });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(get(timeCursor)).toMatchObject({ query: instant, instantMs: instant });
-    expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE);
-    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z']);
 
     await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
-    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE));
-    expect(activeFile()?.path).toBe('/logs/big.log');
-    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z', '2025-12-10T07:30:00.000Z']);
-  });
-
-  it('sets the cursor from a link that names a line too, and keeps the file at the line', async () => {
-    serveBackend(['samples_timestamps', 'time_range']);
-    await health.check();
-
-    await restoreView({ ...DEFAULT_VIEW, file: path, line: 42, time: instant });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(get(timeCursor)).toMatchObject({ query: instant });
-    expect(activeFile()?.anchorLine).toBe(42);
-    expect(timeQueries).toEqual([]);
+    expect(activeFile()?.path).toBe('/logs/big.log');
+    expect(activeFile()?.anchorLine).toBe(1);
+    expect(get(timeCursor)).toBe(instant);
+    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z']);
   });
 
   it('keeps the cursor on Back to a line, and writes the line in place of the time once it is cleared', async () => {
     await files.openFile(path, { fileSize: 1000, isIndexed: false });
     await files.jumpToLine(path, 500);
-    await files.goToTime(path, instant);
+    await files.jumpToTime(path, instant);
 
     browser.back();
     await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(500));
-    expect(get(timeCursor)).toMatchObject({ query: instant });
+    expect(get(timeCursor)).toBe(instant);
 
     browser.forward();
     await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE));

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The timeline bar belongs to the active file: its axis runs from that
+  file's first to its last time and changes with the tab shown. The
+  lanes of the other open files and the axis over all of them are gone.
+  The bar is hidden for a file without timestamps, and shows "Reading
+  the time range…" while the file's range is being asked.
+- The time cursor is the instant of the last jump by time (a click or a
+  drag on the axis, Enter after the arrow keys, the Go to time box,
+  where a typed value takes the time of the line it found, or a link's
+  `time`), and it never moves another file. Tabs no longer move to it
+  when shown, and a file opened while it is set opens at its start. It
+  shows at the right edge of the tab row, the tab strip scrolling in the
+  space left of it: its time written the way the active file writes a
+  timestamp (ISO 8601 in UTC for a file without timestamps), a `+` to add
+  it to the timestamps stash, and a `×` that clears it. The axis marks it
+  when it is inside the active file's range. A refused value and a typed
+  value with no line at or after it leave the cursor as it was.
+- A link with both `line` and `time` opens the file at the line and
+  sets no time cursor.
+
+### Fixed
+
+- After a switch to another tab the timeline bar kept the axis of all
+  the open files, so most of it lay outside the shown file's times until
+  a reload. A time picked with the arrow keys in one file no longer
+  carries over to the next.
+- The time cursor's chip no longer takes room from the timeline bar.
+
 ## [0.6.0] - 2026-10-06
 
 ### Added

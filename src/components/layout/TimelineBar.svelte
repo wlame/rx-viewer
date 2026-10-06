@@ -1,18 +1,21 @@
 <script lang="ts">
   /**
-   * The timeline bar under the tab strip: one time axis over the open
-   * files that have timestamps, a band for each file's span, a thumb at
-   * the active file's position, the shared time cursor with a × that
-   * clears it, and a Go to time box.
+   * The timeline bar under the tab strip: the active file's time axis,
+   * from its first to its last time, a thumb at its position, a marker
+   * at the time cursor when the cursor is inside the file's range, and a
+   * Go to time box. It follows the active file: a switch shows the new
+   * file's axis.
    *
    * Releasing a drag on the track, a click on it, Enter after the arrow
    * keys and Enter in the box each ask `jump` to move the active file;
    * nothing is asked while dragging. Times are written the way the
    * active file writes them, in the zone its lines show.
+   *
+   * Hidden for a backend without time queries and for a file without
+   * timestamps; a short note shows while the file's range is being read.
    */
   import type { OpenFile, TimeRangeResponse } from '$lib/types';
   import type { TimeJumpOutcome, TimeQuery } from '$lib/stores/files';
-  import type { TimeCursor } from '$lib/utils/timeCursor';
   import { formatInFileLayout } from '$lib/utils/timeFormat';
   import { isShortcut, type ShortcutId } from '$lib/utils/shortcuts';
   import {
@@ -21,26 +24,21 @@
     hasTimeFormat,
     instantAt,
     isPointAxis,
-    laneLayout,
     sideOfAxis,
     steppedInstant,
     timelineAxis,
-    timelineBands,
     type TimeAxis,
     type TimelineStep,
   } from '$lib/utils/timeline';
 
-  export let openFiles: OpenFile[];
-  /** The file a jump moves; the thumb shows where it is. */
+  /** The file a jump moves; the axis is its range and the thumb shows where it is. */
   export let activeFile: OpenFile | undefined;
   /** Whether the backend answers time queries (`samples_timestamps`). */
   export let canJump: boolean;
   /** Move the active file to a time: an instant (UTC ms) or the box's text. */
   export let jump: (query: TimeQuery) => Promise<TimeJumpOutcome>;
-  /** The time cursor the open tabs share, or null when none is set. */
-  export let cursor: TimeCursor | null;
-  /** Clear the time cursor. */
-  export let clearCursor: () => void;
+  /** The time cursor (UTC ms), or null when none is set. */
+  export let cursorMs: number | null;
 
   /** The arrow and Home/End keys: which shortcut row and key make which step. */
   const KEY_STEPS: readonly { id: ShortcutId; key: string; step: TimelineStep }[] = [
@@ -54,11 +52,8 @@
 
   const MESSAGE_ID = 'timeline-box-message';
 
-  /** What the title says of a cursor outside the axis. */
-  const CURSOR_SIDE_NOTES = {
-    before: 'before the first time of the open files',
-    after: 'after the last time of the open files',
-  } as const;
+  /** The height of the file's band on the rail, in px. */
+  const BAND_HEIGHT = 3;
 
   let track: HTMLElement;
   let boxValue = '';
@@ -73,56 +68,36 @@
   /** The instant of a jump on its way, shown until the file moves. */
   let pendingMs: number | null = null;
 
-  // The box's message is about the file that refused the value: it goes
+  // What the bar holds belongs to one file: the box's message, and a
+  // time under the pointer, under the keys or on its way. All of it goes
   // when another file is shown.
-  let messageFilePath = activeFile?.path;
-  $: dropMessageForOtherFile(activeFile?.path);
+  let shownFilePath = activeFile?.path;
+  $: forgetOtherFile(activeFile?.path);
 
-  function dropMessageForOtherFile(path: string | undefined) {
-    if (path === messageFilePath) return;
-    messageFilePath = path;
+  function forgetOtherFile(path: string | undefined) {
+    if (path === shownFilePath) return;
+    shownFilePath = path;
     boxMessage = null;
+    hoverMs = null;
+    dragMs = null;
+    keyMs = null;
+    pendingMs = null;
   }
 
-  $: isShown = canJump && openFiles.some(hasTimeFormat);
-  $: axis = timelineAxis(openFiles);
-  $: bands = axis ? timelineBands(openFiles, axis, activeFile?.path ?? null) : [];
-  $: lanes = laneLayout(bands.length);
-  $: isPoint = axis !== null && isPointAxis(axis);
   $: canType = hasTimeFormat(activeFile);
-  $: canScrub = axis !== null && !isPoint && canType;
+  $: isReadingRange = Boolean(activeFile?.isReadingTimeRange && activeFile.timeRange === null);
+  $: isShown = canJump && activeFile !== undefined && (canType || isReadingRange);
+  $: axis = timelineAxis(activeFile);
+  $: isPoint = axis !== null && isPointAxis(axis);
+  $: canScrub = axis !== null && !isPoint;
 
-  // Times read the way the active file writes them, or the first timed
-  // file when the active one has no timestamps.
-  $: layout = (hasTimeFormat(activeFile) ? activeFile : openFiles.find(hasTimeFormat))?.timeRange;
+  $: layout = activeFile?.timeRange;
   $: anchorMs = activeFile ? effectiveTimeAt(activeFile.lines, activeFile.anchorLine) : null;
   $: thumbMs = pendingMs ?? dragMs ?? keyMs ?? anchorMs;
   $: labelMs = dragMs ?? keyMs ?? hoverMs;
 
-  // The cursor is drawn where its instant is; one outside the axis sits
-  // at the end it is past, dashed.
-  $: cursorMs = cursor?.instantMs ?? null;
-  $: cursorSide = axis && cursorMs !== null ? sideOfAxis(cursorMs, axis) : null;
-  $: cursorLabel = cursor
-    ? cursorMs !== null
-      ? labelOf(cursorMs, layout)
-      : String(cursor.query)
-    : '';
-  $: cursorTitle =
-    'Time cursor: a tab moves here when it is shown' +
-    (cursorSide ? ` (${CURSOR_SIDE_NOTES[cursorSide]})` : '');
-
-  // The axis ends are labelled on wide screens; the cursor's chip takes
-  // their room on narrower ones.
-  $: endLabelClass = cursor ? 'hidden xl:inline' : 'hidden lg:inline';
-
-  /** Where the cursor's marker is drawn, in percent of the track. */
-  function cursorPercent(ms: number, on: TimeAxis): number {
-    const side = sideOfAxis(ms, on);
-    if (side === 'before') return 0;
-    if (side === 'after') return 100;
-    return percentOf(ms, on);
-  }
+  // The cursor is marked only where the file has times.
+  $: isCursorOnAxis = axis !== null && cursorMs !== null && sideOfAxis(cursorMs, axis) === null;
 
   /** `ms` written the way the file of `range` writes a time, or ISO 8601 without one. */
   function labelOf(ms: number, range: TimeRangeResponse | null | undefined): string {
@@ -189,7 +164,7 @@
   function handleBoxKey(event: KeyboardEvent) {
     if (!isShortcut('timelineJump', event)) return;
     event.preventDefault();
-    if (canType && boxValue.trim() !== '') void jumpTo(boxValue);
+    if (boxValue.trim() !== '') void jumpTo(boxValue);
   }
 </script>
 
@@ -199,10 +174,14 @@
            bg-gh-canvas-default dark:bg-gh-canvas-dark-default
            border-b border-gh-border-default dark:border-gh-border-dark-default"
   >
-    {#if axis}
+    {#if !canType}
+      <span data-reading-range class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
+        Reading the time range…
+      </span>
+    {:else if axis}
       <span
         class="font-mono tabular-nums whitespace-nowrap text-gh-fg-muted dark:text-gh-fg-dark-muted
-               {isPoint ? '' : endLabelClass}"
+               {isPoint ? '' : 'hidden lg:inline'}"
       >
         {labelOf(axis.startMs, layout)}
       </span>
@@ -227,26 +206,20 @@
         on:keydown={handleTrackKey}
         on:blur={() => (keyMs = null)}
       >
-        <!-- The lanes sit on a faint rail that marks the axis's extent. -->
+        <!-- The file's band sits on a faint rail; both span the axis. -->
         <div
           class="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-sm
                  bg-gh-canvas-inset dark:bg-gh-canvas-dark-subtle"
-          style="height: {lanes.height + 4}px"
+          style="height: {BAND_HEIGHT + 4}px"
         >
-          {#each bands as band, i (band.path)}
-            <div
-              data-band
-              data-active={String(band.isActive)}
-              title={band.path}
-              class="absolute rounded-full
-                     {band.isActive
-                ? 'bg-gh-accent-emphasis/75 dark:bg-gh-accent-dark-fg/70'
-                : 'bg-gh-fg-subtle/35 dark:bg-gh-fg-dark-subtle/50'}"
-              style="top: {lanes.tops[i] + 2}px; height: {lanes.bandHeight}px; {isPoint
-                ? 'left: calc(50% - 3px); width: 6px'
-                : `left: ${band.start * 100}%; width: ${band.width * 100}%; min-width: 2px`}"
-            />
-          {/each}
+          <div
+            data-band
+            title={activeFile?.path}
+            class="absolute rounded-full bg-gh-accent-emphasis/75 dark:bg-gh-accent-dark-fg/70"
+            style="top: 2px; height: {BAND_HEIGHT}px; {isPoint
+              ? 'left: calc(50% - 3px); width: 6px'
+              : 'left: 0; width: 100%'}"
+          />
         </div>
         {#if hoverMs !== null && dragMs === null}
           <div
@@ -254,17 +227,15 @@
             style="left: {percentOf(hoverMs, axis)}%"
           />
         {/if}
-        {#if cursorMs !== null}
+        {#if isCursorOnAxis && cursorMs !== null}
           <div
             data-cursor
-            data-outside={cursorSide ?? undefined}
             class="absolute top-0.5 bottom-0.5 w-0 pointer-events-none"
-            style="left: {cursorPercent(cursorMs, axis)}%"
+            style="left: {percentOf(cursorMs, axis)}%"
           >
             <div
               class="absolute inset-y-0 -left-px border-l-2
-                     border-gh-attention-emphasis dark:border-gh-attention-dark-fg
-                     {cursorSide ? 'border-dashed opacity-70' : ''}"
+                     border-gh-attention-emphasis dark:border-gh-attention-dark-fg"
             />
             <div
               class="absolute top-0 -left-[3px] w-1.5 h-1.5 rotate-45
@@ -277,7 +248,7 @@
             data-thumb
             class="absolute top-1/2 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none
                    bg-gh-accent-fg dark:bg-gh-accent-dark-fg"
-            style="left: {percentOf(thumbMs, axis)}%; height: {lanes.height + 12}px"
+            style="left: {percentOf(thumbMs, axis)}%; height: {BAND_HEIGHT + 12}px"
           />
         {/if}
         {#if labelMs !== null}
@@ -299,7 +270,7 @@
       </div>
       {#if !isPoint}
         <span
-          class="{endLabelClass} font-mono tabular-nums whitespace-nowrap text-gh-fg-muted dark:text-gh-fg-dark-muted"
+          class="hidden lg:inline font-mono tabular-nums whitespace-nowrap text-gh-fg-muted dark:text-gh-fg-dark-muted"
         >
           {labelOf(axis.endMs, layout)}
         </span>
@@ -309,79 +280,41 @@
         The time range is not known yet
       </span>
     {/if}
-    {#if cursor}
-      <div
-        data-cursor-chip
-        title={cursorTitle}
-        class="flex items-center gap-1.5 h-6 pl-2 pr-0.5 shrink-0 rounded
-               font-mono tabular-nums whitespace-nowrap
-               border border-gh-attention-emphasis/50 dark:border-gh-attention-dark-fg/50
-               text-gh-attention-fg dark:text-gh-attention-dark-fg"
-      >
-        <span
-          aria-hidden="true"
-          class="w-1.5 h-1.5 rotate-45 bg-gh-attention-emphasis dark:bg-gh-attention-dark-fg"
-        />
-        <span class="hidden sm:inline">{cursorLabel}</span>
-        <button
-          type="button"
-          aria-label="Clear the time cursor"
-          title="Clear the time cursor"
-          on:click={clearCursor}
-          class="p-0.5 rounded outline-none
-                 text-gh-fg-muted dark:text-gh-fg-dark-muted
-                 hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default
-                 hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset
-                 focus-visible:ring-1 focus-visible:ring-gh-accent-emphasis dark:focus-visible:ring-gh-accent-dark-emphasis"
-        >
-          <svg
-            class="w-3 h-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    {/if}
-    <div class="relative shrink-0">
-      <input
-        type="text"
-        aria-label="Go to time"
-        placeholder={canType ? 'Go to time' : 'No timestamps in this file'}
-        disabled={!canType}
-        spellcheck="false"
-        autocomplete="off"
-        bind:value={boxValue}
-        on:input={() => (boxMessage = null)}
-        on:keydown={handleBoxKey}
-        aria-invalid={boxMessage !== null}
-        aria-describedby={boxMessage !== null ? MESSAGE_ID : undefined}
-        class="w-48 h-6 px-2 rounded font-mono text-xs outline-none
+    {#if canType}
+      <div class="relative shrink-0">
+        <input
+          type="text"
+          aria-label="Go to time"
+          placeholder="Go to time"
+          spellcheck="false"
+          autocomplete="off"
+          bind:value={boxValue}
+          on:input={() => (boxMessage = null)}
+          on:keydown={handleBoxKey}
+          aria-invalid={boxMessage !== null}
+          aria-describedby={boxMessage !== null ? MESSAGE_ID : undefined}
+          class="w-48 h-6 px-2 rounded font-mono text-xs outline-none
                bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle
                border {boxMessage !== null
-          ? 'border-gh-danger-fg dark:border-gh-danger-dark-fg'
-          : 'border-gh-border-default dark:border-gh-border-dark-default'}
+            ? 'border-gh-danger-fg dark:border-gh-danger-dark-fg'
+            : 'border-gh-border-default dark:border-gh-border-dark-default'}
                text-gh-fg-default dark:text-gh-fg-dark-default
                placeholder:text-gh-fg-subtle dark:placeholder:text-gh-fg-dark-subtle
-               focus:border-gh-accent-emphasis dark:focus:border-gh-accent-dark-emphasis
-               disabled:opacity-60 disabled:cursor-not-allowed"
-      />
-      {#if boxMessage !== null}
-        <p
-          id={MESSAGE_ID}
-          role="alert"
-          class="absolute right-0 top-full mt-1 z-30 w-max max-w-sm px-2 py-1 rounded shadow-sm
+               focus:border-gh-accent-emphasis dark:focus:border-gh-accent-dark-emphasis"
+        />
+        {#if boxMessage !== null}
+          <p
+            id={MESSAGE_ID}
+            role="alert"
+            class="absolute right-0 top-full mt-1 z-30 w-max max-w-sm px-2 py-1 rounded shadow-sm
                  bg-gh-canvas-default dark:bg-gh-canvas-dark-subtle
                  border border-gh-danger-fg/40 dark:border-gh-danger-dark-fg/40
                  text-gh-danger-fg dark:text-gh-danger-dark-fg"
-        >
-          {boxMessage}
-        </p>
-      {/if}
-    </div>
+          >
+            {boxMessage}
+          </p>
+        {/if}
+      </div>
+    {/if}
   </div>
 {/if}

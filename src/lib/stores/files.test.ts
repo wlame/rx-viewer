@@ -647,6 +647,7 @@ describe('the time range of an open file', () => {
     await settle();
 
     expect(openedFile(path).timeRange).toBeNull();
+    expect(openedFile(path).isReadingTimeRange).toBe(false);
     expect(rangeAsks()).toBe(0);
   });
 
@@ -663,6 +664,7 @@ describe('the time range of an open file', () => {
 
     const file = openedFile(path);
     expect(file.timeRange).toBeNull();
+    expect(file.isReadingTimeRange).toBe(false);
     expect(file.error).toBeNull();
     expect(lineNumbers(path)[0]).toBe(1);
     expect(debug).toHaveBeenCalledWith(
@@ -740,11 +742,13 @@ describe('the time range of an open file', () => {
     const opening = files.openFile(path, { isIndexed: false });
     await settle();
     expect(rangeAsks()).toBe(0);
+    expect(openedFile(path).isReadingTimeRange).toBe(true);
     await health.check();
     await opening;
     await settle();
 
     expect(openedFile(path).timeRange).toEqual(middlewareRange(path));
+    expect(openedFile(path).isReadingTimeRange).toBe(false);
     expect(rangeAsks()).toBe(1);
   });
 });
@@ -759,6 +763,7 @@ describe('a jump by time', () => {
 
   afterEach(async () => {
     for (const file of get(files).openFiles) files.closeFile(file.path);
+    timeCursor.clear();
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
@@ -849,6 +854,7 @@ describe('a jump by time', () => {
     expect(file.lines.find((l) => l.lineNumber === 4_200)?.timestampMs).toBe(stampOf(4_200));
     expect(file.timeJump).toBe(instant);
     expect(file.loading).toBe(false);
+    expect(get(timeCursor)).toBe(instant);
   });
 
   it('sends a typed value as typed and keeps the time of the line it found', async () => {
@@ -860,17 +866,20 @@ describe('a jump by time', () => {
     expect(outcome).toEqual({ kind: 'found', line: 2_712 });
     expect(timeQueries[0].getAll('timestamps')).toEqual(['2025-12-10 07:45:12.345']);
     expect(openedFile(path).timeJump).toBe(stampOf(2_712));
+    expect(get(timeCursor)).toBe(stampOf(2_712));
   });
 
-  it("returns the backend's message for a refused value and keeps the file as it was", async () => {
+  it("returns the backend's message for a refused value and keeps the file and the cursor as they were", async () => {
     const message = 'cannot read "07:61" as a time';
     await serveTimes({ '07:61': { status: 400, message } });
     await files.openFile(path, { isIndexed: false });
     const before = openedFile(path);
+    timeCursor.set(stampOf(77));
 
     const outcome = await files.jumpToTime(path, '07:61');
 
     expect(outcome).toEqual({ kind: 'refused', message });
+    expect(get(timeCursor)).toBe(stampOf(77));
     const file = openedFile(path);
     expect(file.error).toBeNull();
     expect(file.loading).toBe(false);
@@ -890,9 +899,21 @@ describe('a jump by time', () => {
     expect(file.anchorLine).toBe(10_000);
     expect(file.reachedEnd).toBe(true);
     expect(file.timeJump).toBe(instant);
+    expect(get(timeCursor)).toBe(instant);
     expect(get(notifications).map((n) => n.message)).toEqual([
       'No line at or after 2025-12-10T12:33:20.000Z in middleware.log',
     ]);
+  });
+
+  it('keeps the cursor for a typed value with no line at or after it', async () => {
+    await serveTimes({ '23:59': -1 });
+    await files.openFile(path, { isIndexed: false });
+    timeCursor.set(stampOf(77));
+
+    expect(await files.jumpToTime(path, '23:59')).toEqual({ kind: 'none' });
+
+    expect(openedFile(path).anchorLine).toBe(10_000);
+    expect(get(timeCursor)).toBe(stampOf(77));
   });
 
   it('asks nothing of a backend that does not list samples_timestamps', async () => {
@@ -902,6 +923,42 @@ describe('a jump by time', () => {
     expect(await files.jumpToTime(path, stampOf(10))).toEqual({ kind: 'unsupported' });
     expect(timeQueries).toHaveLength(0);
     expect(openedFile(path).loading).toBe(false);
+    expect(get(timeCursor)).toBeNull();
+  });
+
+  it('moves only the file it jumps: another file shown after it stays where it was', async () => {
+    const other = '/logs/postgresql.log';
+    const { timeQueries } = await serveTimes({ [new Date(stampOf(500)).toISOString()]: 500 });
+    await files.openFile(path, { isIndexed: false });
+    await files.openFile(other, { isIndexed: false });
+    await files.jumpToLine(other, 77);
+
+    await files.jumpToTime(path, stampOf(500));
+    files.setActiveFile(other);
+    await settle();
+
+    expect(get(files).activeFilePath).toBe(other);
+    expect(get(timeCursor)).toBe(stampOf(500));
+    expect(openedFile(other).anchorLine).toBe(77);
+    expect(openedFile(other).timeJump).toBeNull();
+    expect(timeQueries.map((q) => q.get('path'))).toEqual([path]);
+
+    await files.openFile('/logs/core.log', { isIndexed: false });
+    await settle();
+    expect(openedFile('/logs/core.log').anchorLine).toBe(1);
+    expect(timeQueries).toHaveLength(1);
+  });
+
+  it('clears the cursor and every time jump, and leaves each file where it is', async () => {
+    await serveTimes({ [new Date(stampOf(500)).toISOString()]: 500 });
+    await files.openFile(path, { isIndexed: false });
+    await files.jumpToTime(path, stampOf(500));
+
+    files.clearTimeCursor();
+
+    expect(get(timeCursor)).toBeNull();
+    expect(openedFile(path).timeJump).toBeNull();
+    expect(openedFile(path).anchorLine).toBe(500);
   });
 
   it('forgets the time jump when the file then moves by line', async () => {
@@ -922,319 +979,5 @@ describe('a jump by time', () => {
     await files.jumpToTime(path, stampOf(500));
     await files.jumpToEnd(path);
     expect(openedFile(path).timeJump).toBeNull();
-  });
-});
-
-describe('the shared time cursor', () => {
-  /** Line n of every served file reads `LINE <n>` and was written at FIRST_MS + n seconds. */
-  const FIRST_MS = 1765350000000;
-  const stampOf = (line: number) => FIRST_MS + line * 1000;
-  const CURSOR = stampOf(4_000);
-  const LATER_CURSOR = stampOf(6_000);
-  const iso = (ms: number) => new Date(ms).toISOString();
-
-  const A = '/logs/middleware.log';
-  const B = '/logs/postgresql.log';
-  const C = '/logs/core.log';
-  const D = '/logs/kernel.log';
-
-  beforeEach(() => setLocation(''));
-
-  afterEach(async () => {
-    for (const file of get(files).openFiles) files.closeFile(file.path);
-    timeCursor.clear();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
-    );
-    await health.check();
-    contractGate.reset();
-    for (const notice of get(notifications)) notifications.dismiss(notice.id);
-    vi.unstubAllGlobals();
-  });
-
-  type Found = number | { status: number; message: string };
-
-  /**
-   * A backend listing `time_range` and `samples_timestamps` that serves
-   * 10,000-line files whose line n was written at `stampOf(n)`. A time
-   * query for a path is answered from `found[path]`: the line a value
-   * finds, -1 for none, or a status and message to refuse it with; a
-   * value not listed finds line 1. Every path has a time range unless
-   * `untimed` names it; the range of a path in `heldRanges` is answered
-   * when the test resolves it. `timeQueries(path)` lists the values asked.
-   */
-  async function serveFiles(
-    found: Record<string, Record<string, Found>>,
-    options: { untimed?: string[]; heldRanges?: Record<string, Promise<void>> } = {},
-  ) {
-    const lineCount = 10_000;
-    const serveLines = serveFileOf(lineCount).getMockImplementation()!;
-    const asked: { path: string; value: string }[] = [];
-    const answer = (path: string, value: string, outcome: number, context: number) => {
-      const first = Math.max(1, outcome - context);
-      const content: string[] = [];
-      if (outcome > 0) {
-        for (let n = first; n <= Math.min(lineCount, outcome + context); n++)
-          content.push(`LINE ${n}`);
-      }
-      return jsonAnswer(200, {
-        path,
-        samples: { [value]: outcome > 0 ? content : null },
-        line_timestamps: {
-          [value]: outcome > 0 ? content.map((_, i) => stampOf(first + i)) : null,
-        },
-        timestamps: { [value]: outcome },
-        before_context: context,
-        after_context: context,
-        lines: {},
-        offsets: {},
-        is_compressed: false,
-        compression_format: null,
-        cli_command: `rx samples ${path} --timestamps=${value}`,
-      });
-    };
-    const spy = vi.fn(async (url: string) => {
-      if (url.startsWith('/health')) {
-        return jsonAnswer(200, {
-          contract_version: '1.5',
-          features: ['samples_timestamps', 'time_range'],
-        });
-      }
-      const params = new URL(url, 'http://localhost').searchParams;
-      const path = params.get('path') ?? '';
-      if (url.includes('/v1/time-range')) {
-        await options.heldRanges?.[path];
-        const range = middlewareRange(path);
-        return jsonAnswer(
-          200,
-          options.untimed?.includes(path)
-            ? { ...range, format: null, example: null, first_ms: null, last_ms: null }
-            : range,
-        );
-      }
-      const value = params.get('timestamps');
-      if (value === null) {
-        const lines = await serveLines(url);
-        const body = await lines.json();
-        const [key, content] = Object.entries(body.samples as Record<string, string[] | null>)[0];
-        const first = Number(content?.[0]?.slice('LINE '.length));
-        return jsonAnswer(200, {
-          ...body,
-          line_timestamps: { [key]: content ? content.map((_, i) => stampOf(first + i)) : null },
-        });
-      }
-      asked.push({ path, value });
-      const outcome = found[path]?.[value] ?? 1;
-      if (typeof outcome === 'object')
-        return jsonAnswer(outcome.status, { detail: outcome.message });
-      return answer(path, value, outcome, Number(params.get('context') ?? 3));
-    });
-    vi.stubGlobal('fetch', spy);
-    await health.check();
-    return {
-      timeQueries: (path: string) => asked.filter((q) => q.path === path).map((q) => q.value),
-    };
-  }
-
-  /** Open each file and let its window and its time range arrive. */
-  async function openAll(...paths: string[]) {
-    for (const path of paths) {
-      await files.openFile(path, { isIndexed: false });
-      await settle();
-    }
-  }
-
-  it('moves a tab shown after a jump to the cursor once, and keeps a tab moved by line after it', async () => {
-    const { timeQueries } = await serveFiles({
-      [A]: { [iso(CURSOR)]: 4_000 },
-      [B]: { [iso(CURSOR)]: 3_500 },
-      [C]: { [iso(CURSOR)]: 2_500 },
-    });
-    await openAll(A, B, C);
-
-    await files.goToTime(A, CURSOR);
-    await files.jumpToLine(C, 77);
-    await files.showTab(B);
-
-    expect(openedFile(B).anchorLine).toBe(3_500);
-    expect(openedFile(B).timeJump).toBe(CURSOR);
-    expect(get(files).activeFilePath).toBe(B);
-
-    await files.showTab(A);
-    await files.showTab(B);
-    await files.showTab(C);
-
-    expect(timeQueries(B)).toEqual([iso(CURSOR)]);
-    expect(timeQueries(C)).toEqual([]);
-    expect(openedFile(C).anchorLine).toBe(77);
-    expect(openedFile(A).anchorLine).toBe(4_000);
-  });
-
-  it('moves every tab not moved since to a second jump when it is shown', async () => {
-    const { timeQueries } = await serveFiles({
-      [B]: { [iso(CURSOR)]: 3_500, [iso(LATER_CURSOR)]: 5_500 },
-      [C]: { [iso(LATER_CURSOR)]: 5_200 },
-    });
-    await openAll(A, B, C);
-    await files.goToTime(A, CURSOR);
-    await files.showTab(B);
-    await files.jumpToLine(C, 77);
-
-    await files.goToTime(A, LATER_CURSOR);
-    await files.showTab(B);
-    await files.showTab(C);
-
-    expect(openedFile(B).anchorLine).toBe(5_500);
-    expect(openedFile(C).anchorLine).toBe(5_200);
-    expect(timeQueries(B)).toEqual([iso(CURSOR), iso(LATER_CURSOR)]);
-    expect(timeQueries(C)).toEqual([iso(LATER_CURSOR)]);
-  });
-
-  it('opens a file at the cursor once its time range is known, and at its start without one', async () => {
-    const { timeQueries } = await serveFiles({ [D]: { [iso(CURSOR)]: 4_321 } });
-    await openAll(A);
-    await files.goToTime(A, CURSOR);
-
-    await openAll(D);
-
-    expect(openedFile(D).anchorLine).toBe(4_321);
-    expect(openedFile(D).timeJump).toBe(CURSOR);
-    expect(timeQueries(D)).toEqual([iso(CURSOR)]);
-
-    timeCursor.clear();
-    await openAll(B);
-
-    expect(openedFile(B).anchorLine).toBe(1);
-    expect(lineNumbers(B)[0]).toBe(1);
-    expect(timeQueries(B)).toEqual([]);
-  });
-
-  it('opens a file at a line it is given, not at the cursor', async () => {
-    const { timeQueries } = await serveFiles({});
-    await openAll(A);
-    await files.goToTime(A, CURSOR);
-
-    await files.openFile(D, { scrollToLine: 900, isIndexed: false });
-    await settle();
-
-    expect(openedFile(D).anchorLine).toBe(900);
-    expect(timeQueries(D)).toEqual([]);
-  });
-
-  it('does not bring a file forward whose time range arrives while another tab is shown', async () => {
-    let releaseRange = () => {};
-    const heldRange = new Promise<void>((resolve) => (releaseRange = resolve));
-    const { timeQueries } = await serveFiles(
-      { [D]: { [iso(CURSOR)]: 4_321 } },
-      { heldRanges: { [D]: heldRange } },
-    );
-    await openAll(A);
-    await files.goToTime(A, CURSOR);
-    await files.openFile(D, { isIndexed: false });
-    await files.showTab(A);
-
-    releaseRange();
-    await settle();
-
-    expect(get(files).activeFilePath).toBe(A);
-    expect(timeQueries(D)).toEqual([]);
-
-    await files.showTab(D);
-    expect(openedFile(D).anchorLine).toBe(4_321);
-  });
-
-  it('clears the cursor: tabs shown then stay where they are, and no file keeps the time', async () => {
-    const { timeQueries } = await serveFiles({ [A]: { [iso(CURSOR)]: 4_000 } });
-    await openAll(A, B);
-    await files.goToTime(A, CURSOR);
-
-    files.clearTimeCursor();
-    await files.showTab(B);
-
-    expect(get(timeCursor)).toBeNull();
-    expect(openedFile(A).timeJump).toBeNull();
-    expect(openedFile(A).anchorLine).toBe(4_000);
-    expect(openedFile(B).anchorLine).toBe(1);
-    expect(timeQueries(B)).toEqual([]);
-  });
-
-  it('shows the message of a file that refuses a typed cursor and leaves it there; others follow', async () => {
-    const message = 'a time of day needs a file of one day; this file spans 3 days';
-    const { timeQueries } = await serveFiles({
-      [A]: { '07:30': 4_000 },
-      [B]: { '07:30': { status: 400, message } },
-      [C]: { '07:30': 2_500 },
-    });
-    await openAll(A, B, C);
-    await files.jumpToLine(B, 640);
-
-    await files.goToTime(A, '07:30');
-    await files.showTab(B);
-
-    expect(openedFile(B).anchorLine).toBe(640);
-    expect(openedFile(B).error).toBeNull();
-    expect(get(notifications).map((n) => n.message)).toEqual([
-      `Cannot go to the time cursor in postgresql.log: ${message}`,
-    ]);
-
-    await files.showTab(C);
-    await files.showTab(B);
-
-    expect(openedFile(C).anchorLine).toBe(2_500);
-    expect(timeQueries(B)).toEqual(['07:30']);
-    expect(get(timeCursor)?.instantMs).toBe(stampOf(4_000));
-  });
-
-  it('sets no cursor for a value the active file refuses, and keeps the one set before', async () => {
-    const message = 'cannot read "07:61" as a time';
-    const { timeQueries } = await serveFiles({
-      [A]: { '07:61': { status: 400, message } },
-      [B]: { [iso(CURSOR)]: 3_500 },
-    });
-    await openAll(A, B);
-    await files.goToTime(A, CURSOR);
-    const before = get(timeCursor);
-
-    const outcome = await files.goToTime(A, '07:61');
-    await files.showTab(B);
-
-    expect(outcome).toEqual({ kind: 'refused', message });
-    expect(get(timeCursor)).toEqual(before);
-    expect(openedFile(A).anchorLine).toBe(1);
-    expect(timeQueries(B)).toEqual([iso(CURSOR)]);
-    expect(get(notifications)).toEqual([]);
-  });
-
-  it('shows the end of a tab whose last line is before the cursor, with the notice', async () => {
-    await serveFiles({ [B]: { [iso(CURSOR)]: -1 } });
-    await openAll(A, B);
-    await files.goToTime(A, CURSOR);
-
-    await files.showTab(B);
-
-    expect(openedFile(B).anchorLine).toBe(10_000);
-    expect(openedFile(B).reachedEnd).toBe(true);
-    expect(get(notifications).map((n) => n.message)).toEqual([
-      'No line at or after 2025-12-10 08:06:40.000 in postgresql.log',
-    ]);
-  });
-
-  it('moves no file without timestamps and sets no cursor for a backend without time queries', async () => {
-    const { timeQueries } = await serveFiles({}, { untimed: [B] });
-    await openAll(A, B);
-    await files.goToTime(A, CURSOR);
-
-    await files.showTab(B);
-    expect(timeQueries(B)).toEqual([]);
-
-    timeCursor.clear();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
-    );
-    await health.check();
-    expect(await files.goToTime(A, CURSOR)).toEqual({ kind: 'unsupported' });
-    expect(get(timeCursor)).toBeNull();
   });
 });

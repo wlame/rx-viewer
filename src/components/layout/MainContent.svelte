@@ -5,6 +5,7 @@
   import { timeCursor } from '$lib/stores/timeCursor';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
+  import TimeCursorIndicator from './TimeCursorIndicator.svelte';
   import TimelineBar from './TimelineBar.svelte';
 
   let draggedIndex: number | null = null;
@@ -15,18 +16,18 @@
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
   /**
-   * A jump from the timeline bar sets the time cursor and moves the file
-   * the editor shows; the other tabs move to it when they are shown.
+   * A jump from the timeline bar moves the file the editor shows and sets
+   * the time cursor; no other file moves.
    */
   async function jumpActiveFileToTime(query: TimeQuery) {
     if (!activeFile) return { kind: 'unsupported' } as const;
-    return files.goToTime(activeFile.path, query);
+    return files.jumpToTime(activeFile.path, query);
   }
 
   function selectTab(index: number) {
     const file = $files.openFiles[index];
     if (file) {
-      void files.showTab(file.path);
+      files.setActiveFile(file.path);
     }
   }
 
@@ -38,7 +39,7 @@
     if (index === validActiveIndex) {
       const newIndex = index > 0 ? index - 1 : index < $files.openFiles.length - 1 ? index + 1 : -1;
       if (newIndex >= 0) {
-        void files.showTab($files.openFiles[newIndex].path);
+        files.setActiveFile($files.openFiles[newIndex].path);
       }
     }
 
@@ -111,64 +112,78 @@
       </div>
     </div>
   {:else}
-    <!-- Tabs for file switching with drag-to-reorder -->
+    <!-- The tab row: the tabs, with drag-to-reorder, scroll in the space
+         left of the time cursor at its right edge. -->
     <div
-      class="flex items-center gap-0.5 px-2 py-1 bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default overflow-x-auto scrollbar-hide"
+      class="flex items-center bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default"
     >
-      {#each $files.openFiles as file, index (file.path)}
-        <button
-          draggable="true"
-          class="flex items-center gap-2 px-3 py-1.5 rounded-t
+      <div
+        data-tab-strip
+        class="flex-1 min-w-0 flex items-center gap-0.5 px-2 py-1 overflow-x-auto scrollbar-hide"
+      >
+        {#each $files.openFiles as file, index (file.path)}
+          <button
+            draggable="true"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-t
                  transition-colors text-sm whitespace-nowrap cursor-pointer
                  {index === validActiveIndex
-            ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
-            : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
+              ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
+              : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
                  {dragOverIndex === index
-            ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg'
-            : ''}"
-          on:click={() => selectTab(index)}
-          on:dragstart={(e) => handleDragStart(e, index)}
-          on:dragover={(e) => handleDragOver(e, index)}
-          on:dragleave={handleDragLeave}
-          on:drop={(e) => handleDrop(e, index)}
-          on:dragend={handleDragEnd}
-        >
-          <span class="font-medium truncate max-w-[200px]" title={file.path}>
-            {file.name}
-          </span>
-          <FileBadges
-            isCompressed={file.isCompressed}
-            compressionFormat={file.compressionFormat}
-            isIndexed={null}
-          />
-          <button
-            class="p-0.5 rounded hover:bg-gh-danger-subtle dark:hover:bg-gh-danger-dark-subtle
+              ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg'
+              : ''}"
+            on:click={() => selectTab(index)}
+            on:dragstart={(e) => handleDragStart(e, index)}
+            on:dragover={(e) => handleDragOver(e, index)}
+            on:dragleave={handleDragLeave}
+            on:drop={(e) => handleDrop(e, index)}
+            on:dragend={handleDragEnd}
+          >
+            <span class="font-medium truncate max-w-[200px]" title={file.path}>
+              {file.name}
+            </span>
+            <FileBadges
+              isCompressed={file.isCompressed}
+              compressionFormat={file.compressionFormat}
+              isIndexed={null}
+            />
+            <button
+              class="p-0.5 rounded hover:bg-gh-danger-subtle dark:hover:bg-gh-danger-dark-subtle
                    hover:text-gh-danger-fg dark:hover:text-gh-danger-dark-fg
                    transition-colors"
-            title="Close"
-            on:click={(e) => handleClose(index, e)}
-          >
-            <svg
-              class="w-3.5 h-3.5"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+              title="Close"
+              on:click={(e) => handleClose(index, e)}
             >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+              <svg
+                class="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
           </button>
-        </button>
-      {/each}
+        {/each}
+      </div>
+      {#if $timeCursor !== null}
+        <div class="shrink-0 pl-1 pr-2">
+          <TimeCursorIndicator
+            cursorMs={$timeCursor}
+            {activeFile}
+            addToStash={null}
+            clearCursor={files.clearTimeCursor}
+          />
+        </div>
+      {/if}
     </div>
 
     <TimelineBar
-      openFiles={$files.openFiles}
       {activeFile}
       canJump={backendHas('samples_timestamps', $health)}
       jump={jumpActiveFileToTime}
-      cursor={$timeCursor}
-      clearCursor={files.clearTimeCursor}
+      cursorMs={$timeCursor}
     />
 
     <!-- The active file's editor, built again for each tab so no state of one

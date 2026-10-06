@@ -227,19 +227,14 @@ export interface OpenFile {
    * failed, and for a backend that does not list `time_range`.
    */
   timeRange: TimeRangeResponse | null;
+  /** Whether an ask for the file's time range is out. */
+  isReadingTimeRange: boolean;
   /**
    * The instant (UTC ms) of the jump by time that put the file where it
    * is, or null when it was last moved another way. A move by line
    * clears it. The URL's `time` comes from it.
    */
   timeJump: number | null;
-  /**
-   * The version of the time cursor this file's place answers: the cursor
-   * it last jumped to (or tried to), or the one set when the user last
-   * moved it by line; 0 for none. A newer cursor moves the file when it
-   * is shown (`utils/timeCursor.ts`).
-   */
-  cursorVersion: number;
 }
 
 /** Match info for highlighting in file viewer */

@@ -6,10 +6,8 @@ import {
   instantAt,
   isPointAxis,
   sideOfAxis,
-  laneLayout,
   steppedInstant,
   timelineAxis,
-  timelineBands,
   type TimelineFile,
 } from './timeline';
 
@@ -33,45 +31,32 @@ function range(firstMs: number | null, lastMs: number | null, format: string | n
   } as TimeRangeResponse;
 }
 
-function timedFile(path: string, timeRange: TimeRangeResponse | null): TimelineFile {
-  return { path, name: path.split('/').pop() ?? path, timeRange };
+function timedFile(timeRange: TimeRangeResponse | null): TimelineFile {
+  return { timeRange };
 }
 
-const middleware = timedFile('/logs/middleware.log', range(HOUR_START + 4_574, HOUR_START + HOUR));
-const postgresql = timedFile(
-  '/logs/postgresql.log',
-  range(HOUR_START + 30_000, HOUR_START + HOUR + 2_000),
-);
-/** A file of the next hour, so the axis has a gap between the two bands. */
-const nextHour = timedFile('/logs/next.log', range(HOUR_START + 2 * HOUR, HOUR_START + 3 * HOUR));
+const middleware = timedFile(range(HOUR_START + 4_574, HOUR_START + HOUR));
 
 describe('timelineAxis', () => {
   it('spans one file from its first to its last time', () => {
-    expect(timelineAxis([middleware])).toEqual({
+    expect(timelineAxis(middleware)).toEqual({
       startMs: HOUR_START + 4_574,
       endMs: HOUR_START + HOUR,
     });
   });
 
-  it('spans the earliest first time to the latest last time of two files', () => {
-    expect(timelineAxis([middleware, postgresql])).toEqual({
-      startMs: HOUR_START + 4_574,
-      endMs: HOUR_START + HOUR + 2_000,
-    });
-  });
-
   it.each([
-    ['no range', timedFile('/a', null)],
-    ['no format', timedFile('/a', range(null, null, null))],
-    ['an unknown last time', timedFile('/a', range(HOUR_START, null))],
-    ['an unknown first time', timedFile('/a', range(null, HOUR_START))],
-  ])('leaves out a file with %s', (_name, file) => {
-    expect(timelineAxis([file])).toBeNull();
-    expect(timelineAxis([file, middleware])).toEqual(timelineAxis([middleware]));
+    ['no file', undefined],
+    ['no range', timedFile(null)],
+    ['no format', timedFile(range(null, null, null))],
+    ['an unknown last time', timedFile(range(HOUR_START, null))],
+    ['an unknown first time', timedFile(range(null, HOUR_START))],
+  ])('is null for %s', (_name, file) => {
+    expect(timelineAxis(file)).toBeNull();
   });
 
   it('is one point for a file whose first and last times are equal', () => {
-    const axis = timelineAxis([timedFile('/one', range(HOUR_START, HOUR_START))]);
+    const axis = timelineAxis(timedFile(range(HOUR_START, HOUR_START)));
 
     expect(axis).toEqual({ startMs: HOUR_START, endMs: HOUR_START });
     expect(isPointAxis(axis!)).toBe(true);
@@ -121,34 +106,6 @@ describe('instant and position on the axis', () => {
     const point = { startMs: HOUR_START, endMs: HOUR_START };
     expect(fractionOf(HOUR_START, point)).toBe(0.5);
     expect(instantAt(17, 600, point)).toBe(HOUR_START);
-  });
-});
-
-describe('timelineBands', () => {
-  it('draws one file as one band across the axis, highlighted when active', () => {
-    const axis = timelineAxis([middleware])!;
-
-    expect(timelineBands([middleware], axis, '/logs/middleware.log')).toEqual([
-      { path: '/logs/middleware.log', name: 'middleware.log', start: 0, width: 1, isActive: true },
-    ]);
-  });
-
-  it('draws two files with a gap between them where no file has data', () => {
-    const axis = timelineAxis([middleware, nextHour])!;
-    const [first, second] = timelineBands([middleware, nextHour], axis, '/logs/next.log');
-
-    expect(first.isActive).toBe(false);
-    expect(second.isActive).toBe(true);
-    expect(first.start).toBe(0);
-    expect(second.start + second.width).toBeCloseTo(1);
-    expect(second.start - (first.start + first.width)).toBeGreaterThan(0.3);
-  });
-
-  it('draws no band for a file without a known range', () => {
-    const axis = timelineAxis([middleware])!;
-    const bands = timelineBands([timedFile('/plain.txt', null), middleware], axis, null);
-
-    expect(bands.map((b) => b.path)).toEqual(['/logs/middleware.log']);
   });
 });
 
@@ -223,31 +180,5 @@ describe('effectiveTimeAt', () => {
     expect(effectiveTimeAt(before, 2)).toBe(100);
     expect(effectiveTimeAt(after, 1003)).toBe(5_000);
     expect(effectiveTimeAt(after, 1001)).toBeNull();
-  });
-});
-
-describe('laneLayout', () => {
-  it('gives one file a 3 px lane', () => {
-    expect(laneLayout(1)).toEqual({ bandHeight: 3, tops: [0], height: 3 });
-  });
-
-  it('stacks files that share an hour in lanes with a gap', () => {
-    expect(laneLayout(2)).toEqual({ bandHeight: 3, tops: [0, 5], height: 8 });
-  });
-
-  it('thins the lanes as files are added and stays under 20 px', () => {
-    for (let count = 1; count <= 30; count++) {
-      const { height, tops, bandHeight } = laneLayout(count);
-      expect(height).toBeLessThanOrEqual(20);
-      expect(tops).toHaveLength(count);
-      expect(bandHeight).toBeGreaterThan(0);
-    }
-    expect(laneLayout(6).bandHeight).toBe(2);
-  });
-
-  it('puts the files past the last lane back in the first lanes', () => {
-    const { tops } = laneLayout(12);
-    expect(tops[10]).toBe(tops[0]);
-    expect(tops[11]).toBe(tops[1]);
   });
 });
