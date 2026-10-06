@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A timestamps stash of up to 7 saved moments, in a row above the tabs.
+  The `+` of the time cursor saves the cursor's instant; it is disabled,
+  with a tooltip that says why, when the stash holds that instant or is
+  full. Each entry shows its time the way the active file writes a
+  timestamp (ISO 8601 in UTC for a file without timestamps), jumps the
+  active file there on a click and sets the time cursor, and has a `×`
+  that removes it. An entry outside the active file's range (its first
+  and last times are inside), or on a file without timestamps or whose
+  range is not known yet, is dimmed and does not jump; its tooltip says
+  why. The row keeps one height, with the hint "+ on the cursor saves a
+  moment here" while it is empty, so the editor does not move when a
+  moment is saved or removed.
+- The link keeps the stash as `stash=`, the instants in RFC 3339 with
+  milliseconds and `Z`, separated by commas. A saved or removed moment
+  rewrites the current history entry; Back and Forward keep the stash as
+  it is. Invalid entries are dropped, and the rest are kept once each, in
+  time order, the earliest 7.
+
 ### Changed
 
 - The timeline bar belongs to the active file: its axis runs from that

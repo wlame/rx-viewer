@@ -1,4 +1,5 @@
 import type { FileLine, OpenFile } from '../types';
+import { formatInFileLayout } from './timeFormat';
 
 /**
  * The geometry of the timeline bar: the time axis of the active file,
@@ -21,6 +22,16 @@ export interface TimeAxis {
 /** Whether a file has a timestamp format, so it can be moved by time. */
 export function hasTimeFormat(file: TimelineFile | undefined): boolean {
   return Boolean(file?.timeRange?.format);
+}
+
+/**
+ * `ms` written the way the file writes a time, in the zone its lines
+ * show, or ISO 8601 in UTC for a file without timestamps, without a
+ * range yet, or no file.
+ */
+export function timeLabelFor(ms: number, file: TimelineFile | undefined): string {
+  const range = file?.timeRange;
+  return range && hasTimeFormat(file) ? formatInFileLayout(ms, range) : new Date(ms).toISOString();
 }
 
 /**

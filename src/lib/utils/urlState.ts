@@ -4,8 +4,9 @@
  * The URL names what a user would bookmark, share or come back to: the
  * active file, the line its view is anchored on or the time it jumped
  * to, its highlighting,
- * filter and anomaly category, the sidebar tab, the last search and
- * whether its results show byte offsets. Each key has one row in
+ * filter and anomaly category, the sidebar tab, the last search,
+ * whether its results show byte offsets, and the timestamps stash. Each
+ * key has one row in
  * `CODECS`, which reads it as untrusted input (a missing or invalid
  * value gives that key's default) and writes it back, leaving a value at
  * its default out of the link.
@@ -17,6 +18,7 @@
  */
 import type { TraceMatchingFlags } from '../types';
 import { SEARCH_TOGGLES } from './searchToggles';
+import { normalizeStash } from './timeStash';
 
 /** The sidebar's two tabs. */
 export type SidebarTab = 'tree' | 'search';
@@ -71,6 +73,8 @@ export interface ViewState {
   offsets: boolean;
   /** The last search run, or null for none. */
   search: SearchState | null;
+  /** The timestamps stash: up to seven instants (UTC ms), each once, in time order. */
+  stash: readonly number[];
 }
 
 /** The view of a link with no parameters. */
@@ -84,6 +88,7 @@ export const DEFAULT_VIEW: ViewState = {
   tab: 'tree',
   offsets: false,
   search: null,
+  stash: [],
 };
 
 /** One URL parameter written as name and value. */
@@ -142,6 +147,21 @@ function urlInstant(value: string | null): number | null {
   if (value === null || !URL_INSTANT.test(value)) return null;
   const ms = Date.parse(value);
   return Number.isNaN(ms) || new Date(ms).toISOString() !== value ? null : ms;
+}
+
+/**
+ * The stash a URL names: the instants of its comma-separated entries,
+ * each written the way `time` is. An entry that is not one is dropped;
+ * the rest are kept once each, in time order, the earliest seven.
+ */
+function parseStash(params: URLSearchParams): number[] {
+  const entries = (params.get('stash') ?? '').split(',');
+  return normalizeStash(entries.map(urlInstant).filter((ms): ms is number => ms !== null));
+}
+
+function serializeStash(stash: readonly number[]): Param[] {
+  if (stash.length === 0) return [];
+  return [['stash', stash.map((ms) => new Date(ms).toISOString()).join(',')]];
 }
 
 /** The search flag parameters the panel can set, named as /v1/trace names them. */
@@ -266,6 +286,12 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
       next !== null &&
       JSON.stringify(serializeSearch(previous)) !== JSON.stringify(serializeSearch(next)),
   },
+  // Saving or removing a moment rewrites the current entry.
+  stash: {
+    names: ['stash'],
+    parse: parseStash,
+    serialize: serializeStash,
+  },
 };
 
 const VIEW_KEYS = Object.keys(CODECS) as (keyof ViewState)[];
@@ -329,7 +355,7 @@ function isStepKey<K extends keyof ViewState>(
  * any key changed in a way that is a step (opening a file, running a
  * search, switching the sidebar tab, a jump by time), otherwise a
  * replace (the line, the highlighting, the filter, the category, the
- * offsets switch).
+ * offsets switch, the stash).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';

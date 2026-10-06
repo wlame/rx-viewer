@@ -36,6 +36,7 @@ function mount(props: {
   cursorMs: number | null;
   activeFile: OpenFile | undefined;
   canAdd?: boolean;
+  addTitle?: string;
 }) {
   const target = document.createElement('div');
   document.body.appendChild(target);
@@ -48,6 +49,7 @@ function mount(props: {
       activeFile: props.activeFile,
       addToStash: props.canAdd === false ? null : addToStash,
       clearCursor,
+      ...(props.addTitle === undefined ? {} : { addTitle: props.addTitle }),
     },
   });
   const button = (label: string) =>
@@ -107,5 +109,15 @@ describe('TimeCursorIndicator', () => {
     expect(add()?.disabled).toBe(true);
     add()?.click();
     expect(addToStash).not.toHaveBeenCalled();
+  });
+
+  it('says why + is disabled in its tooltip, and what it does otherwise', async () => {
+    const { add } = mount({ cursorMs: CURSOR, activeFile: middleware });
+    expect(add()?.title).toBe('Add the time cursor to the stash');
+
+    indicator?.$set({ addToStash: null, addTitle: 'The stash holds this time already' });
+    await tick();
+
+    expect(add()?.title).toBe('The stash holds this time already');
   });
 });

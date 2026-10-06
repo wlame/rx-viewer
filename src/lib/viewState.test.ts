@@ -3,12 +3,14 @@ import { get } from 'svelte/store';
 import { files } from './stores/files';
 import { health } from './stores/health';
 import { timeCursor } from './stores/timeCursor';
+import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
-import { fileViewOf, restoreView, startViewSync } from './viewState';
+import { fileViewOf, loadView, restoreView, startViewSync } from './viewState';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_VIEW,
+  readViewState,
   type SearchState,
   type ViewState,
 } from './utils/urlState';
@@ -344,6 +346,7 @@ describe('restoreView', () => {
       tab: 'search',
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
+      stash: [],
     };
 
     await restoreView(view);
@@ -625,5 +628,79 @@ describe('a jump by time in the URL', () => {
     expect(get(timeCursor)).toBeNull();
     expect(browser.entries).toHaveLength(entries);
     expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log&line=3000');
+  });
+});
+
+describe('the stash in the URL', () => {
+  let stopSync: () => void = () => {};
+  const path = '/logs/small.log';
+  const first = Date.UTC(2025, 11, 10, 7, 30, 0, 0);
+  const second = Date.UTC(2025, 11, 10, 7, 45, 0, 250);
+  const stashParam = () => new URLSearchParams(window.location.search).get('stash');
+
+  beforeEach(() => {
+    serveBackend();
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    timeStash.replace([]);
+    vi.unstubAllGlobals();
+  });
+
+  it('rewrites the current entry with each saved or removed moment and adds none', async () => {
+    const browser = stubBrowserHistory();
+    stopSync = startViewSync();
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    const entries = browser.entries.length;
+
+    timeStash.add(second);
+    timeStash.add(first);
+    expect(stashParam()).toBe('2025-12-10T07:30:00.000Z,2025-12-10T07:45:00.250Z');
+
+    timeStash.remove(first);
+    expect(stashParam()).toBe('2025-12-10T07:45:00.250Z');
+    expect(browser.entries).toHaveLength(entries);
+    expect(browser.modes.slice(-3)).toEqual(['replace', 'replace', 'replace']);
+  });
+
+  it('keeps the stash over a reload of the link', async () => {
+    stubWindow();
+    stopSync = startViewSync();
+    timeStash.add(first);
+    timeStash.add(second);
+    const link = window.location.search;
+    stopSync();
+
+    timeStash.replace([]);
+    stubWindow(link);
+    await loadView(readViewState());
+
+    expect(get(timeStash)).toEqual([first, second]);
+  });
+
+  it('drops the invalid entries of a link and writes the stash it kept', async () => {
+    stubWindow(`?stash=${encodeURIComponent('07:30,2025-12-10T07:30:00.000Z,oops')}`);
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(timeStash)).toEqual([first]);
+    expect(stashParam()).toBe('2025-12-10T07:30:00.000Z');
+  });
+
+  it('keeps the stash on Back and Forward, and writes it into the entry it returns to', async () => {
+    const browser = stubBrowserHistory();
+    stopSync = startViewSync();
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
+    timeStash.add(first);
+
+    browser.back();
+    await vi.waitFor(() => expect(get(files).activeFilePath).toBe(path));
+
+    expect(get(timeStash)).toEqual([first]);
+    await vi.waitFor(() => expect(stashParam()).toBe('2025-12-10T07:30:00.000Z'));
   });
 });

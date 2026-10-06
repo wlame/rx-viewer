@@ -7,6 +7,7 @@ import {
   isPointAxis,
   sideOfAxis,
   steppedInstant,
+  timeLabelFor,
   timelineAxis,
   type TimelineFile,
 } from './timeline';
@@ -180,5 +181,19 @@ describe('effectiveTimeAt', () => {
     expect(effectiveTimeAt(before, 2)).toBe(100);
     expect(effectiveTimeAt(after, 1003)).toBe(5_000);
     expect(effectiveTimeAt(after, 1001)).toBeNull();
+  });
+});
+
+describe('timeLabelFor', () => {
+  const instant = HOUR_START + 30 * MINUTE;
+
+  it('writes an instant the way the file writes a time', () => {
+    expect(timeLabelFor(instant, middleware)).toBe('2025-12-10 07:30:00.000');
+  });
+
+  it('writes ISO 8601 in UTC for a file without timestamps, with no range yet, or no file', () => {
+    for (const file of [timedFile(range(null, null, null)), timedFile(null), undefined]) {
+      expect(timeLabelFor(instant, file)).toBe('2025-12-10T07:30:00.000Z');
+    }
   });
 });

@@ -3,7 +3,7 @@
   import { health, settings, detectors } from '$lib/stores';
   import { contractRefused } from '$lib/stores/health';
   import { readViewState } from '$lib/utils/urlState';
-  import { restoreView, startViewSync } from '$lib/viewState';
+  import { loadView, startViewSync } from '$lib/viewState';
   import Header from './components/layout/Header.svelte';
   import Sidebar from './components/layout/Sidebar.svelte';
   import MainContent from './components/layout/MainContent.svelte';
@@ -23,7 +23,7 @@
     // is done, so a half-restored view never overwrites the link.
     let stopViewSync: (() => void) | null = null;
     let isDestroyed = false;
-    restoreView(readViewState())
+    loadView(readViewState())
       .catch((e) => console.error('Failed to restore the view from the URL:', e))
       .finally(() => {
         if (!isDestroyed) stopViewSync = startViewSync();

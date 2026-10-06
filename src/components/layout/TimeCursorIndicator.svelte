@@ -7,26 +7,21 @@
    * it. Nothing shows while no cursor is set.
    */
   import type { OpenFile } from '$lib/types';
-  import { formatInFileLayout } from '$lib/utils/timeFormat';
-  import { hasTimeFormat } from '$lib/utils/timeline';
+  import { timeLabelFor } from '$lib/utils/timeline';
+  import { STASH_ADD_LABEL } from '$lib/utils/timeStash';
 
   /** The time cursor (UTC ms), or null when none is set. */
   export let cursorMs: number | null;
   /** The file the editor shows; the time is written its way. */
   export let activeFile: OpenFile | undefined;
-  /** Add the cursor's instant to the stash, or null while there is nothing to add. */
+  /** Add the cursor's instant to the stash, or null while it cannot be added. */
   export let addToStash: ((instantMs: number) => void) | null;
+  /** The `+`'s tooltip: what it does, or why it is disabled. */
+  export let addTitle = STASH_ADD_LABEL;
   /** Clear the time cursor. */
   export let clearCursor: () => void;
 
-  $: label = cursorMs === null ? '' : labelOf(cursorMs, activeFile);
-
-  /** `ms` in the file's layout, or ISO 8601 in UTC for a file without timestamps. */
-  function labelOf(ms: number, file: OpenFile | undefined): string {
-    return file?.timeRange && hasTimeFormat(file)
-      ? formatInFileLayout(ms, file.timeRange)
-      : new Date(ms).toISOString();
-  }
+  $: label = cursorMs === null ? '' : timeLabelFor(cursorMs, activeFile);
 
   function add() {
     if (cursorMs !== null) addToStash?.(cursorMs);
@@ -58,8 +53,8 @@
     <span data-time-cursor-label class="hidden sm:inline">{label}</span>
     <button
       type="button"
-      aria-label="Add the time cursor to the stash"
-      title="Add the time cursor to the stash"
+      aria-label={STASH_ADD_LABEL}
+      title={addTitle}
       disabled={addToStash === null}
       on:click={add}
       class={BUTTON_CLASS}

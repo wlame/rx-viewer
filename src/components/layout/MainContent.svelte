@@ -2,10 +2,14 @@
   import { files } from '$lib/stores';
   import { activeOpenFile, type TimeQuery } from '$lib/stores/files';
   import { backendHas, health } from '$lib/stores/health';
+  import { notifications } from '$lib/stores/notifications';
   import { timeCursor } from '$lib/stores/timeCursor';
+  import { timeStash } from '$lib/stores/timeStash';
+  import { STASH_ADD_LABEL, STASH_REFUSALS, stashAddRefusal } from '$lib/utils/timeStash';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import TimeCursorIndicator from './TimeCursorIndicator.svelte';
+  import TimeStashRow from './TimeStashRow.svelte';
   import TimelineBar from './TimelineBar.svelte';
 
   let draggedIndex: number | null = null;
@@ -15,13 +19,29 @@
   $: activeFile = activeOpenFile($files);
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
+  $: canJump = backendHas('samples_timestamps', $health);
+
   /**
-   * A jump from the timeline bar moves the file the editor shows and sets
-   * the time cursor; no other file moves.
+   * A jump from the timeline bar or a stash entry moves the file the
+   * editor shows and sets the time cursor; no other file moves.
    */
   async function jumpActiveFileToTime(query: TimeQuery) {
     if (!activeFile) return { kind: 'unsupported' } as const;
     return files.jumpToTime(activeFile.path, query);
+  }
+
+  // The stash row keeps its place while files are open on a backend that
+  // can jump by time, so the editor does not move when the first moment
+  // is saved or the last one removed; saved moments show in any case.
+  $: isStashShown = $timeStash.length > 0 || ($files.openFiles.length > 0 && canJump);
+
+  // Why the cursor cannot go into the stash, or null when it can.
+  $: cursorRefusal = $timeCursor === null ? null : stashAddRefusal($timeStash, $timeCursor);
+
+  /** The `+` of the time cursor: save its instant, or say why it was refused. */
+  function addCursorToStash(instantMs: number) {
+    const outcome = timeStash.add(instantMs);
+    if (outcome !== 'added') notifications.info(STASH_REFUSALS[outcome]);
   }
 
   function selectTab(index: number) {
@@ -90,6 +110,15 @@
 </script>
 
 <main class="flex-1 flex flex-col min-w-0 bg-gh-canvas-default dark:bg-gh-canvas-dark-default">
+  {#if isStashShown}
+    <TimeStashRow
+      stash={$timeStash}
+      {activeFile}
+      {canJump}
+      jump={jumpActiveFileToTime}
+      remove={timeStash.remove}
+    />
+  {/if}
   {#if $files.openFiles.length === 0}
     <!-- Empty state -->
     <div
@@ -172,19 +201,15 @@
           <TimeCursorIndicator
             cursorMs={$timeCursor}
             {activeFile}
-            addToStash={null}
+            addToStash={cursorRefusal === null ? addCursorToStash : null}
+            addTitle={cursorRefusal === null ? STASH_ADD_LABEL : STASH_REFUSALS[cursorRefusal]}
             clearCursor={files.clearTimeCursor}
           />
         </div>
       {/if}
     </div>
 
-    <TimelineBar
-      {activeFile}
-      canJump={backendHas('samples_timestamps', $health)}
-      jump={jumpActiveFileToTime}
-      cursorMs={$timeCursor}
-    />
+    <TimelineBar {activeFile} {canJump} jump={jumpActiveFileToTime} cursorMs={$timeCursor} />
 
     <!-- The active file's editor, built again for each tab so no state of one
          tab reaches another; each tab's own state is kept in paneMemory. -->

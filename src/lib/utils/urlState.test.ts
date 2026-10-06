@@ -92,6 +92,32 @@ describe('parseViewState', () => {
     expect(parseViewState(`?file=/a.log&time=${encodeURIComponent(value)}`).time).toBeNull();
   });
 
+  it('reads the stash as its instants, in time order', () => {
+    const later = '2025-12-10T07:45:00.000Z';
+    const earlier = '2025-12-10T07:30:00.123Z';
+
+    expect(parseViewState(`?stash=${later},${earlier}`).stash).toEqual([
+      Date.UTC(2025, 11, 10, 7, 30, 0, 123),
+      Date.UTC(2025, 11, 10, 7, 45),
+    ]);
+  });
+
+  it('drops an invalid stash entry and keeps the rest, each once and at most seven', () => {
+    const minutes = Array.from({ length: 9 }, (_, n) => Date.UTC(2025, 11, 10, 7, n));
+    const written = minutes.map((ms) => new Date(ms).toISOString());
+    const value = ['07:30', written[8], '', written[0], written[0], ...written.slice(1, 8)];
+    const stash = parseViewState(`?stash=${encodeURIComponent(value.join(','))}`).stash;
+
+    expect(stash).toEqual(minutes.slice(0, 7));
+  });
+
+  it.each(['', ',', '2025-12-10T07:30:00Z', '2025-02-30T07:30:00.000Z,nonsense'])(
+    'reads an empty stash from stash=%s',
+    (value) => {
+      expect(parseViewState(`?stash=${encodeURIComponent(value)}`).stash).toEqual([]);
+    },
+  );
+
   it('leaves highlighting to the size-based default when the link has no highlight', () => {
     expect(parseViewState('?file=/a.log').highlight).toBeNull();
   });
@@ -173,6 +199,12 @@ describe('serializeViewState and parseViewState', () => {
         category: 'error',
       }),
     ],
+    [
+      'a stash',
+      view({
+        stash: [Date.UTC(2025, 11, 10, 7, 30, 0, 1), Date.UTC(2025, 11, 11, 23, 59, 59, 999)],
+      }),
+    ],
     ['a search on its tab', view({ search: plainSearch, tab: 'search' })],
     ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
     ['the Search tab with no search', view({ tab: 'search' })],
@@ -209,6 +241,14 @@ describe('serializeViewState and parseViewState', () => {
     expect(
       serializeViewState(view({ file: '/a.log', time: Date.UTC(2025, 11, 10, 7, 30) }), ''),
     ).toBe('?file=%2Fa.log&time=2025-12-10T07%3A30%3A00.000Z');
+  });
+
+  it('writes the stash as RFC 3339 instants with ms and Z, separated by commas', () => {
+    const stash = [Date.UTC(2025, 11, 10, 7, 30), Date.UTC(2025, 11, 10, 7, 45, 0, 5)];
+
+    expect(new URLSearchParams(serializeViewState(view({ stash }), '')).get('stash')).toBe(
+      '2025-12-10T07:30:00.000Z,2025-12-10T07:45:00.005Z',
+    );
   });
 
   it('writes a search flag as 1', () => {
@@ -266,6 +306,12 @@ describe('historyModeFor', () => {
         name: 'picking an anomaly category',
         previous: fileA,
         next: view({ file: '/a.log', category: 'error' }),
+        mode: 'replace',
+      },
+      {
+        name: 'adding to the stash',
+        previous: fileA,
+        next: view({ file: '/a.log', stash: [Date.UTC(2025, 11, 10, 7, 30)] }),
         mode: 'replace',
       },
       {
