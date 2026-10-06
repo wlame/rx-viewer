@@ -2,6 +2,7 @@
   import { files } from '$lib/stores';
   import { activeOpenFile, type TimeQuery } from '$lib/stores/files';
   import { backendHas, health } from '$lib/stores/health';
+  import { timeCursor } from '$lib/stores/timeCursor';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import TimelineBar from './TimelineBar.svelte';
@@ -13,16 +14,19 @@
   $: activeFile = activeOpenFile($files);
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
-  /** A jump from the timeline bar moves the file the editor shows. */
+  /**
+   * A jump from the timeline bar sets the time cursor and moves the file
+   * the editor shows; the other tabs move to it when they are shown.
+   */
   async function jumpActiveFileToTime(query: TimeQuery) {
     if (!activeFile) return { kind: 'unsupported' } as const;
-    return files.jumpToTime(activeFile.path, query);
+    return files.goToTime(activeFile.path, query);
   }
 
   function selectTab(index: number) {
     const file = $files.openFiles[index];
     if (file) {
-      files.setActiveFile(file.path);
+      void files.showTab(file.path);
     }
   }
 
@@ -34,7 +38,7 @@
     if (index === validActiveIndex) {
       const newIndex = index > 0 ? index - 1 : index < $files.openFiles.length - 1 ? index + 1 : -1;
       if (newIndex >= 0) {
-        files.setActiveFile($files.openFiles[newIndex].path);
+        void files.showTab($files.openFiles[newIndex].path);
       }
     }
 
@@ -163,6 +167,8 @@
       {activeFile}
       canJump={backendHas('samples_timestamps', $health)}
       jump={jumpActiveFileToTime}
+      cursor={$timeCursor}
+      clearCursor={files.clearTimeCursor}
     />
 
     <!-- The active file's editor, built again for each tab so no state of one

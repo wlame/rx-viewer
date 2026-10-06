@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { files } from './stores/files';
 import { health } from './stores/health';
+import { timeCursor } from './stores/timeCursor';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { fileViewOf, restoreView, startViewSync } from './viewState';
@@ -42,6 +43,7 @@ function openFile(overrides: Partial<OpenFile>): OpenFile {
     indexBuild: null,
     timeRange: null,
     timeJump: null,
+    cursorVersion: 0,
     ...overrides,
   };
 }
@@ -144,6 +146,20 @@ function serveBackend(features: string[] = []) {
           : json({ entries: [{ type: 'directory', path: '/logs', name: 'logs' }] });
       }
       if (parsed.pathname === '/health') return json({ contract_version: '1.5', features });
+      if (parsed.pathname === '/v1/time-range') {
+        return json({
+          path,
+          format: 'iso',
+          has_zone: false,
+          day_first: null,
+          display_zone: 'UTC',
+          example: '2025-12-10 07:00:04.574',
+          first_ms: Date.UTC(2025, 11, 10, 7, 0, 4, 574),
+          last_ms: Date.UTC(2025, 11, 10, 8, 0, 4, 390),
+          source: 'scan',
+          cli_command: `rx time-range ${path}`,
+        });
+      }
       const time = parsed.searchParams.get('timestamps');
       if (parsed.pathname === '/v1/samples' && time !== null) {
         timeQueries.push(time);
@@ -496,6 +512,7 @@ describe('a jump by time in the URL', () => {
   afterEach(async () => {
     stopSync();
     resetStores();
+    timeCursor.clear();
     serveBackend();
     await health.check();
     vi.unstubAllGlobals();
@@ -562,5 +579,53 @@ describe('a jump by time in the URL', () => {
     expect(timeQueries).toEqual([]);
     expect(activeFile()?.anchorLine).toBe(1);
     expect(activeFile()?.lines[0]?.lineNumber).toBe(1);
+  });
+  it('sets the cursor from a link, and opens a file opened later at the cursor', async () => {
+    serveBackend(['samples_timestamps', 'time_range']);
+    await health.check();
+
+    await restoreView({ ...DEFAULT_VIEW, file: path, time: instant });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(get(timeCursor)).toMatchObject({ query: instant, instantMs: instant });
+    expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE);
+    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z']);
+
+    await files.openFile('/logs/big.log', { fileSize: 5 * ONE_MB, isIndexed: false });
+    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE));
+    expect(activeFile()?.path).toBe('/logs/big.log');
+    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z', '2025-12-10T07:30:00.000Z']);
+  });
+
+  it('sets the cursor from a link that names a line too, and keeps the file at the line', async () => {
+    serveBackend(['samples_timestamps', 'time_range']);
+    await health.check();
+
+    await restoreView({ ...DEFAULT_VIEW, file: path, line: 42, time: instant });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(get(timeCursor)).toMatchObject({ query: instant });
+    expect(activeFile()?.anchorLine).toBe(42);
+    expect(timeQueries).toEqual([]);
+  });
+
+  it('keeps the cursor on Back to a line, and writes the line in place of the time once it is cleared', async () => {
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.jumpToLine(path, 500);
+    await files.goToTime(path, instant);
+
+    browser.back();
+    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(500));
+    expect(get(timeCursor)).toMatchObject({ query: instant });
+
+    browser.forward();
+    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE));
+    const entries = browser.entries.length;
+
+    files.clearTimeCursor();
+
+    expect(get(timeCursor)).toBeNull();
+    expect(browser.entries).toHaveLength(entries);
+    expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log&line=3000');
   });
 });

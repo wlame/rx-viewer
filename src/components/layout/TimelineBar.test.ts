@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import type { FileLine, OpenFile, TimeRangeResponse } from '$lib/types';
 import type { TimeJumpOutcome, TimeQuery } from '$lib/stores/files';
+import type { TimeCursor } from '$lib/utils/timeCursor';
 import TimelineBar from './TimelineBar.svelte';
 
 /** 2025-12-10 07:00:00 UTC. */
@@ -53,6 +54,7 @@ function openFile(path: string, overrides: Partial<OpenFile> = {}): OpenFile {
     indexBuild: null,
     timeRange: null,
     timeJump: null,
+    cursorVersion: 0,
     ...overrides,
   };
 }
@@ -78,22 +80,35 @@ let bar: TimelineBar | null = null;
 
 /** Mount the bar; `jump` answers every jump with `outcome`. */
 function mount(
-  props: { openFiles: OpenFile[]; activeFile?: OpenFile; canJump?: boolean },
+  props: {
+    openFiles: OpenFile[];
+    activeFile?: OpenFile;
+    canJump?: boolean;
+    cursor?: TimeCursor | null;
+  },
   outcome: TimeJumpOutcome = { kind: 'found', line: 1 },
 ) {
   const target = document.createElement('div');
   document.body.appendChild(target);
   const jump = vi.fn(async (_query: TimeQuery) => outcome);
+  const clearCursor = vi.fn();
   bar = new TimelineBar({
     target,
-    props: { canJump: true, activeFile: props.openFiles[0], ...props, jump },
+    props: {
+      canJump: true,
+      activeFile: props.openFiles[0],
+      cursor: null,
+      ...props,
+      jump,
+      clearCursor,
+    },
   });
   const slider = target.querySelector<HTMLElement>('[role="slider"]');
   if (slider) {
     slider.getBoundingClientRect = () =>
       ({ left: 0, width: TRACK_WIDTH, top: 0, height: 20, right: TRACK_WIDTH }) as DOMRect;
   }
-  return { target, slider, jump };
+  return { target, slider, jump, clearCursor };
 }
 
 function sliderOf(target: HTMLElement): HTMLElement {
@@ -362,11 +377,86 @@ describe('TimelineBar text box', () => {
     expect(target.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("drops the backend's message when another file is shown", async () => {
+    const message = 'cannot read "07:61" as a time';
+    const { target } = mount({ openFiles: [middleware, postgresql] }, { kind: 'refused', message });
+    await typeAndEnter(target, '07:61');
+
+    bar?.$set({ activeFile: postgresql });
+    await tick();
+
+    expect(target.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it('sends nothing for an empty box', async () => {
     const { target, jump } = mount({ openFiles: [middleware] });
 
     await typeAndEnter(target, '');
 
     expect(jump).not.toHaveBeenCalled();
+  });
+});
+
+describe('TimelineBar time cursor', () => {
+  const at = (ms: number): TimeCursor => ({ query: ms, version: 1, instantMs: ms });
+
+  it('draws the cursor apart from the thumb, with its label and a button that clears it', async () => {
+    const active = openFile(middleware.path, {
+      timeRange: middleware.timeRange,
+      lines: stampedLines(100, [HOUR_START + HOUR / 4]),
+      anchorLine: 100,
+    });
+    const { target, clearCursor } = mount({
+      openFiles: [active, postgresql],
+      cursor: at(HOUR_START + HOUR),
+    });
+
+    const marker = target.querySelector<HTMLElement>('[data-cursor]');
+    expect(marker?.style.left).toBe('50%');
+    expect(target.querySelector<HTMLElement>('[data-thumb]')?.style.left).toBe('12.5%');
+    expect(target.querySelector('[data-cursor-chip]')?.textContent).toContain(
+      '2025-12-10 08:00:00.000',
+    );
+
+    const clear = target.querySelector<HTMLButtonElement>(
+      'button[aria-label="Clear the time cursor"]',
+    );
+    clear?.click();
+    expect(clearCursor).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels a typed cursor with its text until a file finds its time', async () => {
+    const { target } = mount({
+      openFiles: [middleware],
+      cursor: { query: '07:30', version: 1, instantMs: null },
+    });
+
+    expect(target.querySelector('[data-cursor-chip]')?.textContent).toContain('07:30');
+    expect(target.querySelector('[data-cursor]')).toBeNull();
+
+    bar?.$set({ cursor: { query: '07:30', version: 1, instantMs: HOUR_START + HOUR / 2 } });
+    await tick();
+    expect(target.querySelector('[data-cursor-chip]')?.textContent).toContain(
+      '2025-12-10 07:30:00.000',
+    );
+    expect(target.querySelector<HTMLElement>('[data-cursor]')?.style.left).toBe('50%');
+  });
+
+  it('draws a cursor past the axis at its end, marked as outside', () => {
+    const { target } = mount({ openFiles: [middleware], cursor: at(HOUR_START + 3 * HOUR) });
+
+    const marker = target.querySelector<HTMLElement>('[data-cursor]');
+    expect(marker?.style.left).toBe('100%');
+    expect(marker?.dataset.outside).toBe('after');
+    expect(target.querySelector('[data-cursor-chip]')?.getAttribute('title')).toContain(
+      'after the last time of the open files',
+    );
+  });
+
+  it('shows nothing of a cursor that is not set', () => {
+    const { target } = mount({ openFiles: [middleware] });
+
+    expect(target.querySelector('[data-cursor]')).toBeNull();
+    expect(target.querySelector('[data-cursor-chip]')).toBeNull();
   });
 });

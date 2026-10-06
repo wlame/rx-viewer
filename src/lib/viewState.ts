@@ -2,6 +2,7 @@ import { derived, get } from 'svelte/store';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
 import { notifications } from './stores/notifications';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
+import { timeCursor } from './stores/timeCursor';
 import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
 import {
@@ -121,11 +122,20 @@ async function locateInTree(path: string): Promise<TreeNode | null> {
 }
 
 /**
- * Move an open file to the time a view names. A time the backend
- * refuses for this file leaves it where it is, with a notice.
+ * Make the time a view names the time cursor. The cursor already at that
+ * time is kept as it is, so a tab that answered it is not moved again.
  */
-async function jumpToViewTime(path: string, time: number): Promise<void> {
-  const outcome = await files.jumpToTime(path, time);
+function setCursorFromView(time: number): void {
+  if (get(timeCursor)?.query !== time) timeCursor.set(time);
+}
+
+/**
+ * Move an open file to the time cursor, which the view's time has set.
+ * A time the backend refuses for this file leaves it where it is, with a
+ * notice.
+ */
+async function jumpToViewTime(path: string): Promise<void> {
+  const outcome = await files.jumpToTimeCursor(path);
   if (outcome.kind !== 'refused') return;
   const name = path.split('/').pop() ?? path;
   notifications.error(`Cannot go to the time in ${name}: ${outcome.message}`, 5000);
@@ -155,7 +165,7 @@ async function showFile(
     files.setActiveFile(path);
     files.setSyntaxHighlighting(path, view.highlight ?? defaultSyntaxHighlighting(open.fileSize));
     if (isOnScreen) return { loaded: Promise.resolve() };
-    return { loaded: time === null ? files.jumpToLine(path, line) : jumpToViewTime(path, time) };
+    return { loaded: time === null ? files.jumpToLine(path, line) : jumpToViewTime(path) };
   }
 
   // The size-based default needs the file's size, which the tree lists.
@@ -173,11 +183,16 @@ async function showFile(
   });
   if (time === null) return { loaded };
   // The jump takes over from the load of the file's start.
-  return { loaded: Promise.all([loaded, jumpToViewTime(path, time)]).then(() => undefined) };
+  return { loaded: Promise.all([loaded, jumpToViewTime(path)]).then(() => undefined) };
 }
 
-/** Bring the open files to the view: its file active, with its filter and category. */
+/**
+ * Bring the open files to the view: its file active, with its filter and
+ * category. A time in the view sets the time cursor, also when its line
+ * wins for the file; a view without a time leaves the cursor as it is.
+ */
 async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<void> {
+  if (view.time !== null) setCursorFromView(view.time);
   const path = view.file;
   if (path === null) {
     for (const file of get(files).openFiles) files.closeFile(file.path);

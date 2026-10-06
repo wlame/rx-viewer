@@ -5,6 +5,7 @@ import {
   fractionOf,
   instantAt,
   isPointAxis,
+  sideOfAxis,
   laneLayout,
   steppedInstant,
   timelineAxis,
@@ -107,6 +108,13 @@ describe('instant and position on the axis', () => {
   it('turns an instant into a position and back', () => {
     const ms = HOUR_START + 37 * MINUTE;
     expect(instantAt(fractionOf(ms, axis) * 600, 600, axis)).toBe(ms);
+  });
+
+  it('names the side of an instant outside the axis, and none for one on it', () => {
+    expect(sideOfAxis(HOUR_START - 1, axis)).toBe('before');
+    expect(sideOfAxis(HOUR_START + HOUR + 1, axis)).toBe('after');
+    expect(sideOfAxis(HOUR_START, axis)).toBeNull();
+    expect(sideOfAxis(HOUR_START + HOUR, axis)).toBeNull();
   });
 
   it('puts every instant of a point axis in the middle', () => {

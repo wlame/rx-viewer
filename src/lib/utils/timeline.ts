@@ -26,7 +26,7 @@ function knownSpan(file: TimelineFile): TimeAxis | null {
 }
 
 /** Whether a file has a timestamp format, so it can be moved by time. */
-export function hasTimeFormat(file: TimelineFile | undefined): boolean {
+export function hasTimeFormat(file: Pick<TimelineFile, 'timeRange'> | undefined): boolean {
   return Boolean(file?.timeRange?.format);
 }
 
@@ -59,6 +59,13 @@ export function fractionOf(ms: number, axis: TimeAxis): number {
   if (isPointAxis(axis)) return 0.5;
   const fraction = (ms - axis.startMs) / (axis.endMs - axis.startMs);
   return Math.min(1, Math.max(0, fraction));
+}
+
+/** Which side of the axis an instant is on when it is outside it, or null when it is on it. */
+export function sideOfAxis(ms: number, axis: TimeAxis): 'before' | 'after' | null {
+  if (ms < axis.startMs) return 'before';
+  if (ms > axis.endMs) return 'after';
+  return null;
 }
 
 /**

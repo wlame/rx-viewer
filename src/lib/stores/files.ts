@@ -8,6 +8,7 @@ import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/sampleWindow';
 import { formatInFileLayout } from '../utils/timeFormat';
+import { followsCursor, type TimeQuery } from '../utils/timeCursor';
 import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import type {
   OpenFile,
@@ -21,6 +22,9 @@ import { commandLog } from './commands';
 import { backendHas } from './health';
 import { notifications } from './notifications';
 import { forgetPane } from './paneMemory';
+import { timeCursor } from './timeCursor';
+
+export type { TimeQuery };
 
 /**
  * At most one window load per file may write to the store.
@@ -59,12 +63,6 @@ function windowBounds(window: SampleWindow) {
 const JUMP_CONTEXT = 100;
 
 /**
- * A time to jump to: an instant (UTC ms), sent as RFC 3339 with ms and
- * `Z`, or a text the backend reads as `--timestamps` does, sent as is.
- */
-export type TimeQuery = number | string;
-
-/**
  * How a jump by time ended: the line it found; no line at or after the
  * time (the file shows its end); the backend's refusal or another
  * failure, with its message (the file stays as it was); a backend that
@@ -83,10 +81,29 @@ function timeQueryValue(query: TimeQuery): string {
   return typeof query === 'number' ? new Date(query).toISOString() : query;
 }
 
+/** How long the refusal of the cursor by one file stays on screen. */
+const CURSOR_REFUSAL_NOTICE_MS = 5000;
+
 /** A time query as a person reads it: an instant in the file's layout when the file has one. */
 function timeQueryLabel(query: TimeQuery, file: OpenFile): string {
   if (typeof query === 'string') return query;
   return file.timeRange?.format ? formatInFileLayout(query, file.timeRange) : timeQueryValue(query);
+}
+
+/**
+ * The fields a move to `line` by line sets: the file shows the line and
+ * is anchored on it, it is no longer where a jump by time put it, and
+ * its place answers the time cursor set now (only a newer one moves it).
+ */
+function movedByLine(
+  line: number,
+): Pick<OpenFile, 'scrollToLine' | 'anchorLine' | 'timeJump' | 'cursorVersion'> {
+  return {
+    scrollToLine: line,
+    anchorLine: line,
+    timeJump: null,
+    cursorVersion: timeCursor.currentVersion(),
+  };
 }
 
 /** What the caller of `openFile` knows about the file; every field may be left out. */
@@ -195,12 +212,18 @@ function createFilesStore() {
     }
   }
 
-  /** Keep a time range on the file it belongs to; a file that is not open is left alone. */
+  /**
+   * Keep a time range on the file it belongs to; a file that is not open
+   * is left alone. A range that makes the file a timed one moves the
+   * file to the time cursor when the file is shown: this is how a file
+   * opened while a cursor is set opens at it.
+   */
   function setTimeRange(path: string, timeRange: TimeRangeResponse) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, timeRange } : f)),
     }));
+    void followTimeCursor(path);
   }
 
   /**
@@ -247,18 +270,17 @@ function createFilesStore() {
     // Check if already open
     const existingIndex = state.openFiles.findIndex((f) => f.path === path);
     if (existingIndex >= 0) {
-      // File is already open - activate it and update scroll position if provided
+      // An open file brought forward without a line is a tab shown again.
+      if (scrollToLine === undefined) {
+        await showTab(path);
+        return;
+      }
       update((s) => ({
         ...s,
         activeFilePath: path,
-        openFiles:
-          scrollToLine !== undefined
-            ? s.openFiles.map((f, i) =>
-                i === existingIndex
-                  ? { ...f, scrollToLine, anchorLine: scrollToLine, timeJump: null }
-                  : f,
-              )
-            : s.openFiles,
+        openFiles: s.openFiles.map((f, i) =>
+          i === existingIndex ? { ...f, ...movedByLine(scrollToLine) } : f,
+        ),
       }));
       return;
     }
@@ -297,6 +319,9 @@ function createFilesStore() {
       indexBuild: null,
       timeRange: null,
       timeJump: null,
+      // A file opened at a line stays there; one opened at its start
+      // moves to the cursor once its time range is known.
+      cursorVersion: scrollToLine === undefined ? 0 : timeCursor.currentVersion(),
     };
 
     // Add file to the end and make it active
@@ -582,9 +607,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path
-            ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber, timeJump: null }
-            : f,
+          f.path === path ? { ...f, ...movedByLine(lineNumber) } : f,
         ),
       }));
     } else {
@@ -593,9 +616,7 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path
-            ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber, timeJump: null }
-            : f,
+          f.path === path ? { ...f, ...movedByLine(lineNumber) } : f,
         ),
       }));
 
@@ -620,6 +641,7 @@ function createFilesStore() {
       return;
     }
 
+    setCursorVersion(path, timeCursor.currentVersion());
     await showEnd(path, null);
   }
 
@@ -684,6 +706,7 @@ function createFilesStore() {
    * leaves the file as it was, and a file that held no lines yet loads
    * its start. A backend that does not list `samples_timestamps` is
    * asked nothing; the features are known once the contract gate opens.
+   * The time cursor is left as it is: `goToTime` sets it.
    */
   async function jumpToTime(path: string, query: TimeQuery): Promise<TimeJumpOutcome> {
     if (!get({ subscribe }).openFiles.some((f) => f.path === path)) {
@@ -727,6 +750,97 @@ function createFilesStore() {
       if (file && file.lines.length === 0) void loadLinesFromStart(path, LINES_PER_PAGE);
       return { kind: 'refused', message: e instanceof Error ? e.message : String(e) };
     }
+  }
+
+  /** Record the cursor version a file's place answers. */
+  function setCursorVersion(path: string, cursorVersion: number) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, cursorVersion } : f)),
+    }));
+  }
+
+  /**
+   * Move a file to the time cursor now, the way `jumpToTime` moves it,
+   * and record that its place answers this cursor, also when the file
+   * refuses the cursor's value (it then stays where it was). Nothing is
+   * asked while no cursor is set.
+   */
+  async function jumpToTimeCursor(path: string): Promise<TimeJumpOutcome> {
+    const cursor = get(timeCursor);
+    if (!cursor) return { kind: 'unsupported' };
+    setCursorVersion(path, cursor.version);
+    return jumpToTime(path, cursor.query);
+  }
+
+  /**
+   * Move a file to the time cursor when the rule says it follows: it is
+   * the file shown, it has timestamps, and the cursor is newer than its
+   * place. The file shows its loading state at once, so its old window is
+   * not shown as if it were current. A file that refuses the cursor's
+   * value gets a notice naming it and stays where it was.
+   */
+  async function followTimeCursor(path: string): Promise<void> {
+    const state = get({ subscribe });
+    const file = state.openFiles.find((f) => f.path === path);
+    const activePath = activeOpenFile(state)?.path ?? null;
+    if (!file || !followsCursor(file, get(timeCursor), activePath)) return;
+    if (!backendHas('samples_timestamps')) return;
+
+    setLoading(path, true);
+    const outcome = await jumpToTimeCursor(path);
+    if (outcome.kind === 'refused') {
+      notifications.error(
+        `Cannot go to the time cursor in ${file.name}: ${outcome.message}`,
+        CURSOR_REFUSAL_NOTICE_MS,
+      );
+    }
+  }
+
+  /**
+   * Show an open file's tab, the way a click on the tab does. A file not
+   * moved since the time cursor was set moves to the cursor first.
+   */
+  async function showTab(path: string): Promise<void> {
+    update((s) => ({ ...s, activeFilePath: path }));
+    await followTimeCursor(path);
+  }
+
+  /**
+   * An explicit jump by time (the timeline bar, its box): move `path` to
+   * `query` and, when the file reads the value (a line found, or none at
+   * or after it), make it the time cursor every open tab shares; the
+   * other tabs move to it when they are shown. A typed value the file
+   * finds gives the cursor that line's time. A value the file refuses
+   * sets nothing and the cursor set before stays, so a mistyped value
+   * never reaches the other tabs.
+   */
+  async function goToTime(path: string, query: TimeQuery): Promise<TimeJumpOutcome> {
+    // The jump places the file: the cursor set now no longer moves it.
+    setCursorVersion(path, timeCursor.currentVersion());
+    const outcome = await jumpToTime(path, query);
+    if (outcome.kind !== 'found' && outcome.kind !== 'none') return outcome;
+
+    const cursor = timeCursor.set(query);
+    setCursorVersion(path, cursor.version);
+    if (outcome.kind === 'found' && cursor.instantMs === null) {
+      const found = get({ subscribe }).openFiles.find((f) => f.path === path)?.timeJump;
+      if (found !== null && found !== undefined) timeCursor.resolve(cursor.version, found);
+    }
+    return outcome;
+  }
+
+  /**
+   * Clear the time cursor (the × on the bar). No tab moves to it any
+   * more, and no file is held as a jump by time: each stays where it is,
+   * and the URL names its line in place of the time.
+   */
+  function clearTimeCursor() {
+    timeCursor.clear();
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) => (f.timeJump === null ? f : { ...f, timeJump: null })),
+    }));
   }
 
   /** Mark a file loading, or done loading; loading also clears its error. */
@@ -810,16 +924,21 @@ function createFilesStore() {
 
   /**
    * Set the line the URL names for a file; the editor reports it after a
-   * scroll. A different line is a move by line, which ends the time jump.
+   * scroll. A different line is a move by line, which ends the time jump
+   * and keeps the file where the user put it when the cursor was set before.
    */
   function setAnchorLine(path: string, line: number) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) =>
-        f.path === path
-          ? { ...f, anchorLine: line, timeJump: line === f.anchorLine ? f.timeJump : null }
-          : f,
-      ),
+      openFiles: s.openFiles.map((f) => {
+        if (f.path !== path || line === f.anchorLine) return f;
+        return {
+          ...f,
+          anchorLine: line,
+          timeJump: null,
+          cursorVersion: timeCursor.currentVersion(),
+        };
+      }),
     }));
   }
 
@@ -1004,6 +1123,10 @@ function createFilesStore() {
     jumpToLine,
     jumpToEnd,
     jumpToTime,
+    jumpToTimeCursor,
+    goToTime,
+    clearTimeCursor,
+    showTab,
     setMatches,
     clearMatches,
     clearScrollPosition,

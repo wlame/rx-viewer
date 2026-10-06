@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   axis), Shift+←/→ (1/20), Home/End and Enter, stepping to whole
   seconds. The Go to time box beside it sends what is typed (a full
   timestamp, a time of day, a timestamp pasted from a line) as it is,
-  and shows the backend's message when it refuses the value.
+  and shows the backend's message when it refuses the value, until the
+  value changes or another file is shown.
 - A link can name a time: `time=2025-12-10T07:30:00.000Z` (RFC 3339 in
   UTC with milliseconds) with no `line` opens the file at the first line
   at or after that instant, asked of a backend that lists
@@ -35,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns to where the file was; moving by line afterwards writes `line`
   again. With both, `line` wins; an invalid `time` is ignored. A time
   after the file's last line shows the file's end with a notice.
+- One time cursor for all open tabs. A jump from the timeline bar, its
+  Go to time box or a link's `time` sets it; the bar draws it as a
+  marker apart from the thumb (dashed at the axis end when it is outside
+  the open files' times) and shows its time with a × that clears it.
+  Every other tab moves to the cursor when it is next shown, once, unless
+  the user moved it by line after the cursor was set; a file opened
+  while the cursor is set opens at it once its time range is known, and
+  one opened at a line stays at the line. A typed value is read by each
+  file on its own: a tab that refuses it (a time of day in a file of
+  several days) shows its message and stays where it was, and the others
+  are not affected. A value the active file refuses sets no cursor. A
+  file whose last line is before the cursor shows its end with the
+  notice. Clearing the cursor leaves every file
+  where it is and the link names its line in place of the time.
 
 ### Changed
 
