@@ -483,6 +483,18 @@ export interface components {
             /** @description True when submatches may leave some of the line's submatches out: the line had more than RX_MAX_SUBMATCHES_PER_LINE, or line_text is cut and the list covers only the text it holds. */
             submatches_truncated: boolean;
         };
+        SamplesIndexBuild: {
+            /** @description What the task does, in words. */
+            message: string;
+            /** @description The file whose index is built. */
+            path: string;
+            /** @description When the task started, RFC 3339 in UTC. */
+            started_at: string | null;
+            /** @description The task's status when the answer was made: queued, running, completed or failed. */
+            status: string;
+            /** @description The build's task: follow it at GET /v1/tasks/{task_id}. */
+            task_id: string;
+        } | null;
         SamplesResponse: {
             /** Format: int64 */
             after_context: number;
@@ -490,6 +502,8 @@ export interface components {
             before_context: number;
             cli_command: string | null;
             compression_format: string | null;
+            /** @description The background build of the file's line index that this answer started or joined, to follow at GET /v1/tasks/{task_id}: set when the answer came from the head of a file that wants an index and has none (RX_SAMPLES_HEAD_MB), and null otherwise: no build runs, the index already exists, or the request waited for the build. It says how the answer was produced; the lines are the same with an index and without. */
+            index_build: components["schemas"]["SamplesIndexBuild"];
             is_compressed: boolean;
             /** @description Each key of samples mapped to the effective timestamp of each line of its sample, in order: milliseconds since the Unix epoch as a UTC instant, or null for a line without one. A line's effective timestamp is its own, or the own timestamp of the nearest earlier line that has one when that line starts at most RX_TIMESTAMP_LOOKBACK_KB KiB before it; a zone-less file's wall clock is read in RX_LOG_TZ, and under the request's file_tz every line's written wall clock is read in that zone. A key whose sample is null maps to null. The whole field is null when the file has no timestamp format. Present in every mode. */
             line_timestamps: {

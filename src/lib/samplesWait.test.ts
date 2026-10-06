@@ -24,6 +24,7 @@ const SAMPLES: SamplesResponse = {
   timestamps: {},
   time_format: null,
   line_timestamps: null,
+  index_build: null,
 };
 
 function building(taskId = 't1'): SamplesAnswer {
