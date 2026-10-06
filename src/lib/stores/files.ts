@@ -51,8 +51,12 @@ function windowBounds(window: SampleWindow) {
   };
 }
 
-/** Lines asked before and after the target of a jump to a line or a time. */
-const JUMP_CONTEXT = 500;
+/**
+ * Lines asked before and after the target of a jump to a line, a time
+ * or the end of the file: the most rx-go serves on a side (it answers
+ * 422 to more). Paging loads the rest as the view moves.
+ */
+const JUMP_CONTEXT = 100;
 
 /**
  * A time to jump to: an instant (UTC ms), sent as RFC 3339 with ms and
@@ -309,7 +313,7 @@ function createFilesStore() {
 
     // Load initial content
     if (scrollToLine) {
-      // If scrolling to a specific line, load around that line with context of 500
+      // If scrolling to a specific line, load the lines around it
       await loadLinesAroundCenter(path, scrollToLine, JUMP_CONTEXT);
     } else {
       // When opening a file, always start from line 1
@@ -448,7 +452,7 @@ function createFilesStore() {
   async function loadLinesAroundCenter(
     path: string,
     centerLine: number,
-    contextLines: number = 500,
+    contextLines: number = JUMP_CONTEXT,
   ) {
     update((s) => ({
       ...s,
@@ -558,8 +562,8 @@ function createFilesStore() {
   }
 
   /**
-   * Jump to a specific line in a file
-   * Uses context=500 to load lines from (lineNumber - 500) to (lineNumber + 500)
+   * Jump to a specific line in a file, loading the lines around it
+   * (`JUMP_CONTEXT` on each side) when the window does not hold it
    */
   async function jumpToLine(path: string, lineNumber: number) {
     const state = get({ subscribe });
@@ -632,11 +636,9 @@ function createFilesStore() {
     }));
 
     try {
-      const context = Math.floor(LINES_PER_PAGE / 2);
-
       // Request line -1 with context to get the last lines
       const response = await fileLoads.run(path, (signal) =>
-        loadSamples(path, ['-1'], context, loadOptions(path, signal)),
+        loadSamples(path, ['-1'], JUMP_CONTEXT, loadOptions(path, signal)),
       );
       if (response === SUPERSEDED) return;
 

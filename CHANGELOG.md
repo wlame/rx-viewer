@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no features gets neither, as a backend on an older contract did. The
   contract major check is unchanged.
 
+### Fixed
+
+- A jump to a line (the go-to box, a link's `line`, a search match, an
+  anomaly) and a jump to the end of the file ask for 100 lines of
+  context on each side, the most rx-go serves. They asked for 500, which
+  rx-go 0.4.0 and later refuse with 422, and the file showed "Failed to
+  load file".
+
 ## [0.5.0] - 2026-10-05
 
 ### Added

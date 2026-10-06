@@ -131,8 +131,8 @@ describe('the file window against samples answers', () => {
 
   it.each([
     { lineCount: 7, first: 1 },
-    { lineCount: 300, first: 1 },
-    { lineCount: 10_000, first: 9_500 },
+    { lineCount: 300, first: 200 },
+    { lineCount: 10_000, first: 9_900 },
   ])(
     'jumps to the end of a $lineCount-line file from line $first',
     async ({ lineCount, first }) => {
@@ -169,8 +169,8 @@ describe('the file window against samples answers', () => {
     await files.jumpToLine('/logs/long.log', 5_000);
 
     const file = openedFile('/logs/long.log');
-    expect(file.startLine).toBe(4_500);
-    expect(file.endLine).toBe(5_500);
+    expect(file.startLine).toBe(4_900);
+    expect(file.endLine).toBe(5_100);
     expect(file.reachedEnd).toBe(false);
     expect(everyLineReadsItsNumber('/logs/long.log')).toBe(true);
   });
@@ -351,6 +351,31 @@ describe('the anchor line', () => {
     await files.openFile('/logs/a.log', { isIndexed: false });
     files.setAnchorLine('/logs/a.log', 415);
     expect(openedFile('/logs/a.log').anchorLine).toBe(415);
+  });
+});
+
+/** rx-go refuses a samples request with more than 100 context lines on a side (422). */
+describe('the context of a jump', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for at most 100 context lines around a line, a link target and the end', async () => {
+    const fetchSpy = serveFileOf(10_000);
+    await files.openFile('/logs/a.log', { scrollToLine: 4_000, isIndexed: false });
+    await files.jumpToLine('/logs/a.log', 9_000);
+    await files.jumpToEnd('/logs/a.log');
+
+    const contexts = fetchSpy.mock.calls
+      .map(([url]) => new URL(url, 'http://localhost').searchParams.get('context'))
+      .filter((context) => context !== null)
+      .map(Number);
+    expect(contexts).toHaveLength(3);
+    expect(Math.max(...contexts)).toBeLessThanOrEqual(100);
+    expect(openedFile('/logs/a.log').anchorLine).toBe(10_000);
   });
 });
 
@@ -815,11 +840,11 @@ describe('a jump by time', () => {
 
     expect(outcome).toEqual({ kind: 'found', line: 4_200 });
     expect(timeQueries).toHaveLength(1);
-    expect(timeQueries[0].get('context')).toBe('500');
+    expect(timeQueries[0].get('context')).toBe('100');
     const file = openedFile(path);
     expect(file.anchorLine).toBe(4_200);
     expect(file.scrollToLine).toBe(4_200);
-    expect(file.startLine).toBe(3_700);
+    expect(file.startLine).toBe(4_100);
     expect(file.lines.find((l) => l.lineNumber === 4_200)?.timestampMs).toBe(stampOf(4_200));
     expect(file.timeJump).toBe(instant);
     expect(file.loading).toBe(false);
