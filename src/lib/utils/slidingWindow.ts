@@ -1,19 +1,63 @@
-import type { FileLine } from '../types';
+import type { FileLine, OpenFile } from '../types';
 
-/** How many lines one paging request loads. */
+/** How many lines one paging request loads from a plain or seekable file. */
 export const LINES_PER_PAGE = 1000;
+
+/**
+ * How many lines one paging request loads from a compressed stream.
+ * The backend decompresses a stream from the line index checkpoint
+ * before a page, which can take seconds on a large file, so a stream
+ * pages in fewer, larger requests.
+ */
+export const STREAM_LINES_PER_PAGE = 5000;
+
+/** The compression formats, as the backend names them, that are always a stream. */
+const STREAM_FORMATS: ReadonlySet<string> = new Set(['gzip', 'bz2', 'xz']);
+
+/**
+ * The page size the index's `file_type` gives. It is the only answer
+ * that tells a seekable zstd file from a zstd stream: both are named
+ * `zstd` everywhere else.
+ */
+const LINES_PER_PAGE_OF_FILE_TYPE: Record<NonNullable<OpenFile['fileType']>, number> = {
+  text: LINES_PER_PAGE,
+  binary: LINES_PER_PAGE,
+  seekable_zstd: LINES_PER_PAGE,
+  compressed: STREAM_LINES_PER_PAGE,
+};
+
+/** What the page size of a file depends on. */
+export type PagedFile = Pick<OpenFile, 'isCompressed' | 'compressionFormat' | 'fileType'>;
+
+/**
+ * How many lines one paging request loads from `file`: 5,000 from a
+ * gzip, bzip2 or xz file and from a zstd file its index calls a stream,
+ * 1,000 from any other. A zstd file whose index is not known yet pages
+ * as a seekable one; its pages within the start of the file are cheap
+ * either way, and the index that makes a later page cheap tells which
+ * it is.
+ */
+export function linesPerPage(file: PagedFile): number {
+  if (file.fileType) return LINES_PER_PAGE_OF_FILE_TYPE[file.fileType];
+  const isStream =
+    file.isCompressed &&
+    file.compressionFormat !== null &&
+    STREAM_FORMATS.has(file.compressionFormat);
+  return isStream ? STREAM_LINES_PER_PAGE : LINES_PER_PAGE;
+}
 
 /**
  * How many pages of lines an open file holds at most.
  *
- * A page is what one paging request loads (`LINES_PER_PAGE`). Paging starts when the view comes within 200 px of an
- * edge of the held lines, so right after a page arrives the view sits
- * about one page from that edge. Five pages leave about four pages of
- * lines already seen behind the view, which the user can scroll back
- * through without a request, and they bound what every page costs: the
- * filter re-processes the held lines and Monaco receives all of them,
- * so both stay at 5,000 lines however far the user scrolls
- * through a file of any size.
+ * A page is what one paging request loads (`linesPerPage`). Paging
+ * starts when the view comes within 200 px of an edge of the held
+ * lines, so right after a page arrives the view sits about one page
+ * from that edge. Five pages leave about four pages of lines already
+ * seen behind the view, which the user can scroll back through without
+ * a request, and they bound what every page costs: the filter
+ * re-processes the held lines and Monaco receives all of them. A file
+ * holds 5,000 lines, and a compressed stream 25,000: its pages are the
+ * expensive ones to load again.
  */
 export const HELD_PAGES = 5;
 

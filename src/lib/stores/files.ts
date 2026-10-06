@@ -8,7 +8,7 @@ import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/sampleWindow';
 import { formatInFileLayout } from '../utils/timeFormat';
-import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
+import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import type {
   OpenFile,
   FileMatch,
@@ -114,6 +114,11 @@ export interface OpenFileOptions {
   isIndexed?: boolean;
   /** The file's line count, when the tree lists it. */
   lineCount?: number | null;
+  /**
+   * The file's compression format as the tree lists it (`gzip`, `zstd`,
+   * …), null for a plain file; it sets the size of the first page.
+   */
+  compressionFormat?: string | null;
 }
 
 interface FilesState {
@@ -318,6 +323,7 @@ function createFilesStore() {
           ...f,
           totalLines: indexData.line_count ?? f.totalLines,
           isIndexed: true,
+          fileType: indexData.file_type ?? f.fileType,
           anomalies: indexData.anomalies ?? null,
           anomalySummary: countAnomaliesByCategory(indexData.anomalies),
         };
@@ -330,7 +336,7 @@ function createFilesStore() {
    * front, moved to `scrollToLine` when one is given.
    */
   async function openFile(path: string, options: OpenFileOptions = {}) {
-    const { scrollToLine, fileSize, isIndexed, lineCount } = options;
+    const { scrollToLine, fileSize, isIndexed, lineCount, compressionFormat = null } = options;
     const state = get({ subscribe });
 
     // Check if already open
@@ -366,8 +372,9 @@ function createFilesStore() {
       endLine: 0,
       loading: true,
       error: null,
-      isCompressed: false,
-      compressionFormat: null,
+      isCompressed: compressionFormat !== null,
+      compressionFormat,
+      fileType: null,
       scrollToLine,
       reachedStart: false,
       reachedEnd: false,
@@ -406,7 +413,7 @@ function createFilesStore() {
       await loadLinesAroundCenter(path, scrollToLine, JUMP_CONTEXT);
     } else {
       // When opening a file, always start from line 1
-      await loadLinesFromStart(path, LINES_PER_PAGE);
+      await loadLinesFromStart(path, linesPerPage(newFile));
     }
 
     if (rangeWaitsForIndex(path)) void loadTimeRange(path);
@@ -583,17 +590,18 @@ function createFilesStore() {
     if (direction === 'after' && file.reachedEnd) return;
 
     // Calculate the range to load based on direction
+    const pageSize = linesPerPage(file);
     let startLine: number;
     let endLine: number;
 
     if (direction === 'before') {
       // Load lines before the current start
       endLine = file.startLine - 1;
-      startLine = Math.max(1, endLine - LINES_PER_PAGE + 1);
+      startLine = Math.max(1, endLine - pageSize + 1);
     } else {
       // Load lines after the current end
       startLine = file.endLine + 1;
-      endLine = startLine + LINES_PER_PAGE - 1;
+      endLine = startLine + pageSize - 1;
     }
 
     update((s) => ({
@@ -609,7 +617,7 @@ function createFilesStore() {
       if (response === SUPERSEDED) return;
 
       const window = readSamplesAnswer(response);
-      const maxLines = maxHeldLines(LINES_PER_PAGE);
+      const maxLines = maxHeldLines(pageSize);
 
       update((s) => ({
         ...s,
@@ -817,7 +825,7 @@ function createFilesStore() {
       if (isAbortError(e)) return { kind: 'superseded' };
       setLoading(path, false);
       const file = get({ subscribe }).openFiles.find((f) => f.path === path);
-      if (file && file.lines.length === 0) void loadLinesFromStart(path, LINES_PER_PAGE);
+      if (file && file.lines.length === 0) void loadLinesFromStart(path, linesPerPage(file));
       return { kind: 'refused', message: e instanceof Error ? e.message : String(e) };
     }
   }

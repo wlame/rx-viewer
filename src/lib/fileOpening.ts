@@ -19,7 +19,10 @@ const BINARY_NOTICE_MS = 5000;
  * if they were lines, so opening it would only show noise.
  */
 export async function openTreeFile(
-  entry: Pick<TreeEntry, 'path' | 'name' | 'is_text' | 'size' | 'is_indexed' | 'line_count'>,
+  entry: Pick<
+    TreeEntry,
+    'path' | 'name' | 'is_text' | 'size' | 'is_indexed' | 'line_count' | 'compression_format'
+  >,
 ): Promise<void> {
   if (entry.is_text === false) {
     notifications.error(`Cannot open binary file: ${entry.name}`, BINARY_NOTICE_MS);
@@ -29,6 +32,7 @@ export async function openTreeFile(
     fileSize: entry.size,
     isIndexed: entry.is_indexed ?? undefined,
     lineCount: entry.line_count ?? undefined,
+    compressionFormat: entry.compression_format,
   });
 }
 
@@ -73,5 +77,6 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
     fileSize: entry?.size ?? null,
     isIndexed: entry?.is_indexed ?? undefined,
     lineCount: entry?.line_count ?? undefined,
+    compressionFormat: entry?.compression_format ?? null,
   });
 }

@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value with no line at or after it leave the cursor as it was.
 - A link with both `line` and `time` opens the file at the line and
   sets no time cursor.
+- A gzip, bzip2 or xz file, and a zstd file whose line index says it is
+  not seekable, loads 5,000 lines a page instead of 1,000: it opens with
+  `lines=1-5000` and pages 5,000 lines at a time, and holds up to 25,000
+  lines (five pages), so fewer of its slow reads are needed and paging
+  back through what was read asks nothing. A plain file and a seekable
+  zstd file keep pages of 1,000. A zstd file pages by 1,000 until its
+  index tells which kind it is, and a compressed file opened from a link
+  before the tree lists it starts with 1,000 lines.
 
 ### Fixed
 

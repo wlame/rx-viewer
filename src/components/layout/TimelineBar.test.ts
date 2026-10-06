@@ -51,6 +51,7 @@ function openFile(path: string, overrides: Partial<OpenFile> = {}): OpenFile {
     selectedAnomalyCategory: null,
     anchorLine: 1,
     indexBuild: null,
+    fileType: null,
     timeRange: null,
     isReadingTimeRange: false,
     timeJump: null,

@@ -94,6 +94,17 @@ describe('openTreeFile', () => {
     expect(opened?.syntaxHighlighting).toBe(false);
     expect(opened?.totalLines).toBe(7);
   });
+
+  it('asks the first 5,000 lines of a gzip file the tree lists', async () => {
+    const fetchSpy = serveSamples();
+
+    await openTreeFile(
+      treeFile('/logs/app.log.gz', { is_compressed: true, compression_format: 'gzip' }),
+    );
+
+    const asked = new URL(fetchSpy.mock.calls[0][0], 'http://localhost').searchParams;
+    expect(asked.get('lines')).toBe('1-5000');
+  });
 });
 
 /**

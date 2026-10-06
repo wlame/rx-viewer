@@ -182,6 +182,7 @@ async function showFile(
     syntaxHighlighting: view.highlight ?? undefined,
     isIndexed: node?.is_indexed ?? undefined,
     lineCount: node?.line_count ?? undefined,
+    compressionFormat: node?.compression_format ?? null,
   });
   if (time === null) return { loaded };
   // The jump takes over from the load of the file's start.

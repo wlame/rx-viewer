@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
+import { LINES_PER_PAGE, STREAM_LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import { stashEntryState } from '../utils/timeStash';
 import { contractGate } from '../contractGate';
 import { commandLog } from './commands';
@@ -257,6 +257,124 @@ describe('the held window while paging', () => {
     expect(file.totalLines).toBe(12_000);
     expect(file.lines.length).toBe(cap);
     expect(everyLineReadsItsNumber(path)).toBe(true);
+  });
+});
+
+describe('the page size of a file', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A file of `LINE <n>` lines whose samples answers name `format`
+   * (null for a plain file) and whose `GET /v1/index` answers an index
+   * of `fileType`, or 404 without one. `asked` lists the `lines` value of
+   * every samples request.
+   */
+  function serveKind(options: {
+    lineCount: number;
+    format: string | null;
+    fileType?: 'text' | 'compressed' | 'seekable_zstd';
+  }) {
+    const { lineCount, format, fileType } = options;
+    const serveLines = serveFileOf(lineCount).getMockImplementation()!;
+    const asked: string[] = [];
+    const spy = vi.fn(async (url: string) => {
+      const params = new URL(url, 'http://localhost').searchParams;
+      if (url.includes('/v1/index')) {
+        if (!fileType) return jsonAnswer(404, { detail: 'no index' });
+        return jsonAnswer(200, { file_type: fileType, line_count: lineCount, anomalies: null });
+      }
+      asked.push(params.get('lines') ?? '');
+      const answer = await serveLines(url);
+      const body = await answer.json();
+      return jsonAnswer(200, {
+        ...body,
+        is_compressed: format !== null,
+        compression_format: format,
+      });
+    });
+    vi.stubGlobal('fetch', spy);
+    return asked;
+  }
+
+  async function pageAfter(path: string, times: number) {
+    for (let i = 0; i < times; i++) await files.loadMore(path, 'after');
+  }
+
+  it.each([
+    { name: 'big.log.gz', format: 'gzip' },
+    { name: 'big.log.bz2', format: 'bz2' },
+    { name: 'big.log.xz', format: 'xz' },
+  ])('asks lines=1-5000 and pages of 5,000 for $name', async ({ name, format }) => {
+    const path = `/logs/${name}`;
+    const asked = serveKind({ lineCount: 100_000, format });
+
+    await files.openFile(path, { isIndexed: false, compressionFormat: format });
+    await pageAfter(path, 2);
+
+    expect(asked).toEqual(['1-5000', '5001-10000', '10001-15000']);
+    expect(openedFile(path).endLine).toBe(15_000);
+  });
+
+  it('holds five pages of 5,000 lines of a compressed stream', async () => {
+    const path = '/logs/long.log.gz';
+    serveKind({ lineCount: 100_000, format: 'gzip' });
+    await files.openFile(path, { isIndexed: false, compressionFormat: 'gzip' });
+
+    await pageAfter(path, 10);
+
+    const file = openedFile(path);
+    expect(file.lines.length).toBe(maxHeldLines(STREAM_LINES_PER_PAGE));
+    expect(file.lines.length).toBe(25_000);
+    expect(file.endLine).toBe(55_000);
+    expect(everyLineReadsItsNumber(path)).toBe(true);
+  });
+
+  it('asks lines=1-1000 and pages of 1,000 for a plain file', async () => {
+    const path = '/logs/big.log';
+    const asked = serveKind({ lineCount: 100_000, format: null });
+
+    await files.openFile(path, { isIndexed: false });
+    await pageAfter(path, 2);
+
+    expect(asked).toEqual(['1-1000', '1001-2000', '2001-3000']);
+  });
+
+  it('pages a seekable zstd file by 1,000 once its index says it is seekable', async () => {
+    const path = '/logs/big.log.zst';
+    const asked = serveKind({ lineCount: 100_000, format: 'zstd', fileType: 'seekable_zstd' });
+
+    await files.openFile(path, { isIndexed: true, compressionFormat: 'zstd' });
+    await settle();
+    await pageAfter(path, 2);
+
+    expect(openedFile(path).fileType).toBe('seekable_zstd');
+    expect(asked).toEqual(['1-1000', '1001-2000', '2001-3000']);
+  });
+
+  it('pages a zstd stream by 5,000 once its index says it is not seekable', async () => {
+    const path = '/logs/stream.log.zst';
+    const asked = serveKind({ lineCount: 100_000, format: 'zstd', fileType: 'compressed' });
+
+    await files.openFile(path, { isIndexed: true, compressionFormat: 'zstd' });
+    await settle();
+    await pageAfter(path, 1);
+
+    expect(asked).toEqual(['1-1000', '1001-6000']);
+  });
+
+  it('pages by 5,000 a gzip file opened from a link once its first answer names gzip', async () => {
+    const path = '/logs/linked.log.gz';
+    const asked = serveKind({ lineCount: 100_000, format: 'gzip' });
+
+    await files.openFile(path, { isIndexed: false });
+    await pageAfter(path, 1);
+
+    expect(asked).toEqual(['1-1000', '1001-6000']);
   });
 });
 

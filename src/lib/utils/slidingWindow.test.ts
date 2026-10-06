@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { FileLine } from '../types';
-import { HELD_PAGES, addPage, editorLineAfterMove, maxHeldLines } from './slidingWindow';
+import {
+  HELD_PAGES,
+  LINES_PER_PAGE,
+  STREAM_LINES_PER_PAGE,
+  addPage,
+  editorLineAfterMove,
+  linesPerPage,
+  maxHeldLines,
+} from './slidingWindow';
 
 function linesFrom(first: number, last: number): FileLine[] {
   const lines: FileLine[] = [];
@@ -13,6 +21,46 @@ const numbers = (lines: FileLine[]) => lines.map((l) => l.lineNumber);
 describe('maxHeldLines', () => {
   it('holds a fixed number of pages', () => {
     expect(maxHeldLines(1000)).toBe(HELD_PAGES * 1000);
+  });
+});
+
+describe('linesPerPage', () => {
+  it.each([
+    {
+      kind: 'a plain file',
+      file: { isCompressed: false, compressionFormat: null, fileType: null },
+    },
+    {
+      kind: 'a plain file the index calls text',
+      file: { isCompressed: false, compressionFormat: null, fileType: 'text' as const },
+    },
+    {
+      kind: 'a seekable zstd file',
+      file: { isCompressed: true, compressionFormat: 'zstd', fileType: 'seekable_zstd' as const },
+    },
+    {
+      kind: 'a zstd file before its index says which kind',
+      file: { isCompressed: true, compressionFormat: 'zstd', fileType: null },
+    },
+    {
+      kind: 'a file of a format the viewer does not know',
+      file: { isCompressed: true, compressionFormat: 'lz4', fileType: null },
+    },
+  ])('loads 1,000 lines a page for $kind', ({ file }) => {
+    expect(linesPerPage(file)).toBe(LINES_PER_PAGE);
+    expect(LINES_PER_PAGE).toBe(1000);
+  });
+
+  it.each([
+    { format: 'gzip', fileType: null },
+    { format: 'bz2', fileType: null },
+    { format: 'xz', fileType: null },
+    { format: 'gzip', fileType: 'compressed' as const },
+    { format: 'zstd', fileType: 'compressed' as const },
+  ])('loads 5,000 lines a page for a $format stream (index: $fileType)', ({ format, fileType }) => {
+    const file = { isCompressed: true, compressionFormat: format, fileType };
+    expect(linesPerPage(file)).toBe(STREAM_LINES_PER_PAGE);
+    expect(STREAM_LINES_PER_PAGE).toBe(5000);
   });
 });
 

@@ -214,6 +214,12 @@ export interface OpenFile {
   anomalies: AnomalyRangeResult[] | null; // Anomalies detected in the file
   anomalySummary: Record<string, number> | null; // Category -> count
   selectedAnomalyCategory: string | null; // Currently selected category for highlighting (null = none)
+  /**
+   * The kind of file its line index records (`file_type`), or null while
+   * no index is known. Only the index tells a seekable zstd file from a
+   * zstd stream.
+   */
+  fileType: IndexResponse['file_type'] | null;
   /** The line the URL names for this file; the rule is in `utils/anchorLine.ts`. */
   anchorLine: number;
   /**
