@@ -1,12 +1,13 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
 import { contractGate } from '../contractGate';
-import { loadSamples } from '../samplesWait';
+import { loadSamples, loadSamplesByTime } from '../samplesWait';
 import { countAnomaliesByCategory } from '../utils/anomalyCategories';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
-import { readSamplesAnswer, type SampleWindow } from '../utils/sampleWindow';
+import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/sampleWindow';
+import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, LINES_PER_PAGE, maxHeldLines } from '../utils/slidingWindow';
 import type {
   OpenFile,
@@ -48,6 +49,40 @@ function windowBounds(window: SampleWindow) {
     reachedStart: window.reachedStart,
     reachedEnd: window.reachedEnd,
   };
+}
+
+/** Lines asked before and after the target of a jump to a line or a time. */
+const JUMP_CONTEXT = 500;
+
+/**
+ * A time to jump to: an instant (UTC ms), sent as RFC 3339 with ms and
+ * `Z`, or a text the backend reads as `--timestamps` does, sent as is.
+ */
+export type TimeQuery = number | string;
+
+/**
+ * How a jump by time ended: the line it found; no line at or after the
+ * time (the file shows its end); the backend's refusal or another
+ * failure, with its message (the file stays as it was); a backend that
+ * does not list `samples_timestamps`; or a newer load of the file that
+ * took over.
+ */
+export type TimeJumpOutcome =
+  | { kind: 'found'; line: number }
+  | { kind: 'none' }
+  | { kind: 'refused'; message: string }
+  | { kind: 'unsupported' }
+  | { kind: 'superseded' };
+
+/** The value a time query sends. */
+function timeQueryValue(query: TimeQuery): string {
+  return typeof query === 'number' ? new Date(query).toISOString() : query;
+}
+
+/** A time query as a person reads it: an instant in the file's layout when the file has one. */
+function timeQueryLabel(query: TimeQuery, file: OpenFile): string {
+  if (typeof query === 'string') return query;
+  return file.timeRange?.format ? formatInFileLayout(query, file.timeRange) : timeQueryValue(query);
 }
 
 /** What the caller of `openFile` knows about the file; every field may be left out. */
@@ -215,7 +250,9 @@ function createFilesStore() {
         openFiles:
           scrollToLine !== undefined
             ? s.openFiles.map((f, i) =>
-                i === existingIndex ? { ...f, scrollToLine, anchorLine: scrollToLine } : f,
+                i === existingIndex
+                  ? { ...f, scrollToLine, anchorLine: scrollToLine, timeJump: null }
+                  : f,
               )
             : s.openFiles,
       }));
@@ -255,6 +292,7 @@ function createFilesStore() {
       anchorLine: scrollToLine ?? 1,
       indexBuild: null,
       timeRange: null,
+      timeJump: null,
     };
 
     // Add file to the end and make it active
@@ -272,7 +310,7 @@ function createFilesStore() {
     // Load initial content
     if (scrollToLine) {
       // If scrolling to a specific line, load around that line with context of 500
-      await loadLinesAroundCenter(path, scrollToLine, 500);
+      await loadLinesAroundCenter(path, scrollToLine, JUMP_CONTEXT);
     } else {
       // When opening a file, always start from line 1
       await loadLinesFromStart(path, LINES_PER_PAGE);
@@ -540,7 +578,9 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber } : f,
+          f.path === path
+            ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber, timeJump: null }
+            : f,
         ),
       }));
     } else {
@@ -549,12 +589,14 @@ function createFilesStore() {
         ...s,
         activeFilePath: path,
         openFiles: s.openFiles.map((f) =>
-          f.path === path ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber } : f,
+          f.path === path
+            ? { ...f, scrollToLine: lineNumber, anchorLine: lineNumber, timeJump: null }
+            : f,
         ),
       }));
 
-      // Load lines around the target with context of 500 lines
-      await loadLinesAroundCenter(path, lineNumber, 500);
+      // Load lines around the target
+      await loadLinesAroundCenter(path, lineNumber, JUMP_CONTEXT);
     }
   }
 
@@ -574,6 +616,14 @@ function createFilesStore() {
       return;
     }
 
+    await showEnd(path, null);
+  }
+
+  /**
+   * Load and show the last window of an open file, anchored on its last
+   * line. `timeJump` is the time jump that moved it there, or null.
+   */
+  async function showEnd(path: string, timeJump: number | null) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
@@ -598,6 +648,7 @@ function createFilesStore() {
       showWindow(path, { ...window, reachedEnd: true, lineCount: endLine }, response, {
         scrollToLine: endLine,
         anchorLine: endLine,
+        timeJump,
       });
     } catch (e) {
       // A superseded load was cancelled on purpose; it is not a failure.
@@ -618,6 +669,72 @@ function createFilesStore() {
       }));
       console.error('Failed to jump to end:', e);
     }
+  }
+
+  /**
+   * Move an open file to the first line at or after a time, the way
+   * `jumpToLine` moves it to a line: the window around the found line,
+   * anchored on it. The file is made active.
+   *
+   * The file keeps the jump's instant (`timeJump`): the query for an
+   * instant, the found line's own time for a typed text. No line at or
+   * after the time shows the file's last window with a notice. A refusal
+   * leaves the file as it was, and a file that held no lines yet loads
+   * its start. A backend that does not list `samples_timestamps` is
+   * asked nothing; the features are known once the contract gate opens.
+   */
+  async function jumpToTime(path: string, query: TimeQuery): Promise<TimeJumpOutcome> {
+    if (!get({ subscribe }).openFiles.some((f) => f.path === path)) {
+      return { kind: 'refused', message: `${path} is not open` };
+    }
+    update((s) => ({ ...s, activeFilePath: path }));
+    await contractGate.pass();
+    if (!backendHas('samples_timestamps')) return { kind: 'unsupported' };
+
+    const value = timeQueryValue(query);
+    setLoading(path, true);
+    try {
+      const response = await fileLoads.run(path, (signal) =>
+        loadSamplesByTime(path, value, JUMP_CONTEXT, loadOptions(path, signal)),
+      );
+      if (response === SUPERSEDED) return { kind: 'superseded' };
+
+      commandLog.record(response.cli_command, 'file');
+      const answer = readTimeAnswer(response, value);
+      const instant = typeof query === 'number' ? query : null;
+      if (!answer.found) {
+        await showEnd(path, instant);
+        const file = get({ subscribe }).openFiles.find((f) => f.path === path);
+        if (file) {
+          notifications.info(`No line at or after ${timeQueryLabel(query, file)} in ${file.name}`);
+        }
+        return { kind: 'none' };
+      }
+
+      const foundTime = answer.window.lines.find((l) => l.lineNumber === answer.line)?.timestampMs;
+      showWindow(path, answer.window, response, {
+        scrollToLine: answer.line,
+        anchorLine: answer.line,
+        timeJump: instant ?? foundTime ?? null,
+      });
+      return { kind: 'found', line: answer.line };
+    } catch (e) {
+      if (isAbortError(e)) return { kind: 'superseded' };
+      setLoading(path, false);
+      const file = get({ subscribe }).openFiles.find((f) => f.path === path);
+      if (file && file.lines.length === 0) void loadLinesFromStart(path, LINES_PER_PAGE);
+      return { kind: 'refused', message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** Mark a file loading, or done loading; loading also clears its error. */
+  function setLoading(path: string, loading: boolean) {
+    update((s) => ({
+      ...s,
+      openFiles: s.openFiles.map((f) =>
+        f.path === path ? (loading ? { ...f, loading, error: null } : { ...f, loading }) : f,
+      ),
+    }));
   }
 
   /**
@@ -689,11 +806,18 @@ function createFilesStore() {
     }));
   }
 
-  /** Set the line the URL names for a file; the editor reports it after a scroll. */
+  /**
+   * Set the line the URL names for a file; the editor reports it after a
+   * scroll. A different line is a move by line, which ends the time jump.
+   */
   function setAnchorLine(path: string, line: number) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, anchorLine: line } : f)),
+      openFiles: s.openFiles.map((f) =>
+        f.path === path
+          ? { ...f, anchorLine: line, timeJump: line === f.anchorLine ? f.timeJump : null }
+          : f,
+      ),
     }));
   }
 
@@ -877,6 +1001,7 @@ function createFilesStore() {
     loadMore,
     jumpToLine,
     jumpToEnd,
+    jumpToTime,
     setMatches,
     clearMatches,
     clearScrollPosition,

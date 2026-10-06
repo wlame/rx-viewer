@@ -227,6 +227,12 @@ export interface OpenFile {
    * failed, and for a backend that does not list `time_range`.
    */
   timeRange: TimeRangeResponse | null;
+  /**
+   * The instant (UTC ms) of the jump by time that put the file where it
+   * is, or null when it was last moved another way. A move by line
+   * clears it. The URL's `time` comes from it.
+   */
+  timeJump: number | null;
 }
 
 /** Match info for highlighting in file viewer */

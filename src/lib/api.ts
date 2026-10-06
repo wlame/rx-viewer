@@ -215,6 +215,26 @@ export const api = {
   },
 
   /**
+   * The line a time finds and the lines around it: `timestamps=<value>`,
+   * the first line whose own timestamp is at or after the time. The value
+   * goes as given; the answer is filed under it (`readTimeAnswer`). Check
+   * `backendHas('samples_timestamps')` first. Like getSamples, it may
+   * answer with an index build to wait for.
+   * @param path - File path
+   * @param value - A time as `--timestamps` reads one
+   * @param context - Lines before and after the found line
+   */
+  async getSamplesByTime(
+    path: string,
+    value: string,
+    context: number,
+    options?: SamplesRequestOptions,
+  ): Promise<SamplesAnswer> {
+    const params = new URLSearchParams({ path, timestamps: value, context: String(context) });
+    return fetchSamples(`${API_BASE}/samples?${params}`, options);
+  },
+
+  /**
    * When a file's first and last timestamped lines were written, and how
    * the file writes a time. Check `backendHas('time_range')` first.
    * @param path - File path

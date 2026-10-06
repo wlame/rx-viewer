@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again when a line index build for the file ends, or after the first
   window of a compressed file whose range waited for its index. A failed
   call never holds up the file. Nothing shows the range yet.
+- A link can name a time: `time=2025-12-10T07:30:00.000Z` (RFC 3339 in
+  UTC with milliseconds) with no `line` opens the file at the first line
+  at or after that instant, asked of a backend that lists
+  `samples_timestamps` as `GET /v1/samples?timestamps=…`. A jump by time
+  writes `time` in place of `line` as a new history entry, so Back
+  returns to where the file was; moving by line afterwards writes `line`
+  again. With both, `line` wins; an invalid `time` is ignored. A time
+  after the file's last line shows the file's end with a notice.
 
 ### Changed
 

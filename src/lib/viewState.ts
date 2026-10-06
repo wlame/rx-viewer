@@ -1,5 +1,6 @@
 import { derived, get } from 'svelte/store';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
+import { notifications } from './stores/notifications';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
@@ -27,15 +28,18 @@ import type { OpenFile, TreeNode } from './types';
  */
 
 /** The part of the view that belongs to the active file. */
-type FileView = Pick<ViewState, 'file' | 'line' | 'highlight' | 'filter' | 'category'>;
+type FileView = Pick<ViewState, 'file' | 'line' | 'time' | 'highlight' | 'filter' | 'category'>;
 
 /**
  * What the URL says about a file: its path, its anchor line (left out at
- * line 1), its highlighting when it differs from the size-based default,
- * its filter when one is applied, and its anomaly category.
+ * line 1) or, while a jump by time put it there, that time instead, its
+ * highlighting when it differs from the size-based default, its filter
+ * when one is applied, and its anomaly category.
  */
 export function fileViewOf(file: OpenFile | undefined): FileView {
-  if (!file) return { file: null, line: null, highlight: null, filter: null, category: null };
+  if (!file) {
+    return { file: null, line: null, time: null, highlight: null, filter: null, category: null };
+  }
 
   const filter = file.regexFilter;
   const isFilterApplied = Boolean(filter?.enabled && filter.pattern.trim() !== '');
@@ -43,7 +47,8 @@ export function fileViewOf(file: OpenFile | undefined): FileView {
     file.syntaxHighlighting === defaultSyntaxHighlighting(file.fileSize);
   return {
     file: file.path,
-    line: file.anchorLine > 1 ? file.anchorLine : null,
+    line: file.timeJump === null && file.anchorLine > 1 ? file.anchorLine : null,
+    time: file.timeJump,
     highlight: isDefaultHighlighting ? null : file.syntaxHighlighting,
     filter: filter && isFilterApplied ? { pattern: filter.pattern, mode: filter.mode } : null,
     category: file.selectedAnomalyCategory,
@@ -116,9 +121,21 @@ async function locateInTree(path: string): Promise<TreeNode | null> {
 }
 
 /**
+ * Move an open file to the time a view names. A time the backend
+ * refuses for this file leaves it where it is, with a notice.
+ */
+async function jumpToViewTime(path: string, time: number): Promise<void> {
+  const outcome = await files.jumpToTime(path, time);
+  if (outcome.kind !== 'refused') return;
+  const name = path.split('/').pop() ?? path;
+  notifications.error(`Cannot go to the time in ${name}: ${outcome.message}`, 5000);
+}
+
+/**
  * Open the file a view names, or bring it forward when it is open, at
- * the view's line and with its highlighting. The file is in the store
- * when this resolves; the returned load resolves when its lines arrive.
+ * the view's line, or at its time when it names a time and no line, and
+ * with its highlighting. The file is in the store when this resolves;
+ * the returned load resolves when its lines arrive.
  */
 async function showFile(
   path: string,
@@ -127,14 +144,18 @@ async function showFile(
 ): Promise<{ loaded: Promise<void> } | null> {
   const open = get(files).openFiles.find((f) => f.path === path);
   const line = view.line ?? 1;
+  const time = view.line === null ? view.time : null;
 
   if (open) {
     // A file brought forward shows the top of its loaded lines, so its
     // line is revealed again unless it is already on screen.
-    const isOnScreen = activeOpenFile(get(files))?.path === path && open.anchorLine === line;
+    const isActive = activeOpenFile(get(files))?.path === path;
+    const isOnScreen =
+      isActive && (time === null ? open.anchorLine === line : open.timeJump === time);
     files.setActiveFile(path);
     files.setSyntaxHighlighting(path, view.highlight ?? defaultSyntaxHighlighting(open.fileSize));
-    return { loaded: isOnScreen ? Promise.resolve() : files.jumpToLine(path, line) };
+    if (isOnScreen) return { loaded: Promise.resolve() };
+    return { loaded: time === null ? files.jumpToLine(path, line) : jumpToViewTime(path, time) };
   }
 
   // The size-based default needs the file's size, which the tree lists.
@@ -150,7 +171,9 @@ async function showFile(
     isIndexed: node?.is_indexed ?? undefined,
     lineCount: node?.line_count ?? undefined,
   });
-  return { loaded };
+  if (time === null) return { loaded };
+  // The jump takes over from the load of the file's start.
+  return { loaded: Promise.all([loaded, jumpToViewTime(path, time)]).then(() => undefined) };
 }
 
 /** Bring the open files to the view: its file active, with its filter and category. */

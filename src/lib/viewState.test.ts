@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { files } from './stores/files';
+import { health } from './stores/health';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { fileViewOf, restoreView, startViewSync } from './viewState';
@@ -40,6 +41,7 @@ function openFile(overrides: Partial<OpenFile>): OpenFile {
     anchorLine: 1,
     indexBuild: null,
     timeRange: null,
+    timeJump: null,
     ...overrides,
   };
 }
@@ -52,7 +54,14 @@ describe('fileViewOf', () => {
       highlight: null,
       filter: null,
       category: null,
+      time: null,
     });
+  });
+
+  it('writes the time of a time jump and no line', () => {
+    const view = fileViewOf(openFile({ anchorLine: 3_000, timeJump: 1_765_351_800_000 }));
+    expect(view.time).toBe(1_765_351_800_000);
+    expect(view.line).toBeNull();
   });
 
   // A file opened at its start used to write line=15, the middle of the
@@ -100,12 +109,19 @@ describe('fileViewOf', () => {
   });
 });
 
+/** The line every time query finds in the files of `serveBackend`. */
+const TIME_FOUND_LINE = 3_000;
+
+/** The time queries `serveBackend` answered, newest last. */
+let timeQueries: string[] = [];
+
 /**
  * A backend with one search root, `/logs`, holding a 5 MB file and a
  * 1 KB file whose lines read `LINE <n>`; every file has 10,000 lines and
- * no index.
+ * no index. It lists `features`; every time query finds line 3,000.
  */
-function serveBackend() {
+function serveBackend(features: string[] = []) {
+  timeQueries = [];
   const entries = [
     { type: 'file', path: '/logs/big.log', name: 'big.log', size: 5 * ONE_MB, is_indexed: false },
     { type: 'file', path: '/logs/small.log', name: 'small.log', size: 1000, is_indexed: false },
@@ -126,6 +142,27 @@ function serveBackend() {
         return path
           ? json({ path, entries })
           : json({ entries: [{ type: 'directory', path: '/logs', name: 'logs' }] });
+      }
+      if (parsed.pathname === '/health') return json({ contract_version: '1.5', features });
+      const time = parsed.searchParams.get('timestamps');
+      if (parsed.pathname === '/v1/samples' && time !== null) {
+        timeQueries.push(time);
+        const content: string[] = [];
+        for (let n = TIME_FOUND_LINE - 500; n <= TIME_FOUND_LINE + 500; n++)
+          content.push(`LINE ${n}`);
+        return json({
+          path,
+          samples: { [time]: content },
+          timestamps: { [time]: TIME_FOUND_LINE },
+          line_timestamps: { [time]: content.map(() => null) },
+          before_context: 500,
+          after_context: 500,
+          lines: {},
+          offsets: {},
+          is_compressed: false,
+          compression_format: null,
+          cli_command: null,
+        });
       }
       if (parsed.pathname === '/v1/samples') {
         const lines = parsed.searchParams.get('lines') ?? '1';
@@ -284,6 +321,7 @@ describe('restoreView', () => {
     const view: ViewState = {
       file: '/logs/small.log',
       line: 4_200,
+      time: null,
       highlight: null,
       filter: { pattern: 'LINE 42', mode: 'hide' },
       category: 'error',
@@ -439,5 +477,90 @@ describe('Back and Forward', () => {
 
     expect(browser.modes.filter((mode) => mode === 'push')).toHaveLength(pushes);
     expect(browser.entries).toHaveLength(3);
+  });
+});
+
+describe('a jump by time in the URL', () => {
+  let stopSync: () => void = () => {};
+  let browser: ReturnType<typeof stubBrowserHistory>;
+  const instant = Date.UTC(2025, 11, 10, 7, 30, 0, 0);
+  const path = '/logs/small.log';
+
+  beforeEach(async () => {
+    serveBackend(['samples_timestamps']);
+    await health.check();
+    browser = stubBrowserHistory();
+    stopSync = startViewSync();
+  });
+
+  afterEach(async () => {
+    stopSync();
+    resetStores();
+    serveBackend();
+    await health.check();
+    vi.unstubAllGlobals();
+  });
+
+  const activeFile = () => {
+    const state = get(files);
+    return state.openFiles.find((f) => f.path === state.activeFilePath);
+  };
+
+  it('adds an entry with the time, and a later line move replaces it with the line', async () => {
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.jumpToLine(path, 500);
+    const entries = browser.entries.length;
+
+    await files.jumpToTime(path, instant);
+
+    expect(browser.entries).toHaveLength(entries + 1);
+    expect(window.location.search).toBe(
+      '?file=%2Flogs%2Fsmall.log&time=2025-12-10T07%3A30%3A00.000Z',
+    );
+
+    files.setAnchorLine(path, 3_200);
+    expect(browser.entries).toHaveLength(entries + 1);
+    expect(window.location.search).toBe('?file=%2Flogs%2Fsmall.log&line=3200');
+  });
+
+  it('returns to the line before a time jump with Back, and to the time with Forward', async () => {
+    await files.openFile(path, { fileSize: 1000, isIndexed: false });
+    await files.jumpToLine(path, 500);
+    await files.jumpToTime(path, instant);
+
+    browser.back();
+    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(500));
+    expect(activeFile()?.timeJump).toBeNull();
+
+    browser.forward();
+    await vi.waitFor(() => expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE));
+    expect(activeFile()?.timeJump).toBe(instant);
+    expect(timeQueries).toHaveLength(2);
+  });
+
+  it('opens a link with a time and no line at the line the time finds', async () => {
+    await restoreView({ ...DEFAULT_VIEW, file: path, time: instant });
+
+    expect(timeQueries).toEqual(['2025-12-10T07:30:00.000Z']);
+    expect(activeFile()?.anchorLine).toBe(TIME_FOUND_LINE);
+    expect(activeFile()?.timeJump).toBe(instant);
+  });
+
+  it('opens a link with a time and a line at the line', async () => {
+    await restoreView({ ...DEFAULT_VIEW, file: path, line: 42, time: instant });
+
+    expect(timeQueries).toEqual([]);
+    expect(activeFile()?.anchorLine).toBe(42);
+  });
+
+  it('opens a link with a time at the start for a backend without time queries', async () => {
+    serveBackend();
+    await health.check();
+
+    await restoreView({ ...DEFAULT_VIEW, file: path, time: instant });
+
+    expect(timeQueries).toEqual([]);
+    expect(activeFile()?.anchorLine).toBe(1);
+    expect(activeFile()?.lines[0]?.lineNumber).toBe(1);
   });
 });

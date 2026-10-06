@@ -5,6 +5,7 @@ import { contractGate } from '../contractGate';
 import { commandLog } from './commands';
 import { files } from './files';
 import { health } from './health';
+import { notifications } from './notifications';
 import { tree } from './tree';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
@@ -719,5 +720,181 @@ describe('the time range of an open file', () => {
 
     expect(openedFile(path).timeRange).toEqual(middlewareRange(path));
     expect(rangeAsks()).toBe(1);
+  });
+});
+
+describe('a jump by time', () => {
+  const path = '/logs/middleware.log';
+  /** Line n of the served file reads `LINE <n>` and was written at FIRST_MS + n seconds. */
+  const FIRST_MS = 1765350000000;
+  const stampOf = (line: number) => FIRST_MS + line * 1000;
+
+  beforeEach(() => setLocation(''));
+
+  afterEach(async () => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonAnswer(200, { contract_version: '1.5' })),
+    );
+    await health.check();
+    contractGate.reset();
+    for (const notice of get(notifications)) notifications.dismiss(notice.id);
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * A backend of a 10,000-line file whose line n was written at
+   * `stampOf(n)`. A `timestamps` query is answered from `found`: the line
+   * a value finds, -1 for none, or a status and message to refuse it
+   * with. Every samples answer carries `line_timestamps`.
+   */
+  async function serveTimes(
+    found: Record<string, number | { status: number; message: string }>,
+    features: string[] = ['samples_timestamps'],
+  ) {
+    const lineCount = 10_000;
+    const serveLines = serveFileOf(lineCount).getMockImplementation()!;
+    const timeQueries: URLSearchParams[] = [];
+    const spy = vi.fn(async (url: string) => {
+      if (url.startsWith('/health')) return jsonAnswer(200, { contract_version: '1.5', features });
+      const params = new URL(url, 'http://localhost').searchParams;
+      const value = params.get('timestamps');
+      if (value === null) {
+        const answer = await serveLines(url);
+        const body = await answer.json();
+        const [key, content] = Object.entries(body.samples as Record<string, string[] | null>)[0];
+        const first = Number(content?.[0]?.slice('LINE '.length));
+        return jsonAnswer(200, {
+          ...body,
+          line_timestamps: { [key]: content ? content.map((_, i) => stampOf(first + i)) : null },
+        });
+      }
+      timeQueries.push(params);
+      const outcome = found[value];
+      if (typeof outcome === 'object')
+        return jsonAnswer(outcome.status, { detail: outcome.message });
+      const context = Number(params.get('context') ?? 3);
+      const content: string[] = [];
+      if (outcome > 0) {
+        for (
+          let n = Math.max(1, outcome - context);
+          n <= Math.min(lineCount, outcome + context);
+          n++
+        )
+          content.push(`LINE ${n}`);
+      }
+      const first = Math.max(1, outcome - context);
+      return jsonAnswer(200, {
+        path,
+        samples: { [value]: outcome > 0 ? content : null },
+        line_timestamps: {
+          [value]: outcome > 0 ? content.map((_, i) => stampOf(first + i)) : null,
+        },
+        timestamps: { [value]: outcome },
+        before_context: context,
+        after_context: context,
+        lines: {},
+        offsets: {},
+        is_compressed: false,
+        compression_format: null,
+        cli_command: `rx samples ${path} --timestamps=${value}`,
+      });
+    });
+    vi.stubGlobal('fetch', spy);
+    await health.check();
+    return { timeQueries };
+  }
+
+  it('asks once for an instant, as RFC 3339 with ms and Z, and anchors the found line', async () => {
+    const instant = stampOf(4_200) - 400;
+    const { timeQueries } = await serveTimes({ '2025-12-10T08:09:59.600Z': 4_200 });
+    await files.openFile(path, { isIndexed: false });
+
+    const outcome = await files.jumpToTime(path, instant);
+
+    expect(outcome).toEqual({ kind: 'found', line: 4_200 });
+    expect(timeQueries).toHaveLength(1);
+    expect(timeQueries[0].get('context')).toBe('500');
+    const file = openedFile(path);
+    expect(file.anchorLine).toBe(4_200);
+    expect(file.scrollToLine).toBe(4_200);
+    expect(file.startLine).toBe(3_700);
+    expect(file.lines.find((l) => l.lineNumber === 4_200)?.timestampMs).toBe(stampOf(4_200));
+    expect(file.timeJump).toBe(instant);
+    expect(file.loading).toBe(false);
+  });
+
+  it('sends a typed value as typed and keeps the time of the line it found', async () => {
+    const { timeQueries } = await serveTimes({ '2025-12-10 07:45:12.345': 2_712 });
+    await files.openFile(path, { isIndexed: false });
+
+    const outcome = await files.jumpToTime(path, '2025-12-10 07:45:12.345');
+
+    expect(outcome).toEqual({ kind: 'found', line: 2_712 });
+    expect(timeQueries[0].getAll('timestamps')).toEqual(['2025-12-10 07:45:12.345']);
+    expect(openedFile(path).timeJump).toBe(stampOf(2_712));
+  });
+
+  it("returns the backend's message for a refused value and keeps the file as it was", async () => {
+    const message = 'cannot read "07:61" as a time';
+    await serveTimes({ '07:61': { status: 400, message } });
+    await files.openFile(path, { isIndexed: false });
+    const before = openedFile(path);
+
+    const outcome = await files.jumpToTime(path, '07:61');
+
+    expect(outcome).toEqual({ kind: 'refused', message });
+    const file = openedFile(path);
+    expect(file.error).toBeNull();
+    expect(file.loading).toBe(false);
+    expect(file.lines).toEqual(before.lines);
+    expect(file.anchorLine).toBe(before.anchorLine);
+  });
+
+  it('shows the last window and a notice for a time after the last line', async () => {
+    const instant = stampOf(20_000);
+    await serveTimes({ [new Date(instant).toISOString()]: -1 });
+    await files.openFile(path, { isIndexed: false });
+
+    const outcome = await files.jumpToTime(path, instant);
+
+    expect(outcome).toEqual({ kind: 'none' });
+    const file = openedFile(path);
+    expect(file.anchorLine).toBe(10_000);
+    expect(file.reachedEnd).toBe(true);
+    expect(file.timeJump).toBe(instant);
+    expect(get(notifications).map((n) => n.message)).toEqual([
+      'No line at or after 2025-12-10T12:33:20.000Z in middleware.log',
+    ]);
+  });
+
+  it('asks nothing of a backend that does not list samples_timestamps', async () => {
+    const { timeQueries } = await serveTimes({}, []);
+    await files.openFile(path, { isIndexed: false });
+
+    expect(await files.jumpToTime(path, stampOf(10))).toEqual({ kind: 'unsupported' });
+    expect(timeQueries).toHaveLength(0);
+    expect(openedFile(path).loading).toBe(false);
+  });
+
+  it('forgets the time jump when the file then moves by line', async () => {
+    await serveTimes({ [new Date(stampOf(500)).toISOString()]: 500 });
+    await files.openFile(path, { isIndexed: false });
+    await files.jumpToTime(path, stampOf(500));
+
+    files.setAnchorLine(path, 500);
+    expect(openedFile(path).timeJump).toBe(stampOf(500));
+
+    files.setAnchorLine(path, 640);
+    expect(openedFile(path).timeJump).toBeNull();
+
+    await files.jumpToTime(path, stampOf(500));
+    await files.jumpToLine(path, 20);
+    expect(openedFile(path).timeJump).toBeNull();
+
+    await files.jumpToTime(path, stampOf(500));
+    await files.jumpToEnd(path);
+    expect(openedFile(path).timeJump).toBeNull();
   });
 });

@@ -71,6 +71,27 @@ describe('parseViewState', () => {
     },
   );
 
+  it('reads a time as the UTC instant it names', () => {
+    expect(parseViewState('?file=/a.log&time=2025-12-10T07:30:00.123Z').time).toBe(
+      Date.UTC(2025, 11, 10, 7, 30, 0, 123),
+    );
+  });
+
+  // The URL carries an instant the viewer wrote: RFC 3339 with ms and Z.
+  it.each([
+    '07:30:00',
+    '2025-12-10 07:30:00',
+    '2025-12-10T07:30:00Z',
+    '2025-12-10T07:30:00.123',
+    '2025-12-10T07:30:00.123+01:00',
+    '2025-13-10T07:30:00.000Z',
+    '2025-02-30T07:30:00.000Z',
+    '2025-12-10T25:30:00.000Z',
+    '',
+  ])('falls back to no time for time=%s', (value) => {
+    expect(parseViewState(`?file=/a.log&time=${encodeURIComponent(value)}`).time).toBeNull();
+  });
+
   it('leaves highlighting to the size-based default when the link has no highlight', () => {
     expect(parseViewState('?file=/a.log').highlight).toBeNull();
   });
@@ -143,6 +164,7 @@ describe('serializeViewState and parseViewState', () => {
     ['a path with URL syntax', view({ file: '/logs/with space/and&amp+sign #1.log', line: 7 })],
     ['a unicode path', view({ file: '/logs/unicode-日本語.log', highlight: true })],
     ['highlighting off', view({ file: '/a.log', highlight: false })],
+    ['a file at a time', view({ file: '/a.log', time: Date.UTC(2025, 11, 10, 7, 45, 12, 345) })],
     [
       'a filter and a category',
       view({
@@ -181,6 +203,12 @@ describe('serializeViewState and parseViewState', () => {
       '?regexp=error',
     );
     expect(serializeViewState(DEFAULT_VIEW, '')).toBe('');
+  });
+
+  it('writes a time as RFC 3339 with ms and Z', () => {
+    expect(
+      serializeViewState(view({ file: '/a.log', time: Date.UTC(2025, 11, 10, 7, 30) }), ''),
+    ).toBe('?file=%2Fa.log&time=2025-12-10T07%3A30%3A00.000Z');
   });
 
   it('writes a search flag as 1', () => {
@@ -268,6 +296,24 @@ describe('historyModeFor', () => {
         name: 'dropping the search',
         previous: view({ search: plainSearch }),
         next: DEFAULT_VIEW,
+        mode: 'replace',
+      },
+      {
+        name: 'jumping to a time',
+        previous: view({ file: '/a.log', line: 500 }),
+        next: view({ file: '/a.log', time: 1_000 }),
+        mode: 'push',
+      },
+      {
+        name: 'jumping to another time',
+        previous: view({ file: '/a.log', time: 1_000 }),
+        next: view({ file: '/a.log', time: 2_000 }),
+        mode: 'push',
+      },
+      {
+        name: 'moving by line after a time jump',
+        previous: view({ file: '/a.log', time: 1_000 }),
+        next: view({ file: '/a.log', line: 640 }),
         mode: 'replace',
       },
       { name: 'changing nothing', previous: fileA, next: fileA, mode: 'replace' },

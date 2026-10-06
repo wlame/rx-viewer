@@ -135,6 +135,20 @@ export function loadSamplesByOffset(
   );
 }
 
+/** Lines of `path` around the line a time finds, after any index build. */
+export function loadSamplesByTime(
+  path: string,
+  value: string,
+  context: number,
+  options: SamplesWaitOptions & RequestOptions = {},
+): Promise<SamplesResponse> {
+  return samplesAfterIndexBuild(
+    path,
+    (signal, respondAsync) => api.getSamplesByTime(path, value, context, { signal, respondAsync }),
+    options,
+  );
+}
+
 /** What the file's view says while its index is built. */
 export function indexBuildLabel(build: IndexBuild): string {
   const label = 'Building the line index…';

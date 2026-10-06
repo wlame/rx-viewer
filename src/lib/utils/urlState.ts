@@ -2,7 +2,8 @@
  * The view state the address bar carries, and its one serialized form.
  *
  * The URL names what a user would bookmark, share or come back to: the
- * active file, the line its view is anchored on, its highlighting,
+ * active file, the line its view is anchored on or the time it jumped
+ * to, its highlighting,
  * filter and anomaly category, the sidebar tab, the last search and
  * whether its results show byte offsets. Each key has one row in
  * `CODECS`, which reads it as untrusted input (a missing or invalid
@@ -53,6 +54,12 @@ export interface ViewState {
    * for the rule), or null to open the file at its start.
    */
   line: number | null;
+  /**
+   * The instant (UTC ms) the active file jumped to by time, or null. A
+   * link with a time and no line opens the file at the first line at or
+   * after it; with both, the line wins.
+   */
+  time: number | null;
   /** Syntax highlighting on or off; null means the file's size-based default. */
   highlight: boolean | null;
   /** The active file's regex filter, or null for none. */
@@ -70,6 +77,7 @@ export interface ViewState {
 export const DEFAULT_VIEW: ViewState = {
   file: null,
   line: null,
+  time: null,
   highlight: null,
   filter: null,
   category: null,
@@ -120,6 +128,20 @@ function wholeNumber(value: string | null, min: number): number | null {
   if (value === null || !/^\d+$/.test(value)) return null;
   const number = Number(value);
   return number >= min && Number.isSafeInteger(number) ? number : null;
+}
+
+/** An instant as the URL writes it: RFC 3339 in UTC with milliseconds, `Z` at the end. */
+const URL_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The instant (UTC ms) a URL's time names, or null for anything but an
+ * instant the viewer writes. A date that does not exist (February 30)
+ * is refused, not moved to the next month.
+ */
+function urlInstant(value: string | null): number | null {
+  if (value === null || !URL_INSTANT.test(value)) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) || new Date(ms).toISOString() !== value ? null : ms;
 }
 
 /** The search flag parameters the panel can set, named as /v1/trace names them. */
@@ -185,6 +207,13 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     names: ['line'],
     parse: (params) => wholeNumber(params.get('line'), 1),
     serialize: (line) => (line === null ? [] : [['line', String(line)]]),
+  },
+  time: {
+    names: ['time'],
+    parse: (params) => urlInstant(params.get('time')),
+    serialize: (time) => (time === null ? [] : [['time', new Date(time).toISOString()]]),
+    // A jump by time is a step; moving by line afterwards drops it, and is not.
+    isStep: (previous, next) => next !== null && next !== previous,
   },
   highlight: {
     names: ['highlight'],
@@ -298,8 +327,9 @@ function isStepKey<K extends keyof ViewState>(
 /**
  * How the change from `previous` to `next` reaches history: a push when
  * any key changed in a way that is a step (opening a file, running a
- * search, switching the sidebar tab), otherwise a replace (the line, the
- * highlighting, the filter, the category, the offsets switch).
+ * search, switching the sidebar tab, a jump by time), otherwise a
+ * replace (the line, the highlighting, the filter, the category, the
+ * offsets switch).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';
