@@ -20,14 +20,17 @@ function entry(path: string, type: 'directory' | 'file') {
   };
 }
 
-/** Answers `/v1/tree`: one root, `/logs`, holding one folder and one file. */
-function serveTree() {
+/**
+ * Answers `/v1/tree`: the given roots, each holding one folder and one
+ * file. One root, `/logs`, by default.
+ */
+function serveTree(roots: string[] = ['/logs']) {
   const spy = vi.fn(async (url: string) => {
     const path = new URL(url, 'http://localhost').searchParams.get('path');
     const entries =
       path === null
-        ? [entry('/logs', 'directory')]
-        : [entry('/logs/app', 'directory'), entry('/logs/a.log', 'file')];
+        ? roots.map((root) => entry(root, 'directory'))
+        : [entry(`${path}/app`, 'directory'), entry(`${path}/a.log`, 'file')];
     const body = {
       path: path ?? '',
       parent: null,
@@ -55,12 +58,13 @@ describe('the tree when the Files tab is shown again', () => {
   it('keeps the expanded folders and asks for nothing', async () => {
     const fetchSpy = serveTree();
     await tree.ensureRoots();
-    await tree.toggleExpanded('/logs');
+    await tree.toggleExpanded('/logs/app');
     const callsBefore = fetchSpy.mock.calls.length;
 
     await tree.ensureRoots();
 
     expect(tree.nodeAt('/logs')?.expanded).toBe(true);
+    expect(tree.nodeAt('/logs/app')?.expanded).toBe(true);
     expect(tree.nodeAt('/logs/a.log')).not.toBeNull();
     expect(fetchSpy.mock.calls.length).toBe(callsBefore);
   });
@@ -69,5 +73,17 @@ describe('the tree when the Files tab is shown again', () => {
     serveTree();
     await tree.loadRoots();
     expect(get(tree).roots.map((root) => root.path)).toEqual(['/logs']);
+  });
+
+  it('opens every root folder on the first load', async () => {
+    serveTree(['/logs', '/srv']);
+    await tree.loadRoots();
+
+    for (const root of ['/logs', '/srv']) {
+      expect(tree.nodeAt(root)?.expanded).toBe(true);
+      expect(tree.nodeAt(`${root}/a.log`)).not.toBeNull();
+    }
+    // Only the roots open: their folders stay closed until clicked.
+    expect(tree.nodeAt('/logs/app')?.expanded).toBe(false);
   });
 });

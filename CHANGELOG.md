@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The file tree opens with every search root unfolded, so the first
+  level of each root is in view at once; deeper folders stay closed
+  until clicked.
+
 - A large file without a line index opens at once on a backend that
   answers from the start of the file and builds the index in the
   background (rx-go names the build in the samples answer's

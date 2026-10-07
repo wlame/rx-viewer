@@ -74,6 +74,10 @@ function createTreeStore() {
         .filter((e) => e.type === 'directory')
         .map((e) => entryToNode(e, 0));
       update((s) => ({ ...s, roots, loading: false }));
+      // The search roots open with the tree, so the first level of every
+      // root is in view at once; deeper folders stay closed until clicked.
+      // Each root is listed by its own request, all at the same time.
+      await Promise.all(roots.map((root) => loadDirectory(root.path)));
     } catch (e) {
       if (isAbortError(e)) return;
       update((s) => ({
