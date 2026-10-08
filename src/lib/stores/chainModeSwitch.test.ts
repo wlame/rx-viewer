@@ -41,6 +41,42 @@ function lineInView(key: string): { text: string | undefined; time: number | nul
   return { text: line?.content, time: line?.timestampMs };
 }
 
+/** What a backend adds to a time read as wall clock in +02:00: two hours earlier. */
+const PLUS_TWO_HOURS_SHIFT_MS = -2 * 3_600_000;
+
+/**
+ * Serve `chain` with the times of every answer to a request that reads in
+ * the zone +02:00 two hours earlier, as a backend reads wall clock in that
+ * zone; the fake alone moves no time with a zone.
+ */
+function shiftTimesInZone(chain: FakeChain): void {
+  type Times = (number | null)[] | null;
+  /** The parts of a chain's or a file's samples answer that hold times. */
+  interface TimedBody {
+    samples?: Record<string, { line_timestamps: Times }[] | string[] | null>;
+    line_timestamps?: Record<string, Times>;
+  }
+  const shift = (times: Times) =>
+    times?.map((ms) => (ms === null ? null : ms + PLUS_TWO_HOURS_SHIFT_MS)) ?? null;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      const answer = await chain.fetch(url, init);
+      if (new URL(url, 'http://localhost').searchParams.get('file_tz') !== '+02:00') return answer;
+      const body = (await answer.json()) as TimedBody;
+      for (const pieces of Object.values(body.samples ?? {})) {
+        for (const piece of pieces ?? []) {
+          if (typeof piece !== 'string') piece.line_timestamps = shift(piece.line_timestamps);
+        }
+      }
+      for (const [key, times] of Object.entries(body.line_timestamps ?? {})) {
+        body.line_timestamps = { ...body.line_timestamps, [key]: shift(times) };
+      }
+      return { ...answer, json: async () => body };
+    }),
+  );
+}
+
 async function settled(key: string): Promise<void> {
   await vi.waitFor(() => expect(openTab(key).loading).toBe(false));
 }
@@ -119,6 +155,42 @@ describe('switching chain mode off and on', () => {
     expect(get(files).matches.get('/l/app.log.1')).toEqual([
       { lineNumber: 750, patternId: 'p1', pattern: 'x' },
     ]);
+  });
+
+  // The file tab keeps a zone of its own, so it reads the line's time as
+  // another instant than the chain's tab did: only the text compares.
+  it('says nothing of a line the file tab reads at another time in a zone of its own', async () => {
+    const chain = await serve({ features: ['log_chains', 'samples_index_build', 'file_tz'] });
+    shiftTimesInZone(chain);
+    chainMode.set(true);
+    fileZones.set(KEY, '+02:00', () => true);
+    fileZones.set('/l/app.log.1', 'UTC', () => true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 750 } });
+    const before = lineInView(KEY);
+
+    await switchChainMode(false);
+    await settled('/l/app.log.1');
+
+    expect(lineInView('/l/app.log.1').text).toBe(before.text);
+    expect(lineInView('/l/app.log.1').time).not.toBe(before.time);
+    expect(get(notifications).map((n) => n.message)).toEqual([]);
+  });
+
+  it("keeps the line a file tab showed when the chain's tab reads its time in a zone of its own", async () => {
+    const chain = await serve({ features: ['log_chains', 'samples_index_build', 'file_tz'] });
+    shiftTimesInZone(chain);
+    fileZones.set(KEY, '+02:00', () => true);
+    await files.openFile('/l/app.log.1', { scrollToLine: 750 });
+    await settled('/l/app.log.1');
+    const before = lineInView('/l/app.log.1');
+
+    await switchChainMode(true);
+    await settled(KEY);
+
+    expect(lineInView(KEY).text).toBe(before.text);
+    expect(openTab(KEY).chain?.anchor).toMatchObject({ part: 'app.log.1', line: 750 });
+    expect(chain.samplesRequests.some((q) => q.has('timestamps'))).toBe(false);
+    expect(get(notifications).map((n) => n.message)).toEqual([]);
   });
 
   // The chain is over 1 MB (highlighting off), its part below (on).

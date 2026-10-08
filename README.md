@@ -177,9 +177,10 @@ file tab, and a file tab's line is looked for by its time and text when
 the chain shows other text at that line. Every time a tab shows its line
 again (after a change of the files, a reload in another zone, the end of
 the chain's indexing, a mode switch) it checks the line against the one
-it showed, by its text, or by its time when the text is unknown: another
-line leaves the screen and the line is looked for by its time, with a
-notice when it is not found. A file tab a chain's tab becomes says so
+it showed, by its text and its time, or by either one when the other is
+not known (a time read in another zone is not known): another line
+leaves the screen and the line is looked for by its time, with a notice
+when it is not found. A file tab a chain's tab becomes says so
 when the file holds other text at the line, or no longer reaches it.
 
 ## Link parameters

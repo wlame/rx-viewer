@@ -45,8 +45,6 @@ import {
   flattenPieces,
   globalPage,
   learnCounts,
-  nearestHeldLine,
-  nearestSameText,
   pageBase,
   pendingEnds,
   pendingPage,
@@ -55,7 +53,14 @@ import {
   readGlobalWindow,
 } from '../utils/chainWindow';
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
-import { checkShownLine, fileLineNotice, heldLineAt, type KnownLine } from '../utils/knownLine';
+import {
+  checkShownLine,
+  fileLineNotice,
+  heldLineAt,
+  knownInZone,
+  nearestKnownLine,
+  type KnownLine,
+} from '../utils/knownLine';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { retryAfterMs } from '../utils/retryAfter';
 import type { SampleWindow } from '../utils/sampleWindow';
@@ -645,6 +650,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     const handle = handleOf(key);
     const anchor = chainOf(key)?.anchor ?? null;
     const known = knownAnchorLine(key);
+    const zone = fileZones.zoneOf(key);
     forget(key);
     deps.closeTab(key);
     if (anchor === null) {
@@ -659,22 +665,24 @@ export function createChainTabs(deps: ChainTabDeps) {
       );
       return;
     }
-    await openFileChecked(path, anchor.line, known, nameOf(handle));
+    await openFileChecked(path, anchor.line, { known, zone }, nameOf(handle));
   }
 
   /**
    * Open the file `path` at `line`, as the file tab a chain's tab
    * (`chainName`) becomes, and say so when the line it shows there is not
-   * the line the chain's tab knew (`known`): the file changed on disk.
+   * the line the chain's tab knew (`known`, its time read in `zone`): the
+   * file changed on disk.
    */
   async function openFileChecked(
     path: string,
     line: number,
-    known: KnownLine,
+    { known, zone }: { known: KnownLine; zone: string | null },
     chainName: string,
   ): Promise<void> {
     await deps.openFileAt(path, line);
-    const notice = fileLineNotice(deps.getTab(path), line, known, chainName);
+    const comparable = knownInZone(known, zone, fileZones.zoneOf(path));
+    const notice = fileLineNotice(deps.getTab(path), line, comparable, chainName);
     if (notice !== null) notifications.info(notice, NOTICE_MS);
   }
 
@@ -1289,21 +1297,14 @@ export function createChainTabs(deps: ChainTabDeps) {
 
   /**
    * Move the anchor of the tab `key` to the nearest held line that is the
-   * known one: with its text, or, without one, with its time at its line
-   * in a part (a file a rotation renamed keeps its lines' numbers).
+   * known one (`nearestKnownLine`): with its text, at its time too where
+   * both are known, or, without a text, with its time at its line in a
+   * part (a file a rotation renamed keeps its lines' numbers).
    */
   function goToKnownLine(key: TabKey, known: KnownLine): void {
     const tab = deps.getTab(key);
     if (!tab) return;
-    const { text, timeMs } = known;
-    const line = known.place?.line;
-    let found: number | null = null;
-    if (text !== null) {
-      found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, text);
-    } else if (timeMs !== null && line !== undefined) {
-      const isKnown = (held: FileLine) => held.timestampMs === timeMs && held.localLine === line;
-      found = nearestHeldLine(tab.lines, tab.startLine, tab.anchorLine, isKnown);
-    }
+    const found = nearestKnownLine(tab.lines, tab.startLine, tab.anchorLine, known);
     if (found === null || found === tab.anchorLine) return;
     deps.patchTab(key, (t) => ({
       scrollToLine: found,
@@ -1329,6 +1330,7 @@ export function createChainTabs(deps: ChainTabDeps) {
   ): Promise<void> {
     const handle = handleOf(key);
     const codes = chain.reasons.map((reason) => reason.code).join(', ');
+    const zone = fileZones.zoneOf(key);
     forget(key);
     deps.closeTab(key);
     if (moved === null) {
@@ -1342,7 +1344,8 @@ export function createChainTabs(deps: ChainTabDeps) {
       `${chain.name} is no longer a valid log chain${codes ? ` (${codes})` : ''}; ${moved.part} opens as a file`,
       NOTICE_MS,
     );
-    await openFileChecked(partPath(handle, moved.part), moved.line, { text, timeMs }, chain.name);
+    const known: KnownLine = { text, timeMs };
+    await openFileChecked(partPath(handle, moved.part), moved.line, { known, zone }, chain.name);
   }
 
   /**

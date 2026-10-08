@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { FileLine, OpenFile } from '../types';
-import { checkShownLine, fileLineNotice, heldLineAt, type KnownLine } from './knownLine';
+import {
+  checkShownLine,
+  fileLineNotice,
+  heldLineAt,
+  knownInZone,
+  nearestKnownLine,
+  type KnownLine,
+} from './knownLine';
 
 const LINE: Pick<FileLine, 'content' | 'timestampMs'> = {
   content: 'B local=500',
@@ -9,11 +16,15 @@ const LINE: Pick<FileLine, 'content' | 'timestampMs'> = {
 
 describe('checkShownLine', () => {
   it.each<[string, Pick<FileLine, 'content' | 'timestampMs'> | null, KnownLine, string]>([
-    ['the known text', LINE, { text: 'B local=500', timeMs: 1000 }, 'same'],
+    ['the known text at the known time', LINE, { text: 'B local=500', timeMs: 1000 }, 'same'],
+    ['the known text, the time unknown', LINE, { text: 'B local=500', timeMs: null }, 'same'],
+    // Two lines may hold one text (a blank line, a repeated frame), never at one time as well.
+    ['the known text at another time', LINE, { text: 'B local=500', timeMs: 9 }, 'other'],
+    // A time the backend did not compute is no other time: the text decides.
     [
-      'the known text at another time (a zone change)',
-      LINE,
-      { text: 'B local=500', timeMs: 9 },
+      'the known text on a line without a time',
+      { content: 'B local=500', timestampMs: null },
+      { text: 'B local=500', timeMs: 1000 },
       'same',
     ],
     ['other text at the known time', LINE, { text: 'C local=500', timeMs: 1000 }, 'other'],
@@ -47,6 +58,67 @@ describe('checkShownLine', () => {
     expect(checkShownLine(shown, { text: null, timeMs: null, place: { part: 'x', line: 1 } })).toBe(
       'unknown',
     );
+  });
+});
+
+describe('knownInZone', () => {
+  const known: KnownLine = { text: 'B local=500', timeMs: 1000 };
+
+  it('keeps the time of a line read in the zone the shown line is read in', () => {
+    expect(knownInZone(known, '+02:00', '+02:00')).toEqual(known);
+    expect(knownInZone(known, null, null)).toEqual(known);
+  });
+
+  // A zone moves every time and never a text.
+  it('drops the time of a line read in another zone, and keeps its text', () => {
+    expect(knownInZone(known, '+02:00', null)).toEqual({ text: 'B local=500', timeMs: null });
+    expect(knownInZone(known, null, 'UTC')).toEqual({ text: 'B local=500', timeMs: null });
+  });
+});
+
+describe('nearestKnownLine', () => {
+  /** Held lines 101-110 whose texts repeat: `a` at 103, 107 and 110, `b` at 105; line n at second n. */
+  const held = ['x', 'x', 'a', 'x', 'b', 'x', 'a', 'x', 'x', 'a'].map((content, i) => ({
+    lineNumber: 101 + i,
+    content,
+    timestampMs: (101 + i) * 1000,
+    localLine: 1 + i,
+  }));
+  const text = (content: string): KnownLine => ({ text: content, timeMs: null });
+
+  it('finds the target itself when it is the known line', () => {
+    expect(nearestKnownLine(held, 101, 105, text('b'))).toBe(105);
+  });
+
+  it('finds the nearest line with the known text on either side of the target', () => {
+    expect(nearestKnownLine(held, 101, 104, text('a'))).toBe(103);
+    expect(nearestKnownLine(held, 101, 109, text('a'))).toBe(110);
+  });
+
+  // The line a time names is the first at or after it, so the line asked
+  // for is more often after it than before.
+  it('prefers the line after the target when two are as near', () => {
+    expect(nearestKnownLine(held, 101, 105, text('a'))).toBe(107);
+  });
+
+  it('passes a nearer line with the known text at another time for the one at the known time', () => {
+    expect(nearestKnownLine(held, 101, 105, { text: 'a', timeMs: 110_000 })).toBe(110);
+    expect(nearestKnownLine(held, 101, 105, { text: 'a', timeMs: 104_000 })).toBeNull();
+  });
+
+  it('finds a line by its time at its line in a part when its text is unknown', () => {
+    const known: KnownLine = { text: null, timeMs: 107_000, place: { part: 'p', line: 7 } };
+
+    expect(nearestKnownLine(held, 101, 103, known)).toBe(107);
+    expect(
+      nearestKnownLine(held, 101, 103, { ...known, place: { part: 'p', line: 8 } }),
+    ).toBeNull();
+  });
+
+  it('finds none for a text the held lines do not hold, a target they do not hold, or nothing known', () => {
+    expect(nearestKnownLine(held, 101, 105, text('zzz'))).toBeNull();
+    expect(nearestKnownLine(held, 101, 400, text('a'))).toBeNull();
+    expect(nearestKnownLine(held, 101, 105, { text: null, timeMs: null })).toBeNull();
   });
 });
 

@@ -346,27 +346,10 @@ export function anchorAt(
 }
 
 /**
- * The position of the held line nearest to `target` whose text is
- * `text`: the target itself, else the nearest one on either side, the
- * one after the target when two are as near (the line a time names is
- * the first at or after that time, so a line with the same time and text
- * is more often after it). Null when no held line has that text, or the
- * held lines do not hold the target. One pass outward from the target.
- */
-export function nearestSameText(
-  lines: readonly Pick<FileLine, 'lineNumber' | 'content'>[],
-  startLine: number,
-  target: number,
-  text: string,
-): number | null {
-  return nearestHeldLine(lines, startLine, target, (line) => line.content === text);
-}
-
-/**
  * The position of the held line nearest to `target` that `isWanted`
- * accepts, as `nearestSameText` finds one: the target itself, else the
- * nearest on either side, the one after when two are as near. Null when
- * none is, or the held lines do not hold the target.
+ * accepts: the target itself, else the nearest on either side, the one
+ * after when two are as near. Null when none is, or the held lines do not
+ * hold the target.
  */
 export function nearestHeldLine<Line extends Pick<FileLine, 'lineNumber'>>(
   lines: readonly Line[],

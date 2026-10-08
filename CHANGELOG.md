@@ -365,6 +365,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now. A link whose part is gone says so too. Back and Forward check an
   entry the same way, unless the chain is read in another zone than when
   the entry was made, since a zone moves every time.
+- A log chain's tab that knew both the text and the time of its line
+  knows it again only by both, where it used to go by the text alone: a
+  file the rotation paired by mistake, whose line there holds the same
+  text (a blank line, a repeated `\tat …` frame) at another time, no
+  longer passes for the line, which is then looked for by its time; and
+  near that time the tab goes to the line with both its text and its
+  time. A time read in another zone than the line is shown in is not
+  compared (a zone moves every time), and neither is a line the backend
+  gives no time yet (a part's first lines before the chain is ready):
+  there the text decides, as before.
 - An older chain mode switch still waiting for the backend no longer
   moves a log chain's tab back over a newer view, such as the entry Back
   pressed twice lands on: a switch to the mode already set ends with the

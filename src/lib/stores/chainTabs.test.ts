@@ -1085,6 +1085,37 @@ describe('a rotation while a chain tab is open', () => {
     }
   });
 
+  // The rename map may pair another file, whose line there holds the same
+  // text (a blank line, a repeated frame): its time tells them apart.
+  it('looks for its line by its time when the renamed line holds its text at another time', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = tab().lines[tab().anchorLine - tab().startLine];
+    const anHourLater = (times: (number | null)[] | null) =>
+      times?.map((ms) => (ms === null ? null : ms + 3_600_000)) ?? null;
+    hookSamples((query) => {
+      chain.rewritePiece =
+        query.get('part') === 'app.log.2'
+          ? (piece) => ({ ...piece, line_timestamps: anHourLater(piece.line_timestamps) })
+          : null;
+    });
+    chain.rotateTo(RENAMED, 'pending');
+
+    const loading = files.loadMore(KEY, 'after');
+    await vi.waitFor(() =>
+      expect(chain.samplesRequests.some((q) => q.has('timestamps'))).toBe(true),
+    );
+    chain.finishTask();
+    await loading;
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    const shown = tab().lines[tab().anchorLine - tab().startLine];
+    expect(chain.samplesRequests.find((q) => q.has('timestamps'))?.getAll('timestamps')).toEqual([
+      new Date(before.timestampMs ?? NaN).toISOString(),
+    ]);
+    expect(shown.content).toBe(before.content);
+    expect(shown.timestampMs).toBe(before.timestampMs);
+  });
+
   // The rotation deleted A: the text of the anchor line is nowhere, and its
   // time is before the chain's first line.
   it('says it cannot find the line again, and shows the line at its time, when its file is gone', async () => {

@@ -39,7 +39,7 @@ import {
   type ChainMerge,
 } from '../utils/chainSwitch';
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
-import { fileLineNotice, type KnownLine } from '../utils/knownLine';
+import { fileLineNotice, knownInZone, type KnownLine } from '../utils/knownLine';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { chainMode } from './chainMode';
 import type { ChainPosition, LineToFind } from './chainTabs';
@@ -239,7 +239,8 @@ function turnChainIntoFile(
   const { path, line } = target;
   const name = nameOf(path);
   const marks = fileMatchesOfPart(get(files).matches.get(tab.path) ?? [], name);
-  const check = () => checkFileLine({ path, line, known, chainName: tab.name, marks });
+  const zone = fileZones.zoneOf(tab.path);
+  const check = () => checkFileLine({ path, line, known, zone, chainName: tab.name, marks });
   if (placeOf(path) >= 0) {
     files.closeFile(tab.path);
     if (isActive) loads.push(files.jumpToLine(path, line).then(check));
@@ -274,6 +275,8 @@ interface TurnedFile {
   line: number;
   /** The text and time of the line the chain's tab showed there, each null when it did not know it. */
   known: KnownLine;
+  /** The zone the chain's tab read that time in. */
+  zone: string | null;
   chainName: string;
   /** The search marks carried into the file tab. */
   marks: FileMatch[];
@@ -282,12 +285,14 @@ interface TurnedFile {
 /**
  * Say so when a file tab a chain's tab turned into shows another line at
  * its line than the chain's tab showed, or holds no such line: the file
- * changed on disk while the mode switched (`fileLineNotice`). The marks
- * carried with it are dropped then.
+ * changed on disk while the mode switched (`fileLineNotice`). A time read
+ * in another zone than the file tab's is not compared. The marks carried
+ * with it are dropped then.
  */
-function checkFileLine({ path, line, known, chainName, marks }: TurnedFile): void {
+function checkFileLine({ path, line, known, zone, chainName, marks }: TurnedFile): void {
   const tab = get(files).openFiles.find((f) => f.path === path);
-  const notice = fileLineNotice(tab, line, known, chainName);
+  const comparable = knownInZone(known, zone, fileZones.zoneOf(path));
+  const notice = fileLineNotice(tab, line, comparable, chainName);
   if (notice === null) return;
   const dropsMarks = marks.length > 0 && get(files).matches.get(path) === marks;
   if (dropsMarks) files.setMatches(path, []);
@@ -366,17 +371,25 @@ function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void 
   const lead = members.find((tab) => tab.path === merge.lead);
   if (lead === undefined) return;
   const key = chainKey(merge.handle);
+  const isChainOpen = placeOf(key) >= 0;
+  if (!isChainOpen) carryZone(lead.path, key);
   const shown = anchorLineOf(lead);
+  // The lead's time names the line only in the zone the chain is read in.
+  const known = knownInZone(
+    { text: shown?.content ?? null, timeMs: shown?.timestampMs ?? null },
+    fileZones.zoneOf(lead.path),
+    fileZones.zoneOf(key),
+  );
   const position: ChainPosition = {
     kind: 'local',
     part: merge.part,
     line: lead.anchorLine,
-    timeMs: shown?.timestampMs ?? null,
+    timeMs: known.timeMs,
   };
   const leadLine: LineToFind = {
     what: `the line ${merge.part} showed at line ${lead.anchorLine}`,
-    text: shown?.content ?? null,
-    timeMs: position.timeMs ?? null,
+    text: known.text,
+    timeMs: known.timeMs,
   };
   const marks = chainMatchesOfFile(state.matches.get(lead.path) ?? [], merge.part);
   const othersMarked = members.some(
@@ -386,8 +399,7 @@ function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void 
   const name = nameOf(merge.handle);
 
   let opened: Promise<unknown>;
-  if (placeOf(key) < 0) {
-    carryZone(lead.path, key);
+  if (!isChainOpen) {
     // openChain puts the tab in the store before its first await.
     opened = files.openChain(merge.handle, {
       position,

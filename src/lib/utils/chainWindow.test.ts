@@ -9,7 +9,6 @@ import {
   globalPage,
   learnCounts,
   nearestHeldLine,
-  nearestSameText,
   pageBase,
   pendingEnds,
   pendingPage,
@@ -381,34 +380,6 @@ describe('pendingEnds', () => {
     expect(pendingEnds([line('a', 7)], parts, new Map([['a', 7]])).reachedEnd).toBe(true);
     expect(pendingEnds([line('a', 6)], parts, new Map([['a', 7]])).reachedEnd).toBe(false);
     expect(pendingEnds([line('a.1', 9)], parts, new Map([['a.1', 9]])).reachedEnd).toBe(false);
-  });
-});
-
-describe('nearestSameText', () => {
-  /** Held lines 101-110 whose texts repeat: `a` at 103, 107 and 110, `b` at 105. */
-  const held = ['x', 'x', 'a', 'x', 'b', 'x', 'a', 'x', 'x', 'a'].map((content, i) => ({
-    lineNumber: 101 + i,
-    content,
-  }));
-
-  it('finds the target itself when its text is the one asked', () => {
-    expect(nearestSameText(held, 101, 105, 'b')).toBe(105);
-  });
-
-  it('finds the nearest line with the text on either side of the target', () => {
-    expect(nearestSameText(held, 101, 104, 'a')).toBe(103);
-    expect(nearestSameText(held, 101, 109, 'a')).toBe(110);
-  });
-
-  // The line a time names is the first at or after it, so the line asked
-  // for is more often after it than before.
-  it('prefers the line after the target when two are as near', () => {
-    expect(nearestSameText(held, 101, 105, 'a')).toBe(107);
-  });
-
-  it('finds none for a text the held lines do not hold, or a target they do not hold', () => {
-    expect(nearestSameText(held, 101, 105, 'zzz')).toBeNull();
-    expect(nearestSameText(held, 101, 400, 'a')).toBeNull();
   });
 });
 
