@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { TreeNode as TreeNodeType } from '$lib/types';
   import { tree, notifications } from '$lib/stores';
-  import { chainModeOn, chainPartsShown } from '$lib/stores/chainMode';
+  import { chainModeOn } from '$lib/stores/chainMode';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { openTreeFile } from '$lib/fileOpening';
   import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
@@ -18,10 +18,7 @@
 
   // In chain mode a folder shows one row per log chain in place of its
   // parts; the node keeps every entry, so the mode changes no state.
-  $: rows =
-    node.type === 'directory'
-      ? shownChildren(node, { chainModeOn: $chainModeOn, showParts: $chainPartsShown })
-      : [];
+  $: rows = node.type === 'directory' ? shownChildren(node, { chainModeOn: $chainModeOn }) : [];
 
   $: isSelected = $tree.selectedPath === node.path;
   $: indentPx = node.level * 16;

@@ -92,11 +92,6 @@ export interface ViewState {
   tab: SidebarTab;
   /** Rotated logs are grouped into log chains (`chains=1`). */
   chains: boolean;
-  /**
-   * The files panel lists each chain's parts under its row
-   * (`chain_parts=1`): a flag for checking the chain rows.
-   */
-  chainParts: boolean;
   /** The search results show byte offsets instead of line numbers. */
   offsets: boolean;
   /** The last search run, or null for none. */
@@ -123,7 +118,6 @@ export const DEFAULT_VIEW: ViewState = {
   category: null,
   tab: 'tree',
   chains: false,
-  chainParts: false,
   offsets: false,
   search: null,
   stash: [],
@@ -388,11 +382,6 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     names: ['chains'],
     parse: (params) => isOn(params.get('chains')),
     serialize: (on) => (on ? [['chains', '1']] : []),
-  },
-  chainParts: {
-    names: ['chain_parts'],
-    parse: (params) => isOn(params.get('chain_parts')),
-    serialize: (on) => (on ? [['chain_parts', '1']] : []),
   },
   offsets: {
     names: ['offsets'],

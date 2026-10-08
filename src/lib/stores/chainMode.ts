@@ -12,13 +12,6 @@ import { backendHas, health, type HealthState } from './health';
  */
 export const chainMode = writable(false);
 
-/**
- * Whether the files panel lists each chain's parts under its row: the
- * URL's `chain_parts=1`, a flag for checking the chain rows against the
- * files they stand for.
- */
-export const chainPartsShown = writable(false);
-
 /** Whether chain mode is chosen and the backend lists `log_chains`. */
 export function isChainModeOn(mode: boolean, state: Pick<HealthState, 'features'>): boolean {
   return mode && backendHas('log_chains', state);

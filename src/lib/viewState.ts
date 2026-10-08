@@ -1,5 +1,5 @@
 import { derived, get } from 'svelte/store';
-import { chainMode, chainPartsShown } from './stores/chainMode';
+import { chainMode } from './stores/chainMode';
 import { carryZone, chainOfFile, isTurningTabs, switchChainMode } from './stores/chainModeSwitch';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
 import { fileZones } from './stores/fileZones';
@@ -111,21 +111,11 @@ export function chainPositionOf(view: Pick<ViewState, 'part' | 'line' | 'time'>)
 
 /** The view the stores describe now. */
 const currentView = derived(
-  [
-    files,
-    sidebarTab,
-    chainMode,
-    chainPartsShown,
-    searchShowsOffsets,
-    searchRequest,
-    timeStash,
-    fileZones,
-  ],
-  ([$files, $tab, $chains, $chainParts, $offsets, $search, $stash, $fileZones]): ViewState => ({
+  [files, sidebarTab, chainMode, searchShowsOffsets, searchRequest, timeStash, fileZones],
+  ([$files, $tab, $chains, $offsets, $search, $stash, $fileZones]): ViewState => ({
     ...tabViewOf(activeOpenFile($files)),
     tab: $tab,
     chains: $chains,
-    chainParts: $chainParts,
     offsets: $offsets,
     search: $search,
     stash: $stash,
@@ -366,9 +356,9 @@ export async function loadView(view: ViewState): Promise<void> {
 
 /**
  * Bring the app to the view a URL describes: chain mode (the open tabs
- * turned over to it, `stores/chainModeSwitch.ts`) and the chain parts
- * flag, the results switch, the search, the sidebar tab and the file. The stash and the
- * file zones stay as they are. Resolves when the file's lines are
+ * turned over to it, `stores/chainModeSwitch.ts`), the results switch,
+ * the search, the sidebar tab and the file. The stash and the file zones
+ * stay as they are. Resolves when the file's lines are
  * loaded. A later restore supersedes this one: Back pressed twice ends
  * on the second entry even when the first one's file is slower.
  */
@@ -378,7 +368,6 @@ export async function restoreView(view: ViewState): Promise<void> {
   // mode before its first wait, so the search below runs in that mode;
   // the open tabs turn over to it before the file is restored.
   const switching = switchChainMode(view.chains || view.chain !== null);
-  chainPartsShown.set(view.chainParts);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);

@@ -7,7 +7,7 @@ import { timeCursor } from './stores/timeCursor';
 import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
-import { chainMode, chainPartsShown } from './stores/chainMode';
+import { chainMode } from './stores/chainMode';
 import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
 import { fileViewOf, linkView, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
@@ -356,7 +356,6 @@ describe('restoreView', () => {
       category: 'error',
       tab: 'search',
       chains: false,
-      chainParts: false,
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
@@ -1141,40 +1140,6 @@ describe('chain mode of a link that does not name it', () => {
       line: 5,
       chains: true,
     });
-  });
-});
-
-describe('the chain parts flag in the URL', () => {
-  let stopSync: () => void = () => {};
-
-  beforeEach(() => {
-    serveBackend();
-    stubWindow();
-  });
-
-  afterEach(() => {
-    stopSync();
-    stopSync = () => {};
-    resetStores();
-    chainMode.set(false);
-    chainPartsShown.set(false);
-    vi.unstubAllGlobals();
-  });
-
-  it('lists the parts for a link with chain_parts=1, and not for one without', async () => {
-    await restoreView({ ...DEFAULT_VIEW, chains: true, chainParts: true });
-    expect(get(chainPartsShown)).toBe(true);
-
-    await restoreView({ ...DEFAULT_VIEW, chains: true });
-    expect(get(chainPartsShown)).toBe(false);
-  });
-
-  it('keeps chain_parts=1 in the address bar', async () => {
-    stubWindow('?chains=1&chain_parts=1');
-    await loadView(readViewState());
-    stopSync = startViewSync();
-
-    expect(window.location.search).toBe('?chains=1&chain_parts=1');
   });
 });
 

@@ -56,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so. A click or Enter opens the chain's tab, and its menu indexes or
   re-indexes every part. Only the files the backend names as parts of a
   chain give way to its row: every other file stays listed, another
-  encoding of a part included. Turning the mode off or on keeps the
-  folders open as they were. A link with `chain_parts=1` lists each
-  chain's parts under its row.
+  encoding of a part included. The parts themselves are not listed:
+  turning the mode off shows them, and a chain's tab lists them. Turning
+  the mode off or on keeps the folders open as they were.
 - Switching chain mode keeps the line in view. Turning the mode off
   makes each log chain's tab the file tab of the part that holds its
   line, at that line of the part, and the files panel reveals and

@@ -6,8 +6,7 @@ import { get } from 'svelte/store';
 import { files, tree } from '$lib/stores';
 import { indexChain } from '$lib/indexTasks';
 import { FakeChain } from '$lib/testing/fakeChain';
-import { treeEntry } from '$lib/testing/fakeLogDir';
-import type { ChainEntry, TreeNode } from '$lib/types';
+import type { ChainEntry } from '$lib/types';
 import type { ChainRow } from '$lib/utils/chainTree';
 import { chainKey } from '$lib/utils/tabKey';
 import ChainTreeNode from './ChainTreeNode.svelte';
@@ -39,24 +38,8 @@ function chainEntry(fields: Partial<ChainEntry> = {}): ChainEntry {
   };
 }
 
-function partNode(name: string): TreeNode {
-  const isGzip = name.endsWith('.gz');
-  return {
-    ...treeEntry(`${DIR}/${name}`, 'file', {
-      is_text: true,
-      is_compressed: isGzip,
-      compression_format: isGzip ? 'gzip' : null,
-      size: 100,
-    }),
-    expanded: false,
-    loading: false,
-    children: [],
-    level: 2,
-  };
-}
-
-function mount(chain: ChainEntry = chainEntry(), parts: TreeNode[] = []) {
-  const row: ChainRow = { type: 'chain', key: chainKey(chain.path), chain, level: 1, parts };
+function mount(chain: ChainEntry = chainEntry()) {
+  const row: ChainRow = { type: 'chain', key: chainKey(chain.path), chain, level: 1 };
   const target = document.createElement('div');
   document.body.appendChild(target);
   mounted = new ChainTreeNode({ target, props: { row } });
@@ -194,24 +177,5 @@ describe('ChainTreeNode', () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(menuItems()).toEqual([]);
-  });
-
-  it('lists the parts under the chain, read-only, when they are given', () => {
-    const openFile = vi.spyOn(files, 'openFile').mockResolvedValue();
-    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue(true);
-    const parts = ['pkg.log.3.gz', 'pkg.log.1', 'pkg.log'].map(partNode);
-    const { target } = mount(chainEntry(), parts);
-
-    const rows = [...target.querySelectorAll<HTMLElement>('[data-chain-part]')];
-    expect(rows.map((row) => row.dataset.chainPart)).toEqual([
-      'pkg.log.3.gz',
-      'pkg.log.1',
-      'pkg.log',
-    ]);
-    expect(rows.every((row) => row.getAttribute('aria-disabled') === 'true')).toBe(true);
-
-    rows[1].click();
-    expect(openFile).not.toHaveBeenCalled();
-    expect(openChain).not.toHaveBeenCalled();
   });
 });

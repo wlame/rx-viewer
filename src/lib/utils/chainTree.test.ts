@@ -60,8 +60,8 @@ function names(rows: TreeRow[]): string[] {
   return rows.map((row) => (isChainRow(row) ? `chain:${row.chain.name}` : row.name));
 }
 
-const ON = { chainModeOn: true, showParts: false };
-const OFF = { chainModeOn: false, showParts: false };
+const ON = { chainModeOn: true };
+const OFF = { chainModeOn: false };
 
 describe('shownChildren', () => {
   const entries = [
@@ -119,21 +119,6 @@ describe('shownChildren', () => {
     expect(app?.level).toBe(3);
     expect(rowKey(app as TreeRow)).toBe('chain:/l/app.log');
     expect(rowKey(rows[0])).toBe('/l/archive');
-  });
-
-  it('lists the parts under a chain in its order when they are shown', () => {
-    const rows = shownChildren(directory(DIR, entries, chains), { ...ON, showParts: true });
-
-    const app = rows.find(isChainRow);
-    expect(app?.parts.map((part) => part.name)).toEqual(['app.log.2.gz', 'app.log.1', 'app.log']);
-    // The parts stay out of the directory's own rows.
-    expect(names(rows)).not.toContain('app.log.1');
-  });
-
-  it('lists no parts under a chain when they are not shown', () => {
-    const rows = shownChildren(directory(DIR, entries, chains), ON);
-
-    expect(rows.filter(isChainRow).every((row) => row.parts.length === 0)).toBe(true);
   });
 
   it('hides no folder that has the name of a part', () => {

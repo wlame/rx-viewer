@@ -4,16 +4,14 @@
    * name, its marks (`chain · N`, `idx`, missing and unreadable parts,
    * too many parts, and `invalid` once a description said so) and its
    * size. A click or Enter opens the chain's tab; the context menu
-   * indexes its parts. With the `chain_parts` flag the parts are listed
-   * under it, read-only.
+   * indexes its parts. The parts are not listed: they are reached by
+   * turning chain mode off, or from the parts list of the chain's tab.
    */
   import { files, notifications, tree } from '$lib/stores';
   import { chainMenuItems, indexChain, type TreeMenuAction } from '$lib/indexTasks';
   import { chainBadges, type ChainBadgeTone, type ChainRow } from '$lib/utils/chainTree';
   import { formatSize } from '$lib/utils/format';
   import { isShortcut } from '$lib/utils/shortcuts';
-  import FileBadges from '../common/FileBadges.svelte';
-  import FileIcon from './FileIcon.svelte';
   import TreeContextMenu from './TreeContextMenu.svelte';
 
   export let row: ChainRow;
@@ -140,37 +138,6 @@
       {/if}
     </span>
   </div>
-
-  {#if row.parts.length > 0}
-    <div role="group" aria-label="Parts of {chain.name}">
-      {#each row.parts as part (part.path)}
-        <div
-          role="treeitem"
-          aria-selected="false"
-          aria-disabled="true"
-          data-chain-part={part.name}
-          class="flex items-center gap-1 px-2 py-0.5 text-sm text-gh-fg-muted dark:text-gh-fg-dark-muted"
-          style="padding-left: {indentPx + 24}px"
-        >
-          <span class="w-4 h-4 flex-shrink-0" />
-          <FileIcon node={part} />
-          <span class="truncate flex-1">{part.name}</span>
-          <span class="flex items-center gap-1 flex-shrink-0">
-            <FileBadges
-              isCompressed={part.is_compressed}
-              compressionFormat={part.compression_format}
-              isIndexed={part.is_indexed}
-            />
-            {#if part.size !== null}
-              <span class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle ml-1">
-                {formatSize(part.size)}
-              </span>
-            {/if}
-          </span>
-        </div>
-      {/each}
-    </div>
-  {/if}
 </div>
 
 {#if showContextMenu}

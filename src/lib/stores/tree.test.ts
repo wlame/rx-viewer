@@ -102,7 +102,7 @@ function listed(pathname: string, dir: string): string {
 function chainNamesShown(dir: string): string[] {
   const node = tree.nodeAt(dir);
   if (!node) throw new Error(`${dir} is not in the tree`);
-  return shownChildren(node, { chainModeOn: true, showParts: false })
+  return shownChildren(node, { chainModeOn: true })
     .filter(isChainRow)
     .map((row) => row.chain.name);
 }

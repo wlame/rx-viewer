@@ -610,20 +610,10 @@ describe('a log chain in the URL', () => {
     expect(chainModeInLink(query)).toBe(expected);
   });
 
-  it.each([
-    ['1', true],
-    ['true', true],
-    ['0', false],
-    ['', false],
-  ])('reads chain_parts=%j as listing the parts: %s', (value, expected) => {
-    expect(parseViewState(`?chain_parts=${value}`).chainParts).toBe(expected);
-  });
-
-  it('writes chain_parts=1 after chains=1, and nothing while it is off', () => {
-    expect(serializeViewState(view({ chains: true, chainParts: true }), '')).toBe(
-      '?chains=1&chain_parts=1',
-    );
-    expect(serializeViewState(view({ chains: true }), '')).toBe('?chains=1');
+  // The files panel never lists a chain's parts: they are reached by
+  // turning the mode off, or from the parts list of the chain's tab.
+  it('reads a link with chain_parts=1 as chain mode and nothing more', () => {
+    expect(parseViewState('?chains=1&chain_parts=1')).toEqual(view({ chains: true }));
   });
 
   // The zone of a chain is kept under its tab key, apart from the zone of

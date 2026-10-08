@@ -3,7 +3,7 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { health, tree } from '$lib/stores';
-import { chainMode, chainPartsShown } from '$lib/stores/chainMode';
+import { chainMode } from '$lib/stores/chainMode';
 import {
   CHAIN_NAMES,
   LOG_DIR,
@@ -110,7 +110,6 @@ describe('TreeNode of a folder in chain mode', () => {
 
   afterEach(() => {
     chainMode.set(false);
-    chainPartsShown.set(false);
     vi.unstubAllGlobals();
   });
 
@@ -144,11 +143,15 @@ describe('TreeNode of a folder in chain mode', () => {
     expect(chains()).toEqual(CHAIN_NAMES);
   });
 
-  it('lists the parts under each chain with chain_parts', async () => {
-    chainPartsShown.set(true);
-    const { target } = await mountFolder(true);
+  // A chain's parts are reached by turning the mode off, or from the
+  // parts list of the chain's tab; the panel shows only the chain's row.
+  it('lists no part under a chain row', async () => {
+    const { items } = await mountFolder(true);
 
-    const parts = [...target.querySelectorAll<HTMLElement>('[data-chain-part]')];
-    expect(parts).toHaveLength(logDirChains().flatMap((c) => c.parts).length);
+    const partNames = new Set(logDirChains().flatMap((c) => c.parts));
+    const fileNames = items()
+      .filter((item) => item.dataset.chain === undefined)
+      .map((item) => item.textContent?.trim().split(/\s/)[0] ?? '');
+    expect(fileNames.filter((name) => partNames.has(name))).toEqual([]);
   });
 });

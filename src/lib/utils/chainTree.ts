@@ -21,8 +21,6 @@ export interface ChainRow {
   key: TabKey;
   chain: ChainEntry;
   level: number;
-  /** The parts' tree nodes in the chain's order, when the parts are shown; else empty. */
-  parts: TreeNode[];
 }
 
 /** A row of the files panel: a folder or file the tree lists, or a chain. */
@@ -50,8 +48,6 @@ export function rowKey(row: TreeRow): string {
 export interface ShownChildrenOptions {
   /** Chain mode is chosen and the backend serves log chains. */
   chainModeOn: boolean;
-  /** List each chain's parts under its row (the `chain_parts=1` link flag). */
-  showParts: boolean;
 }
 
 /** The order `/v1/tree` lists names in: case-insensitive. */
@@ -65,20 +61,9 @@ function isFolder(node: TreeNode): boolean {
   return node.type === 'directory';
 }
 
-/** The row of one chain, with the tree nodes of its parts when they are shown. */
-function chainRow(
-  chain: ChainEntry,
-  level: number,
-  filesByName: ReadonlyMap<string, TreeNode>,
-  showParts: boolean,
-): ChainRow {
-  const parts = showParts
-    ? chain.parts.flatMap((name) => {
-        const part = filesByName.get(name);
-        return part ? [part] : [];
-      })
-    : [];
-  return { type: 'chain', key: chainKey(chain.path), chain, level, parts };
+/** The row of one chain. */
+function chainRow(chain: ChainEntry, level: number): ChainRow {
+  return { type: 'chain', key: chainKey(chain.path), chain, level };
 }
 
 /**
@@ -111,10 +96,9 @@ export function shownChildren(directory: TreeNode, options: ShownChildrenOptions
     return directory.children;
   }
   const files = directory.children.filter((child) => !isFolder(child));
-  const filesByName = new Map(files.map((file) => [file.name, file]));
   const partNames = new Set(chains.flatMap((chain) => chain.parts));
   const level = directory.level + 1;
-  const rows = chains.map((chain) => chainRow(chain, level, filesByName, options.showParts));
+  const rows = chains.map((chain) => chainRow(chain, level));
   return [
     ...directory.children.filter(isFolder),
     ...placeAmongFiles(
