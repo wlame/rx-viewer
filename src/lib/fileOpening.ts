@@ -8,8 +8,9 @@ import { api } from './api';
 import { files } from './stores/files';
 import { notifications } from './stores/notifications';
 import type { ChainPosition } from './stores/chainTabs';
+import { trace } from './stores/trace';
 import { tree } from './stores/tree';
-import type { FileMatch, TreeEntry } from './types';
+import type { FileMatch, SearchResponse, TreeEntry } from './types';
 import { chainKey } from './utils/tabKey';
 
 /** How long the refusal of a binary file stays on screen. */
@@ -83,6 +84,16 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
   });
 }
 
+/** What a search result hands the chain's tab it opens. */
+export interface ChainMatchOpening {
+  /** The search's matches in the chain, by part and line in it. */
+  marks: FileMatch[];
+  /** The search the marks come from. */
+  search: SearchResponse;
+  /** The chain's fingerprint as the search found it. */
+  fingerprint?: string;
+}
+
 /**
  * Show a log chain's tab at a position, for a search result in one of its
  * parts: the open tab moves there, or the tab opens there. The tab marks
@@ -93,13 +104,17 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
  * files changed since, the part and line of a match name other text: the
  * tab does not go there (a new tab opens at the chain's start), marks
  * nothing, and says to search again.
+ *
+ * The marks are set only while `search` is still the search the panel
+ * shows: one started while the tab opened cleared every mark, and the
+ * older search's do not come back.
  */
 export async function openChainAt(
   handle: string,
   position: ChainPosition,
-  marks: FileMatch[],
-  fingerprint?: string,
+  { marks, search, fingerprint }: ChainMatchOpening,
 ): Promise<void> {
   const isSearchedChain = await files.openChain(handle, { position, fingerprint });
+  if (get(trace).response !== search) return;
   files.setMatches(chainKey(handle), isSearchedChain ? marks : []);
 }

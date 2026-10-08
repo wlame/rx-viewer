@@ -38,9 +38,7 @@ const traceState = trace as unknown as Writable<{
 
 const { openFileAtLine, openChainAt } = vi.hoisted(() => ({
   openFileAtLine: vi.fn(async (_path: string, _line: number) => {}),
-  openChainAt: vi.fn(
-    async (_handle: string, _position: unknown, _marks: unknown, _fingerprint?: string) => {},
-  ),
+  openChainAt: vi.fn(async (_handle: string, _position: unknown, _opening: unknown) => {}),
 }));
 vi.mock('$lib/fileOpening', () => ({ openFileAtLine, openChainAt }));
 
@@ -250,7 +248,8 @@ describe('SearchResults of a chain search', () => {
 
   it("opens a ready chain's tab at the match's chain line, marking the chain's matches", async () => {
     await chainModeWith(true);
-    const target = await mountWith(mixedChainSearchAnswer());
+    const answer = mixedChainSearchAnswer();
+    const target = await mountWith(answer);
 
     row(target, 1).click();
     await settle();
@@ -259,18 +258,22 @@ describe('SearchResults of a chain search', () => {
     expect(openChainAt).toHaveBeenCalledWith(
       '/logs/app.log',
       { kind: 'global', line: 3500 },
-      [
-        { lineNumber: 12, part: 'app.log.2.gz', patternId: 'p1', pattern: 'timeout' },
-        { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' },
-      ],
-      '00000000000000a1',
+      {
+        marks: [
+          { lineNumber: 12, part: 'app.log.2.gz', patternId: 'p1', pattern: 'timeout' },
+          { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' },
+        ],
+        search: answer,
+        fingerprint: '00000000000000a1',
+      },
     );
     expect(openFileAtLine).not.toHaveBeenCalled();
   });
 
   it("opens a pending chain's tab at the part's own line", async () => {
     await chainModeWith(true);
-    const target = await mountWith(mixedChainSearchAnswer());
+    const answer = mixedChainSearchAnswer();
+    const target = await mountWith(answer);
 
     row(target, 3).click();
     await settle();
@@ -278,8 +281,11 @@ describe('SearchResults of a chain search', () => {
     expect(openChainAt).toHaveBeenCalledWith(
       '/logs/svc.log',
       { kind: 'local', part: 'svc.log.1', line: 7 },
-      [{ lineNumber: 7, part: 'svc.log.1', patternId: 'p1', pattern: 'timeout' }],
-      '00000000000000a1',
+      {
+        marks: [{ lineNumber: 7, part: 'svc.log.1', patternId: 'p1', pattern: 'timeout' }],
+        search: answer,
+        fingerprint: '00000000000000a1',
+      },
     );
   });
 
@@ -345,8 +351,11 @@ describe('SearchResults of a chain search', () => {
     expect(openChainAt).toHaveBeenCalledWith(
       '/logs/app.log',
       { kind: 'local', part: 'app.log.1', line: 321 },
-      [{ lineNumber: 321, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' }],
-      '00000000000000a1',
+      {
+        marks: [{ lineNumber: 321, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' }],
+        search: answer,
+        fingerprint: '00000000000000a1',
+      },
     );
   });
 });

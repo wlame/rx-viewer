@@ -219,12 +219,11 @@ describe('openChainAt', () => {
     const place = chainPlaceOf(match, answer);
     if (!place) throw new Error('the match is in no chain');
     const marks = chainTabMatches(answer, place.handle, (m) => m.absolute_line_number);
-    await openChainAt(
-      place.handle,
-      chainPositionOf(place, match.absolute_line_number),
+    await openChainAt(place.handle, chainPositionOf(place, match.absolute_line_number), {
       marks,
-      place.fingerprint,
-    );
+      search: answer,
+      fingerprint: place.fingerprint,
+    });
   }
 
   /** The files after a rotation: every part renamed one number up, and a new active file. */
@@ -335,12 +334,11 @@ describe('openChainAt', () => {
     const place = chainPlaceOf(second, answer);
     if (!place) throw new Error('the match is in no chain');
 
-    await openChainAt(
-      place.handle,
-      chainPositionOf(place, second.absolute_line_number),
-      [{ lineNumber: 7, part: 'app.log', patternId: 'p1', pattern: PATTERN }],
-      place.fingerprint,
-    );
+    await openChainAt(place.handle, chainPositionOf(place, second.absolute_line_number), {
+      marks: [{ lineNumber: 7, part: 'app.log', patternId: 'p1', pattern: PATTERN }],
+      search: answer,
+      fingerprint: place.fingerprint,
+    });
 
     expect(get(files).matches.get(KEY)).toEqual([]);
     expect(changedNotices()).toHaveLength(1);
@@ -369,11 +367,31 @@ describe('openChainAt', () => {
     const second = answer.matches[1];
     const place = chainPlaceOf(second, answer);
     if (!place) throw new Error('the match is in no chain');
-    await openChainAt(place.handle, chainPositionOf(place, second.absolute_line_number), []);
+    await openChainAt(place.handle, chainPositionOf(place, second.absolute_line_number), {
+      marks: [],
+      search: answer,
+    });
 
     expect(get(files).openFiles.filter((f) => f.path === KEY)).toHaveLength(1);
     expect(tab().anchorLine).toBe(4507);
     expect(tab().chain?.anchor).toMatchObject({ part: 'app.log', line: 7 });
     expect(tab().lines[4507 - tab().startLine].content).toContain('LINE 4507 part=app.log local=7');
+  });
+
+  it('sets no marks of a search that a newer search replaced while the tab opened', async () => {
+    const chain = await serve('ready');
+    const answer = await searchChain();
+    chain.holdSamples();
+
+    const opening = openFirstMatch(answer);
+    await vi.waitFor(() =>
+      expect(chain.requests.some((r) => r.startsWith('/v1/logs/samples'))).toBe(true),
+    );
+    await trace.searchChains(['/l/app.log'], ['local=9$']);
+    chain.releaseSamples();
+    await opening;
+
+    expect(tab().anchorLine).toBe(3500);
+    expect(get(files).matches.get(KEY) ?? []).toEqual([]);
   });
 });

@@ -332,6 +332,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moves a log chain's tab back over a newer view, such as the entry Back
   pressed twice lands on: a switch to the mode already set ends with the
   switch that set it, so the newer view's tab opens after it.
+- A click on a search match in a log chain marks the chain's matches only
+  while that search is still the one the panel shows: a search started
+  while the chain's tab opened no longer gets the older search's marks
+  back.
 
 ## [0.6.0] - 2026-10-06
 
