@@ -331,7 +331,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and otherwise looks for the line by its time and text, with a notice
   when it is not found; only the marks of the file tab whose line it
   opens at are carried, and only when that line is where the file tab
-  had it.
+  had it. A tab that stops reading because its files changed three times
+  within a minute still names its line's file as it is called now, so
+  turning the mode off then opens the file that holds the line.
 - An older chain mode switch still waiting for the backend no longer
   moves a log chain's tab back over a newer view, such as the entry Back
   pressed twice lands on: a switch to the mode already set ends with the

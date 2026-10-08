@@ -500,12 +500,31 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
-   * Keep a description in the tab: its state, the counts it gives, `idx`,
-   * the chain's size and line count, and the index task a pending chain
-   * waits for, which the tab follows. The files panel learns the state,
-   * the reasons and `idx` for the chain's row.
+   * Keep a description in the tab, as `keepDescription` does, and follow
+   * the index task a pending chain waits for.
    */
   function applyDescription(key: TabKey, chain: ChainResponse, isChanged: boolean): void {
+    keepDescription(key, chain, isChanged);
+    followDescription(key, chain);
+  }
+
+  /** Follow the index task a pending chain's description names; a chain that is not pending waits for nothing. */
+  function followDescription(key: TabKey, chain: ChainResponse): void {
+    if (chain.state === 'pending') {
+      followPending(key, chain.index_build, chain.index_build_refused);
+      return;
+    }
+    pendingRounds.delete(key);
+    stopDescribeWait(key);
+    setChain(key, { buildRefused: null });
+  }
+
+  /**
+   * Keep a description in the tab: its state, the counts it gives, `idx`,
+   * and the chain's size and line count. The files panel learns the
+   * state, the reasons and `idx` for the chain's row.
+   */
+  function keepDescription(key: TabKey, chain: ChainResponse, isChanged: boolean): void {
     tree.noteChainDescription(chain);
     const size = chain.parts.reduce((sum, part) => sum + part.size, 0);
     const isHighlightGiven = highlightGiven.has(key);
@@ -532,14 +551,6 @@ export function createChainTabs(deps: ChainTabDeps) {
             : defaultSyntaxHighlighting(size),
       };
     });
-    if (chain.state === 'pending') {
-      followPending(key, chain.index_build, chain.index_build_refused);
-      return;
-    }
-    // A chain that is not pending waits for nothing.
-    pendingRounds.delete(key);
-    stopDescribeWait(key);
-    setChain(key, { buildRefused: null });
   }
 
   /**
@@ -1041,19 +1052,14 @@ export function createChainTabs(deps: ChainTabDeps) {
    * they changed, keep the new description, drop the lines and the search
    * marks (they name parts and lines of the files as they were), and name
    * the anchor's file as it is called now, so a later change maps it from
-   * that name. Null when the files changed too often and the tab stopped.
+   * that name. Null when the files changed too often and the tab stopped:
+   * it then reads nothing more and follows no task, but its anchor and
+   * description name the files as they are, for a mode switch to read.
    */
   function noteChange(key: TabKey, chain: ChainResponse): ChainChange | null {
     const times = changesInWindow(changeTimes.get(key) ?? [], Date.now());
     changeTimes.set(key, times);
-    if (times.length > MAX_CHANGES_IN_WINDOW) {
-      changeTimes.delete(key);
-      showError(
-        key,
-        new Error(`The files of ${chain.name} keep changing on disk; open the chain again later`),
-      );
-      return null;
-    }
+    const isStopped = times.length > MAX_CHANGES_IN_WINDOW;
     const tab = deps.getTab(key);
     const before = tab?.chain?.description ?? null;
     const anchor = tab?.chain?.anchor ?? null;
@@ -1067,20 +1073,29 @@ export function createChainTabs(deps: ChainTabDeps) {
     changeCounts.set(key, (changeCounts.get(key) ?? 0) + 1);
     const changes = before === null ? null : compareParts(before.parts, chain.parts);
     const moved = anchor && movedAnchor(anchor, changes);
-    notifications.info(changeNotice(chain.name, changes), NOTICE_MS);
+    if (!isStopped) notifications.info(changeNotice(chain.name, changes), NOTICE_MS);
     if (deps.dropMatches(key)) {
       notifications.info(
         `The search marks of ${chain.name} are dropped: they name its files as they were; search again`,
         NOTICE_MS,
       );
     }
-    applyDescription(key, chain, true);
+    keepDescription(key, chain, true);
     deps.patchTab(key, (t) => ({
       lines: [],
       startLine: 1,
       endLine: 0,
       chain: t.chain && { ...t.chain, anchor: moved },
     }));
+    if (isStopped) {
+      changeTimes.delete(key);
+      showError(
+        key,
+        new Error(`The files of ${chain.name} keep changing on disk; open the chain again later`),
+      );
+      return null;
+    }
+    followDescription(key, chain);
     return { moved, ...lost };
   }
 

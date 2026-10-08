@@ -258,6 +258,28 @@ describe('switching chain mode after a rotation the tabs have not seen', () => {
     expect(messages()).toContainEqual(expect.stringContaining('search again'));
   });
 
+  // The switch's own description meets the third change within a minute,
+  // which stops the tab from reading its chain again; its line still has
+  // a file, which the switch turns it into.
+  it('turns a chain tab that stops at the third change into the file that holds its line now', async () => {
+    const chain = await serve({ parts: [A, B, C] });
+    chainMode.set(true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = lineInView(KEY);
+    for (let change = 1; change <= 2; change++) {
+      chain.rotateTo([...chain.parts]);
+      await files.loadMore(KEY, 'after');
+      await settled(KEY);
+    }
+    chain.rotateTo(ROTATED, 'ready');
+
+    await switchChainMode(false);
+    await settled('/l/app.log.2.gz');
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.2.gz']);
+    expect(lineInView('/l/app.log.2.gz')).toEqual(before);
+  });
+
   it("says so when a renamed file's line is in the chain no more", async () => {
     const chain = await serve({ parts: [A, B, C] });
     await files.openFile('/l/app.log.2.gz', { scrollToLine: 2900 });
