@@ -1,4 +1,5 @@
 import { derived, get } from 'svelte/store';
+import { chainMode } from './stores/chainMode';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
 import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
@@ -15,6 +16,7 @@ import {
   type SearchState,
   type ViewState,
 } from './utils/urlState';
+import { chainHandleOf } from './utils/tabKey';
 import type { OpenFile, TreeNode } from './types';
 
 /**
@@ -62,12 +64,29 @@ export function fileViewOf(file: OpenFile | undefined): FileView {
   };
 }
 
+/** The part of the view that belongs to the active tab, a file's or a chain's. */
+type TabView = FileView & Pick<ViewState, 'chain' | 'part'>;
+
+/**
+ * What the URL says about the active tab. A file's tab is its
+ * `fileViewOf`, with no chain. A chain's tab names the chain by its
+ * handle, never as a file, with the time a jump by time put it at; it
+ * names no part, so no line in one.
+ */
+export function tabViewOf(tab: OpenFile | undefined): TabView {
+  const view = fileViewOf(tab);
+  const handle = tab ? chainHandleOf(tab.path) : null;
+  if (handle === null) return { ...view, chain: null, part: null };
+  return { ...view, file: null, chain: handle, part: null, line: null };
+}
+
 /** The view the stores describe now. */
 const currentView = derived(
-  [files, sidebarTab, searchShowsOffsets, searchRequest, timeStash, fileZones],
-  ([$files, $tab, $offsets, $search, $stash, $fileZones]): ViewState => ({
-    ...fileViewOf(activeOpenFile($files)),
+  [files, sidebarTab, chainMode, searchShowsOffsets, searchRequest, timeStash, fileZones],
+  ([$files, $tab, $chains, $offsets, $search, $stash, $fileZones]): ViewState => ({
+    ...tabViewOf(activeOpenFile($files)),
     tab: $tab,
+    chains: $chains,
     offsets: $offsets,
     search: $search,
     stash: $stash,
@@ -192,9 +211,12 @@ async function showFile(
 /**
  * Bring the open files to the view: its file active, with its filter and
  * category. A time in the view (and no line) jumps that file there and
- * sets the time cursor; no other file moves.
+ * sets the time cursor; no other file moves. A view that names a chain
+ * leaves the open tabs as they are: a chain's tab does not open from a
+ * link.
  */
 async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<void> {
+  if (view.chain !== null) return;
   const path = view.file;
   if (path === null) {
     for (const file of get(files).openFiles) files.closeFile(file.path);
@@ -221,13 +243,15 @@ export async function loadView(view: ViewState): Promise<void> {
 }
 
 /**
- * Bring the app to the view a URL describes: the results switch, the
- * search, the sidebar tab and the file. The stash and the file zones stay as they are. Resolves when the file's lines
- * are loaded. A later restore supersedes this one: Back pressed twice
- * ends on the second entry even when the first one's file is slower.
+ * Bring the app to the view a URL describes: chain mode, the results
+ * switch, the search, the sidebar tab and the file. The stash and the
+ * file zones stay as they are. Resolves when the file's lines are
+ * loaded. A later restore supersedes this one: Back pressed twice ends
+ * on the second entry even when the first one's file is slower.
  */
 export async function restoreView(view: ViewState): Promise<void> {
   const generation = ++restoreGeneration;
+  chainMode.set(view.chains);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);

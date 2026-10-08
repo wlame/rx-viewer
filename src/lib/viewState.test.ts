@@ -7,7 +7,9 @@ import { timeCursor } from './stores/timeCursor';
 import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
-import { fileViewOf, loadView, restoreView, startViewSync } from './viewState';
+import { chainMode } from './stores/chainMode';
+import { chainKey } from './utils/tabKey';
+import { fileViewOf, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_VIEW,
@@ -342,12 +344,15 @@ describe('restoreView', () => {
   it('rebuilds the file, its line, filter and category, the tab, the search and the switch', async () => {
     const view: ViewState = {
       file: '/logs/small.log',
+      chain: null,
+      part: null,
       line: 4_200,
       time: null,
       highlight: null,
       filter: { pattern: 'LINE 42', mode: 'hide' },
       category: 'error',
       tab: 'search',
+      chains: false,
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
@@ -800,5 +805,77 @@ describe('the file zones in the URL', () => {
 
     expect(get(fileZones)).toEqual([{ path: '/logs/big.log', zone: '-03:00' }]);
     await vi.waitFor(() => expect(zoneParams()).toEqual(['-03:00@/logs/big.log']));
+  });
+});
+
+describe('tabViewOf', () => {
+  it('writes a file tab as fileViewOf does, with no chain', () => {
+    const file = openFile({ path: '/logs/a.log', anchorLine: 169 });
+
+    expect(tabViewOf(file)).toEqual({ ...fileViewOf(file), chain: null, part: null });
+  });
+
+  // The URL names a chain by its handle, never by its tab key, and a
+  // chain tab is never written as a file.
+  it('writes a chain tab as its handle, with no file', () => {
+    const view = tabViewOf(openFile({ path: chainKey('/logs/app.log'), anchorLine: 169 }));
+
+    expect(view.chain).toBe('/logs/app.log');
+    expect(view.file).toBeNull();
+  });
+
+  it('writes no chain when no tab is open', () => {
+    expect(tabViewOf(undefined)).toEqual({ ...fileViewOf(undefined), chain: null, part: null });
+  });
+});
+
+describe('chain mode in the URL', () => {
+  let stopSync: () => void = () => {};
+
+  beforeEach(() => {
+    serveBackend();
+    stubWindow();
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('turns chain mode on for a link with chains=1, and off for one without', async () => {
+    await loadView(readViewState());
+    expect(get(chainMode)).toBe(false);
+
+    await restoreView({ ...DEFAULT_VIEW, chains: true });
+    expect(get(chainMode)).toBe(true);
+
+    await restoreView(DEFAULT_VIEW);
+    expect(get(chainMode)).toBe(false);
+  });
+
+  it('keeps chains=1 in the address bar, beside the file, and rewrites the entry', async () => {
+    const calls = stubWindow('?chains=1');
+    await loadView(readViewState());
+    stopSync = startViewSync();
+    await files.openFile('/logs/small.log', { fileSize: 1000, isIndexed: false });
+
+    expect(urlParams().get('chains')).toBe('1');
+    expect(urlParams().get('file')).toBe('/logs/small.log');
+
+    const pushes = calls.filter((call) => call.mode === 'push').length;
+    chainMode.set(false);
+    expect(urlParams().has('chains')).toBe(false);
+    expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
+  });
+
+  it('does not open the file of a link that names a chain too', async () => {
+    stubWindow('?file=%2Flogs%2Fsmall.log&chain=%2Flogs%2Fapp.log');
+
+    await loadView(readViewState());
+
+    expect(get(files).openFiles.some((f) => f.path === '/logs/small.log')).toBe(false);
   });
 });

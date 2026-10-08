@@ -507,3 +507,172 @@ describe('debounce', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * A log chain in the URL: `chains=1` turns chain mode on, and the active
+ * chain tab is `chain=<handle>`, with the part of its anchor line in
+ * `part` and that line's number in the part in `line`. Handles and part
+ * names are file names, so any character a name may hold has to survive
+ * the round trip.
+ */
+describe('a log chain in the URL', () => {
+  const handle = '/var/log/app.log';
+  const instant = Date.UTC(2026, 9, 3, 14, 0, 0, 123);
+
+  it('reads the chain, its part, the local line and the time', () => {
+    const query =
+      '?chain=%2Fvar%2Flog%2Fapp.log&part=app.log.3.gz&line=500&time=2026-10-03T14:00:00.123Z';
+
+    expect(parseViewState(query)).toEqual(
+      view({ chain: handle, part: 'app.log.3.gz', line: 500, time: instant }),
+    );
+  });
+
+  it('keeps the chain of a link that names a file too', () => {
+    const parsed = parseViewState('?file=%2Fvar%2Flog%2Fapp.log.1&chain=%2Fvar%2Flog%2Fapp.log');
+
+    expect(parsed.chain).toBe(handle);
+    expect(parsed.file).toBeNull();
+  });
+
+  it.each([
+    ['empty', ''],
+    ['a directory', '/var/log/'],
+    ['a dot', '/var/log/.'],
+    ['two dots', '/var/log/..'],
+  ])('reads a handle that ends in no name (%s) as none, and keeps the file', (_name, chain) => {
+    const params = new URLSearchParams({ chain, file: '/a.log', part: 'app.log.1' });
+    const parsed = parseViewState(params.toString());
+
+    expect(parsed.chain).toBeNull();
+    expect(parsed.part).toBeNull();
+    expect(parsed.file).toBe('/a.log');
+  });
+
+  it('reads a part without a chain as none', () => {
+    expect(parseViewState('?part=app.log.1&file=%2Fa.log').part).toBeNull();
+  });
+
+  it.each([
+    ['a path', 'logs/app.log.1'],
+    ['a dot', '.'],
+    ['two dots', '..'],
+    ['empty', ''],
+  ])('reads a part that is not a bare name (%s) as none, and keeps the chain', (_name, part) => {
+    const params = new URLSearchParams({ chain: handle, part });
+    const parsed = parseViewState(params.toString());
+
+    expect(parsed.part).toBeNull();
+    expect(parsed.chain).toBe(handle);
+  });
+
+  it.each([
+    ['1', true],
+    ['true', true],
+    ['0', false],
+    ['yes', false],
+  ])('reads chains=%s as chain mode %s', (value, expected) => {
+    expect(parseViewState(`?chains=${value}`).chains).toBe(expected);
+  });
+
+  it('leaves chain mode off for a link without it', () => {
+    expect(parseViewState('?file=%2Fa.log').chains).toBe(false);
+  });
+
+  // The zone of a chain is kept under its tab key, apart from the zone of
+  // the file at its handle.
+  it('reads the ftz of a file and of the chain at its path as two zones', () => {
+    const query = '?ftz=UTC%40%2Fl%2Fsyslog&ftz=Europe%2FBerlin%40chain%3A%2Fl%2Fsyslog';
+
+    expect(parseViewState(query).fileZones).toEqual([
+      { path: '/l/syslog', zone: 'UTC' },
+      { path: 'chain:/l/syslog', zone: 'Europe/Berlin' },
+    ]);
+  });
+
+  const names: [string, string, string][] = [
+    ['spaces and brackets', '/var/log/my app (1).log', 'my app (1).log.2.gz'],
+    ['#, &, %, + and @', '/srv/a#b&c%d+e@f.log', 'a#b&c%d+e@f.log.1'],
+    ['cyrillic', '/var/log/журнал.log', 'журнал.log.3.gz'],
+  ];
+
+  it.each(names)('survives a write then a read with %s', (_name, chain, part) => {
+    const state = view({
+      chains: true,
+      chain,
+      part,
+      line: 500,
+      time: instant,
+      fileZones: [
+        { path: chain, zone: 'UTC' },
+        { path: `chain:${chain}`, zone: '+05:30' },
+      ],
+    });
+
+    expect(parseViewState(serializeViewState(state, ''))).toEqual(state);
+  });
+
+  it('writes the chain, its part and the mode under their names', () => {
+    const query = serializeViewState(
+      view({ chains: true, chain: handle, part: 'app.log.3.gz', line: 500 }),
+      '',
+    );
+
+    expect(query).toBe('?chain=%2Fvar%2Flog%2Fapp.log&part=app.log.3.gz&line=500&chains=1');
+  });
+
+  it('writes no part without a chain', () => {
+    expect(serializeViewState(view({ file: '/a.log', part: 'app.log.1' }), '')).toBe(
+      '?file=%2Fa.log',
+    );
+  });
+
+  it('writes the zone of a chain as an ftz of the zone, an @ and its key', () => {
+    const fileZones = [{ path: 'chain:/l/syslog', zone: 'UTC' }];
+
+    expect(new URLSearchParams(serializeViewState(view({ fileZones }), '')).getAll('ftz')).toEqual([
+      'UTC@chain:/l/syslog',
+    ]);
+  });
+
+  const chainA = view({ chain: handle });
+  const steps: { name: string; previous: ViewState; next: ViewState; mode: 'push' | 'replace' }[] =
+    [
+      { name: 'opening a chain', previous: DEFAULT_VIEW, next: chainA, mode: 'push' },
+      {
+        name: 'switching from a file to a chain',
+        previous: view({ file: '/a.log' }),
+        next: chainA,
+        mode: 'push',
+      },
+      {
+        name: 'switching from a chain to a file',
+        previous: chainA,
+        next: view({ file: '/a.log' }),
+        mode: 'push',
+      },
+      {
+        name: 'switching to another chain',
+        previous: chainA,
+        next: view({ chain: '/var/log/syslog' }),
+        mode: 'push',
+      },
+      {
+        name: 'moving the line into another part',
+        previous: view({ chain: handle, part: 'app.log.2.gz', line: 9 }),
+        next: view({ chain: handle, part: 'app.log.1', line: 4 }),
+        mode: 'replace',
+      },
+      { name: 'closing the chain', previous: chainA, next: DEFAULT_VIEW, mode: 'replace' },
+      {
+        name: 'turning chain mode on',
+        previous: DEFAULT_VIEW,
+        next: view({ chains: true }),
+        mode: 'replace',
+      },
+    ];
+
+  it.each(steps)('$mode the entry for $name', ({ previous, next, mode }) => {
+    expect(historyModeFor(previous, next)).toBe(mode);
+  });
+});

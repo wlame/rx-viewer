@@ -2,12 +2,12 @@
  * The view state the address bar carries, and its one serialized form.
  *
  * The URL names what a user would bookmark, share or come back to: the
- * active file, the line its view is anchored on or the time it jumped
- * to, its highlighting,
- * filter and anomaly category, the sidebar tab, the last search,
- * whether its results show byte offsets, the timestamps stash, and the
- * time zones chosen for files. Each
- * key has one row in
+ * active file or log chain, the line its view is anchored on or the
+ * time it jumped to, its highlighting, filter and anomaly category, the
+ * sidebar tab, whether rotated logs are grouped into chains, the last
+ * search, whether its results show byte offsets, the timestamps stash,
+ * and the time zones chosen for files and chains. Each key has one row
+ * in
  * `CODECS`, which reads it as untrusted input (a missing or invalid
  * value gives that key's default) and writes it back, leaving a value at
  * its default out of the link.
@@ -56,11 +56,24 @@ export interface SearchState {
 
 /** Everything the URL says about the view. */
 export interface ViewState {
-  /** The active file's path, or null when no file is open. */
+  /** The active file's path, or null when no file is open or a chain's tab is active. */
   file: string | null;
   /**
+   * The handle of the active log chain's tab (its directory joined with
+   * its name), or null when a file's tab or none is active. A link that
+   * names a chain and a file opens the chain.
+   */
+  chain: string | null;
+  /**
+   * The part of the active chain that holds its anchor line, by its bare
+   * file name, or null; always null without a chain. With a part, `line`
+   * is the line's number in the part, as `rx samples PART` numbers it.
+   */
+  part: string | null;
+  /**
    * The line the active file's view is anchored on (see `anchorLine.ts`
-   * for the rule), or null to open the file at its start.
+   * for the rule), or null to open the file at its start. In a chain,
+   * the line's number in `part`.
    */
   line: number | null;
   /**
@@ -76,6 +89,8 @@ export interface ViewState {
   /** The anomaly category highlighted in the active file, or null for none. */
   category: string | null;
   tab: SidebarTab;
+  /** Rotated logs are grouped into log chains (`chains=1`). */
+  chains: boolean;
   /** The search results show byte offsets instead of line numbers. */
   offsets: boolean;
   /** The last search run, or null for none. */
@@ -83,8 +98,9 @@ export interface ViewState {
   /** The timestamps stash: up to seven instants (UTC ms), each once, in time order. */
   stash: readonly number[];
   /**
-   * The time zone chosen for each file, open or not, oldest choice
-   * first: at most twenty files, each once.
+   * The time zone chosen for each file and chain, open or not, by tab
+   * key (`chain:` and the handle for a chain), oldest choice first: at
+   * most twenty, each once.
    */
   fileZones: readonly FileZone[];
 }
@@ -92,12 +108,15 @@ export interface ViewState {
 /** The view of a link with no parameters. */
 export const DEFAULT_VIEW: ViewState = {
   file: null,
+  chain: null,
+  part: null,
   line: null,
   time: null,
   highlight: null,
   filter: null,
   category: null,
   tab: 'tree',
+  chains: false,
   offsets: false,
   search: null,
   stash: [],
@@ -139,6 +158,28 @@ const OPTIONAL_BOOLEANS: Record<string, boolean> = {
 /** A non-empty string, or null. */
 function nonEmpty(value: string | null): string | null {
   return value !== null && value.trim() !== '' ? value : null;
+}
+
+/** Whether `name` is a bare file name: not empty, without `/`, and neither `.` nor `..`. */
+function isBareName(name: string): boolean {
+  return name !== '' && !name.includes('/') && name !== '.' && name !== '..';
+}
+
+/**
+ * The chain handle a link names: a value whose last element is a bare
+ * name (the chain's name), or null.
+ */
+function parseChain(params: URLSearchParams): string | null {
+  const handle = nonEmpty(params.get('chain'));
+  if (handle === null) return null;
+  return isBareName(handle.slice(handle.lastIndexOf('/') + 1)) ? handle : null;
+}
+
+/** The part a link names: a bare name, and only beside a chain; otherwise null. */
+function parsePart(params: URLSearchParams): string | null {
+  const part = params.get('part');
+  if (part === null || parseChain(params) === null) return null;
+  return isBareName(part) ? part : null;
 }
 
 /** A whole number written in plain digits, from `min` up to the safe-integer limit, or null. */
@@ -244,11 +285,25 @@ const DEFAULT_FILTER_MODE: FilterMode = 'highlight';
 const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
   file: {
     names: ['file'],
-    parse: (params) => nonEmpty(params.get('file')),
+    // A link that names a chain as well opens the chain.
+    parse: (params) => (parseChain(params) === null ? nonEmpty(params.get('file')) : null),
     serialize: (file) => (file === null ? [] : [['file', file]]),
     // Opening a file or switching to another is a step; closing the last
     // one is not, or Back would reopen a file that failed to open.
     isStep: (previous, next) => next !== null && next !== previous,
+  },
+  chain: {
+    names: ['chain'],
+    parse: parseChain,
+    serialize: (chain) => (chain === null ? [] : [['chain', chain]]),
+    // Opening a chain or switching to another is a step, as for a file.
+    isStep: (previous, next) => next !== null && next !== previous,
+  },
+  // A move into another part is a move by line: it rewrites the entry.
+  part: {
+    names: ['part'],
+    parse: parsePart,
+    serialize: (part, view) => (part === null || view.chain === null ? [] : [['part', part]]),
   },
   line: {
     names: ['line'],
@@ -298,6 +353,12 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     serialize: (tab, view) =>
       tab === defaultTab(view.search !== null) ? [] : [['tab', TAB_PARAM_VALUES[tab]]],
     isStep: (previous, next) => next !== previous,
+  },
+  // Turning chain mode on or off rewrites the current entry.
+  chains: {
+    names: ['chains'],
+    parse: (params) => isOn(params.get('chains')),
+    serialize: (on) => (on ? [['chains', '1']] : []),
   },
   offsets: {
     names: ['offsets'],
@@ -385,10 +446,11 @@ function isStepKey<K extends keyof ViewState>(
 
 /**
  * How the change from `previous` to `next` reaches history: a push when
- * any key changed in a way that is a step (opening a file, running a
- * search, switching the sidebar tab, a jump by time), otherwise a
- * replace (the line, the highlighting, the filter, the category, the
- * offsets switch, the stash, the file zones).
+ * any key changed in a way that is a step (opening a file or a chain,
+ * running a search, switching the sidebar tab, a jump by time),
+ * otherwise a replace (the line and its part, the highlighting, the
+ * filter, the category, chain mode, the offsets switch, the stash, the
+ * file zones).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';

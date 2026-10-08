@@ -81,6 +81,17 @@ describe('backendHas', () => {
     expect(backendHas('samples_index_build')).toBe(false);
   });
 
+  // Every chain feature of the viewer asks for log_chains first.
+  it('says whether the backend serves log chains', async () => {
+    serveHealth('1.7', ['time_range', 'log_chains']);
+    const { backendHas, health } = await import('./health');
+
+    await health.check();
+
+    expect(backendHas('log_chains')).toBe(true);
+    expect(backendHas('log_chains', { features: ['time_range'] })).toBe(false);
+  });
+
   it('reads the state it is given, so a component can pass $health', async () => {
     serveHealth('1.5', ['samples_index_build']);
     const { backendHas, health } = await import('./health');

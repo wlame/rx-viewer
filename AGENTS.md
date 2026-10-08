@@ -38,6 +38,9 @@ interchangeable backends, no vendoring.
    `/v1/detectors`. `/v1/complexity` exists only in rx-python; this app does
    not call it. An endpoint rx-go adds while rx-python is paused is
    rx-go-only until rx-python catches up: check for it before calling it.
+   The log chain routes (`/v1/logs/*`) are such: a chain feature acts only
+   while `chainModeOn` (`src/lib/stores/chainMode.ts`) holds, which needs
+   `backendHas('log_chains')`.
 3. **Never hardcode detector names, category names or ports.** Detector sets
    differ between backends. Drive the UI from the live `/v1/detectors`
    response (`src/lib/stores/detectors.ts`).
