@@ -98,6 +98,13 @@ const SCREEN_LINES = 50;
 /** 202 answers a load waits through before it gives up; each one is a task followed to its end. */
 const MAX_WAITS = 3;
 
+/**
+ * Changes of a chain's files (409 answers) a tab reads again through in a
+ * row; at the next one it stops and says the files keep changing, so a
+ * flapping writer cannot keep it reading.
+ */
+const MAX_CHANGES_IN_A_ROW = 2;
+
 /** How long a notice about a chain stays on screen. */
 const NOTICE_MS = 5000;
 
@@ -206,6 +213,8 @@ export function createChainTabs(deps: ChainTabDeps) {
   const goneTasks = new Map<TabKey, string>();
   /** The chain tabs whose highlighting a link gave, which the size-based default leaves alone. */
   const highlightGiven = new Set<TabKey>();
+  /** The changes of each tab's files read again through in a row; a window's lines end the row. */
+  const changesInARow = new Map<TabKey, number>();
 
   function chainOf(key: TabKey): ChainTab | undefined {
     return deps.getTab(key)?.chain;
@@ -400,6 +409,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       });
       if (answer.kind !== 'building') {
         if (waits > 0) deps.patchTab(key, () => ({ indexBuild: null }));
+        if (answer.kind === 'samples') changesInARow.delete(key);
         return answer;
       }
       if (waits >= MAX_WAITS) {
@@ -663,9 +673,20 @@ export function createChainTabs(deps: ChainTabDeps) {
    * The chain's files changed on disk (a rotation): keep its current
    * description, drop the lines, and find the anchor line again by its
    * time once the chain is ready, else by its part when that still
-   * exists, else show the start.
+   * exists, else show the start. After two changes in a row with no
+   * lines read between them, the tab stops and says why.
    */
   async function readAgainAfterChange(key: TabKey, chain: ChainResponse): Promise<void> {
+    const changes = (changesInARow.get(key) ?? 0) + 1;
+    changesInARow.set(key, changes);
+    if (changes > MAX_CHANGES_IN_A_ROW) {
+      changesInARow.delete(key);
+      showError(
+        key,
+        new Error(`The files of ${chain.name} keep changing on disk; open the chain again later`),
+      );
+      return;
+    }
     notifications.info(
       `Files of ${chain.name} changed on disk; the chain was read again`,
       NOTICE_MS,
@@ -993,6 +1014,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     stopFollow(key);
     goneTasks.delete(key);
     highlightGiven.delete(key);
+    changesInARow.delete(key);
     chainTopLines.forget(key);
   }
 

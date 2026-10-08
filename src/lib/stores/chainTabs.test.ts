@@ -208,6 +208,19 @@ describe('a ready chain tab', () => {
     expect(tab().anchorLine).toBe(3500);
   });
 
+  it('stops reading a chain whose files change at every request, after two reads again', async () => {
+    await files.openChain(HANDLE);
+    const requests = chain.samplesRequests.length;
+    chain.keepsChanging = true;
+
+    await files.loadMore(KEY, 'after');
+
+    await vi.waitFor(() => expect(tab().error).toContain('keep changing'));
+    expect(chain.samplesRequests.length - requests).toBe(3);
+    expect(get(notifications).filter((n) => n.message.includes('changed on disk'))).toHaveLength(2);
+    expect(tab().loading).toBe(false);
+  });
+
   it('shows the reasons of a chain that became invalid, and no lines', async () => {
     await files.openChain(HANDLE);
     chain.state = 'invalid';

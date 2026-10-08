@@ -66,6 +66,9 @@ export class FakeChain {
   readonly parts: FakePart[];
   state: 'pending' | 'ready' | 'invalid';
   fingerprint = '00000000000000a1';
+  /** Whether the files change before every samples request, as a flapping writer would. */
+  keepsChanging = false;
+  private changes = 0;
   /** The query of every `/v1/logs/samples` request, in order. */
   readonly samplesRequests: URLSearchParams[] = [];
   /** Every request's path and query, in order. */
@@ -256,6 +259,10 @@ export class FakeChain {
   private samples(query: URLSearchParams, prefer: string | null): Answer {
     this.samplesRequests.push(query);
     this.prefers.push(prefer);
+    if (this.keepsChanging) {
+      this.changes += 1;
+      this.fingerprint = this.changes.toString(16).padStart(16, 'c');
+    }
     const fingerprint = query.get('fingerprint');
     if (fingerprint !== null && fingerprint !== this.fingerprint) {
       return answer(409, this.description());
