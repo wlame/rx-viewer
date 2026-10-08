@@ -167,12 +167,13 @@ const STREAM_FORMATS: ReadonlySet<string> = new Set(['gzip', 'bz2', 'xz', 'zstd'
  * `names`: 5,000 when one of them is a gzip, bzip2, xz or zstd part,
  * 1,000 otherwise. A part's description does not say whether its zstd is
  * seekable, so a zstd part pages as a stream; a seekable one only gets
- * larger pages.
+ * larger pages. One pass over the names and one over the parts.
  */
-export function chainPageSize(parts: readonly ChainPart[], names: readonly string[]): number {
+export function chainPageSize(parts: readonly ChainPart[], names: Iterable<string>): number {
+  const touched = new Set(names);
   const touchesStream = parts.some(
     (part) =>
-      names.includes(part.name) &&
+      touched.has(part.name) &&
       part.compression_format !== null &&
       STREAM_FORMATS.has(part.compression_format),
   );

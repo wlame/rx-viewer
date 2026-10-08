@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fastestOf } from '../testing/timing';
 import type { ChainPart, ChainPiece, ChainSamplesResponse } from '../types';
 import { LINES_PER_PAGE, STREAM_LINES_PER_PAGE } from './slidingWindow';
 import {
@@ -222,6 +223,22 @@ describe('chainPageSize', () => {
     [['a.2.zst', 'a.1'], STREAM_LINES_PER_PAGE],
   ])('pages %o by %i lines', (names, size) => {
     expect(chainPageSize(parts, names)).toBe(size);
+  });
+
+  // The held lines of a chain of 10,000 parts can come from many parts:
+  // a page's size costs one pass over the parts and one over the names,
+  // not one over the names for each part.
+  it('sizes a page by the names of 10,000 plain parts in a few milliseconds', () => {
+    const many = Array.from({ length: 10_000 }, (_, i) => part(`a.${i + 1}`));
+    const names = many.map((p) => p.name);
+    let size = 0;
+
+    const elapsed = fastestOf(3, () => {
+      size = chainPageSize(many, names);
+    });
+
+    expect(size).toBe(LINES_PER_PAGE);
+    expect(elapsed).toBeLessThan(20);
   });
 });
 

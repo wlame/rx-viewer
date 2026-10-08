@@ -1367,7 +1367,7 @@ export function createChainTabs(deps: ChainTabDeps) {
   ): number {
     const names = new Set<string>();
     for (const line of [...held, ...page]) if (line.part !== undefined) names.add(line.part);
-    return maxHeldLines(chainPageSize(parts, [...names]));
+    return maxHeldLines(chainPageSize(parts, names));
   }
 
   /** Add a page of a ready chain to the held lines, as a file's page is added. */

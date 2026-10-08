@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fastestOf } from '../testing/timing';
 import type { ChainPart, ChainResponse, FileLine } from '../types';
 import { LINES_PER_PAGE } from './slidingWindow';
 import {
@@ -206,17 +207,6 @@ function largeChain(order: 'numbered' | 'mixed'): { chain: ChainResponse; lines:
     }),
     lines: held(1, ...parts.map((p): [string, number] => [p.name, 1])),
   };
-}
-
-/** The fewest milliseconds `run` took in `times` runs. */
-function fastestOf(times: number, run: () => void): number {
-  let fastest = Infinity;
-  for (let i = 0; i < times; i++) {
-    const started = performance.now();
-    run();
-    fastest = Math.min(fastest, performance.now() - started);
-  }
-  return fastest;
 }
 
 describe('chainViewZones of a chain of 10,000 parts with 100 missing', () => {
