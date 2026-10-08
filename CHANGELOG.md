@@ -340,6 +340,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while that search is still the one the panel shows: a search started
   while the chain's tab opened no longer gets the older search's marks
   back.
+- A release stamps the bundle with the tag it was started for, which it
+  checked as `vX.Y.Z`, rather than with what `git describe` prefers (an
+  annotated tag on the release commit would win over the release's own
+  tag), and fails unless `version.json` holds exactly that tag.
 
 ## [0.6.0] - 2026-10-06
 

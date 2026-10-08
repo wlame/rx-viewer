@@ -248,7 +248,9 @@ Paste the output.
 - Commit: one imperative sentence, capital, full stop, no prefix, no body.
 - Version comes from the git tag. `package.json` stays at `0.0.0`; the build
   stamps `git describe` into `dist/version.json`, which the header reads.
-  Do not commit a real version.
+  A release stamps the tag it was started for instead
+  (`just --set version "$TAG" package`) and fails unless `version.json`
+  holds exactly that tag. Do not commit a real version.
 - Release: `just release-dry patch` previews, `just release patch` runs the
   gates, promotes the changelog, commits and tags, then prints the push
   commands rather than running them. Pushing the tag runs `release.yml`,

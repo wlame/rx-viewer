@@ -148,4 +148,21 @@ describe('the repository workflows', () => {
     const resolving = steps.find((step) => step.includes('GITHUB_OUTPUT'));
     expect(resolving).toContain(`"$tag" =~ ${TAG_FORM}`);
   });
+
+  // `git describe`, the justfile's default version, prefers an annotated
+  // tag on the release commit to the tag the release was started for.
+  it('stamps the checked tag as the bundle version, and fails unless the stamp is exactly that tag', () => {
+    const release = repoFile(`${WORKFLOWS}/release.yml`);
+    const steps = release.split(/\n {6}- name: /).slice(1);
+    const resolving = steps.findIndex((step) => step.includes('GITHUB_OUTPUT'));
+    const packaging = steps.findIndex((step) => step.startsWith('package'));
+    const verifying = steps.findIndex((step) => step.startsWith('verify the bundle'));
+
+    expect(resolving).toBeGreaterThanOrEqual(0);
+    expect(packaging).toBeGreaterThan(resolving);
+    expect(steps[packaging]).toContain('TAG: ${{ steps.release_tag.outputs.name }}');
+    expect(steps[packaging]).toContain('just --set version "$TAG" package');
+    expect(verifying).toBeGreaterThan(packaging);
+    expect(steps[verifying]).toContain('[ "$version" = "$TAG" ]');
+  });
 });

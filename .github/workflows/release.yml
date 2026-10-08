@@ -127,11 +127,20 @@ jobs:
           echo "Releasing ${tag}"
           echo "name=${tag}" >> "$GITHUB_OUTPUT"
 
-      # `just package` builds with the tag stamped, asserts index.html is at
-      # the archive root, and writes the sha256 sidecar.
+      # `just package` builds, asserts index.html is at the archive root,
+      # and writes the sha256 sidecar. It stamps the tag resolved above,
+      # which was checked as vX.Y.Z: `git describe`, the justfile's default
+      # version, prints an annotated tag in preference to the lightweight
+      # one scripts/release.sh makes, so another tag on the release commit
+      # would be stamped in its place.
       - name: package
-        run: just package
+        shell: bash
+        env:
+          TAG: ${{ steps.release_tag.outputs.name }}
+        run: just --set version "$TAG" package
 
+      # The stamped version must be the tag itself, not a name that only
+      # contains it.
       - name: verify the bundle carries the tag
         env:
           TAG: ${{ steps.release_tag.outputs.name }}
