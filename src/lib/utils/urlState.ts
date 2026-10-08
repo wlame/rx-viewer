@@ -148,13 +148,22 @@ function isOn(value: string | null): boolean {
   return value === '1' || value === 'true';
 }
 
+/**
+ * The values a boolean parameter that may be absent reads. A `Map`, not
+ * an object: URL text such as `constructor` must not find an inherited
+ * property.
+ */
+const OPTIONAL_BOOLEANS: ReadonlyMap<string, boolean> = new Map([
+  ['1', true],
+  ['true', true],
+  ['0', false],
+  ['false', false],
+]);
+
 /** A boolean parameter that may be absent: absent or unreadable is null. */
-const OPTIONAL_BOOLEANS: Record<string, boolean> = {
-  '1': true,
-  true: true,
-  '0': false,
-  false: false,
-};
+function optionalBoolean(value: string | null): boolean | null {
+  return OPTIONAL_BOOLEANS.get(value ?? '') ?? null;
+}
 
 /** A non-empty string, or null. */
 function nonEmpty(value: string | null): string | null {
@@ -342,7 +351,7 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
   },
   highlight: {
     names: ['highlight'],
-    parse: (params) => OPTIONAL_BOOLEANS[params.get('highlight') ?? ''] ?? null,
+    parse: (params) => optionalBoolean(params.get('highlight')),
     serialize: (on) => (on === null ? [] : [['highlight', on ? '1' : '0']]),
   },
   filter: {
@@ -428,7 +437,7 @@ function serializeKey<K extends keyof ViewState>(key: K, view: ViewState): Param
  * unreadable), so that the mode chosen last applies.
  */
 export function chainModeInLink(query: string): boolean | null {
-  return OPTIONAL_BOOLEANS[new URLSearchParams(query).get('chains') ?? ''] ?? null;
+  return optionalBoolean(new URLSearchParams(query).get('chains'));
 }
 
 /** The view a query string (`?a=b…`, with or without the `?`) describes. */

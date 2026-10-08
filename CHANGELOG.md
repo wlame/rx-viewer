@@ -258,6 +258,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The time cursor's chip no longer takes room from the timeline bar.
 - With chain mode off, "Only opened files" searches the open files and
   leaves out the tabs of log chains, whose keys are no file path.
+- A link whose `highlight` or `chains` is the name of a property every
+  JavaScript object has, such as `constructor` or `__proto__`, is read
+  as one that does not name it, rather than as switched on.
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.

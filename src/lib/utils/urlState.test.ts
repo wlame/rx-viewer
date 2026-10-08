@@ -157,6 +157,10 @@ describe('parseViewState', () => {
     ['0', false],
     ['false', false],
     ['yes', null],
+    // The name of a property every object inherits is no value.
+    ['constructor', null],
+    ['__proto__', null],
+    ['toString', null],
   ])('reads highlight=%s as %s', (value, expected) => {
     expect(parseViewState(`?file=/a.log&highlight=${value}`).highlight).toBe(expected);
   });
@@ -604,6 +608,9 @@ describe('a log chain in the URL', () => {
     ['?chains=0', false],
     ['?chains=false', false],
     ['?chains=yes', null],
+    ['?chains=constructor', null],
+    ['?chains=__proto__', null],
+    ['?chains=hasOwnProperty', null],
     ['?file=%2Fa.log', null],
     ['', null],
   ])('says whether the link %j names chain mode: %s', (query, expected) => {
