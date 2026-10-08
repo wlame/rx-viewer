@@ -328,6 +328,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when it is not found; only the marks of the file tab whose line it
   opens at are carried, and only when that line is where the file tab
   had it.
+- An older chain mode switch still waiting for the backend no longer
+  moves a log chain's tab back over a newer view, such as the entry Back
+  pressed twice lands on: a switch to the mode already set ends with the
+  switch that set it, so the newer view's tab opens after it.
 
 ## [0.6.0] - 2026-10-06
 

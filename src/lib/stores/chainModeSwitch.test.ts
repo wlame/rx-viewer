@@ -346,3 +346,35 @@ describe('switching chain mode on with file tabs of a chain open', () => {
     expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.1.gz', '/l/notes.txt']);
   });
 });
+
+describe('two chain mode switches at once', () => {
+  // Back twice: the older restore's switch waits for the chain listing
+  // while the newer restore, finding the mode already on, opens the chain
+  // at its own line.
+  it('lets no older switch move the chain tab a newer restore placed', async () => {
+    await serve();
+    await files.openFile('/l/app.log.1', { scrollToLine: 100 });
+    await settled('/l/app.log.1');
+
+    const older = switchChainMode(true);
+    const newer = switchChainMode(true).then(() =>
+      files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 900 } }),
+    );
+    await Promise.all([older, newer]);
+    await settled(KEY);
+
+    expect(openTab(KEY).chain?.anchor).toMatchObject({ part: 'app.log.1', line: 900 });
+    expect(openTab(KEY).anchorLine).toBe(5900);
+  });
+
+  it('lets a switch that finds the mode already set end with the switch still running', async () => {
+    await serve();
+    await files.openFile('/l/app.log.1', { scrollToLine: 100 });
+    await settled('/l/app.log.1');
+
+    void switchChainMode(true);
+    await switchChainMode(true);
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual([KEY]);
+  });
+});

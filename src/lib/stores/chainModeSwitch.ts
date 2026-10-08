@@ -57,6 +57,9 @@ let turningTabs = 0;
 /** Bumped by every switch, so an older one still waiting for answers stops. */
 let switchGeneration = 0;
 
+/** The last switch: one that finds the mode already set ends with it. */
+let lastSwitch: Promise<void> = Promise.resolve();
+
 /** Whether a switch is turning tabs over now: the view's URL rewrites its entry meanwhile. */
 export function isTurningTabs(): boolean {
   return turningTabs > 0;
@@ -65,14 +68,17 @@ export function isTurningTabs(): boolean {
 /**
  * Turn chain mode on or off, and turn the open tabs over to match. The
  * mode is set first: a chain's tab opens only while the mode is on.
- * Resolves once every tab that turned over has its lines.
+ * Resolves once every tab that turned over has its lines. A switch to
+ * the mode already set resolves when the switch that set it ends, so
+ * what its caller does next (a restore opening its own tab) comes after
+ * that switch turned the tabs over, and is not undone by it.
  */
-export async function switchChainMode(on: boolean): Promise<void> {
-  if (get(chainMode) === on) return;
+export function switchChainMode(on: boolean): Promise<void> {
+  if (get(chainMode) === on) return lastSwitch;
   const generation = ++switchGeneration;
   chainMode.set(on);
-  if (on) await turnPartsIntoChains(generation);
-  else await turnChainsIntoFiles(generation);
+  lastSwitch = on ? turnPartsIntoChains(generation) : turnChainsIntoFiles(generation);
+  return lastSwitch;
 }
 
 /**
