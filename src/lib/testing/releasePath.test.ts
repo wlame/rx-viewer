@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
@@ -251,6 +252,45 @@ describe('the workflow guard', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+});
+
+describe('the version.json writer', () => {
+  /** Run scripts/version-json.sh with BUILD_VERSION set to `version`, writing into a scratch directory. */
+  function writeVersion(version: string) {
+    const dir = mkdtempSync(join(tmpdir(), 'version-json-'));
+    const output = join(dir, 'version.json');
+    const run = spawnSync('bash', [resolve(ROOT, 'scripts/version-json.sh'), output], {
+      cwd: dir,
+      env: { ...process.env, BUILD_VERSION: version },
+      encoding: 'utf-8',
+    });
+    const written = existsSync(output) ? readFileSync(output, 'utf-8') : null;
+    const marker = existsSync(join(dir, 'marker'));
+    rmSync(dir, { recursive: true, force: true });
+    return { status: run.status, stderr: run.stderr, written, marker };
+  }
+
+  it.each(['v1.2.3', 'v0.6.0-77-ga92f890-dirty', 'a92f890', 'dev', 'v1.0.0-rc.1+build.5'])(
+    'writes %s as the version of a valid JSON document',
+    (version) => {
+      const { status, written } = writeVersion(version);
+
+      expect(status).toBe(0);
+      expect(JSON.parse(written ?? '')).toMatchObject({ version });
+    },
+  );
+
+  it.each(['v1.0.0"x', 'v1.0.0\\x', 'v1"$(touch marker)"', "v1';touch marker;'", 'v1 2', ''])(
+    'refuses the version %j and writes nothing',
+    (version) => {
+      const { status, stderr, written, marker } = writeVersion(version);
+
+      expect(status).not.toBe(0);
+      expect(stderr).toContain('the version');
+      expect(written).toBeNull();
+      expect(marker).toBe(false);
+    },
+  );
 });
 
 describe('the repository workflows', () => {

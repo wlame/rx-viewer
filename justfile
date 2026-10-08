@@ -151,16 +151,9 @@ build: && _version-json
 
 # Backends read dist/version.json to name the cached bundle, so it is part
 # of the build rather than of the release workflow. It runs on the host,
-# where git is.
+# where git is. A version that JSON would need escaped is refused.
 _version-json:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    printf '{\n  "version": "%s",\n  "buildDate": "%s",\n  "commit": "%s"\n}\n' \
-        "$BUILD_VERSION" \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$(git rev-parse HEAD 2>/dev/null || echo unknown)" \
-        > dist/version.json
-    cat dist/version.json
+    ./scripts/version-json.sh dist/version.json
 
 # Package dist/ the way a release does, with the checksum sidecar
 package: build && _tarball

@@ -311,6 +311,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parser (`yaml`, a new development dependency), so a step spelled as a
   flow mapping, with a quoted key, an alias, a merge key or an escape
   is checked like any other, and a file it cannot read fails it.
+- `dist/version.json` is always valid JSON: the build refuses a version
+  (a tag name, as `git describe` prints it or a release was started for)
+  that holds any character but letters, digits, `.`, `_`, `+` and `-`,
+  and writes nothing. A tag with a quote or a backslash used to break
+  the file.
 - A log chain's tab whose files change twice before it shows its line
   again (a rotation that renames the files, then compresses one) looks
   for that line from the name the first change gave its file, so it no

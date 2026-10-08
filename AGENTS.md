@@ -253,7 +253,9 @@ Paste the output.
 
 - Commit: one imperative sentence, capital, full stop, no prefix, no body.
 - Version comes from the git tag. `package.json` stays at `0.0.0`; the build
-  stamps `git describe` into `dist/version.json`, which the header reads.
+  stamps `git describe` into `dist/version.json`, which the header reads
+  (`scripts/version-json.sh`, which refuses a version with a character
+  other than letters, digits, `.`, `_`, `+` and `-`).
   A release stamps the tag it was started for instead
   (`just --set version "$TAG" package`) and fails unless `version.json`
   holds exactly that tag. Do not commit a real version.
