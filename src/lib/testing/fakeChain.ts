@@ -22,6 +22,8 @@ export interface FakePart {
   isActive?: boolean;
   /** Whether a pending chain's description finds an index of it. */
   isIndexed?: boolean;
+  /** Its number, the description's key; by default its place counted from the newest part. */
+  key?: string;
 }
 
 export interface FakeChainOptions {
@@ -68,6 +70,11 @@ export class FakeChain {
   fingerprint = '00000000000000a1';
   /** Whether the files change before every samples request, as a flapping writer would. */
   keepsChanging = false;
+  /**
+   * The progress the index task reports while it runs: one value per
+   * status request, in order, before the task waits for `finishTask`.
+   */
+  progress: number[] = [];
   private changes = 0;
   /** The query of every `/v1/logs/samples` request, in order. */
   readonly samplesRequests: URLSearchParams[] = [];
@@ -153,7 +160,7 @@ export class FakeChain {
         name: part.name,
         path: `${this.dir}/${part.name}`,
         is_active: part.isActive ?? false,
-        key: part.isActive ? null : String(this.parts.length - 1 - i),
+        key: part.isActive ? null : (part.key ?? String(this.parts.length - 1 - i)),
         compression_format: part.compression ?? null,
         size: part.lines * 60,
         modified_at: '2026-10-01T00:00:00.000000Z',
@@ -365,20 +372,29 @@ export class FakeChain {
 
   /** Answer one task status request: running until `finishTask`, then as `taskEnd` says. */
   private async taskStatus(): Promise<Answer> {
+    const progress = this.progress.shift();
+    if (progress !== undefined) return answer(200, this.taskState('running', progress));
     await this.finished;
     if (this.options.taskEnd === 'gone') return answer(404, { detail: 'Task not found' });
-    const status: TaskStatus = {
+    return answer(200, this.taskState('completed', 1));
+  }
+
+  /** The index task's status: a completed task holds its result. */
+  private taskState(status: 'running' | 'completed', progress: number): TaskStatus {
+    return {
       task_id: CHAIN_TASK_ID,
-      status: 'completed',
+      status,
       path: this.handle,
       operation: 'chain_index',
       started_at: null,
       completed_at: null,
       error: null,
-      progress: 1,
-      result: { path: this.handle, built: [], cli_command: `rx logs index ${this.handle}` },
+      progress,
+      result:
+        status === 'completed'
+          ? { path: this.handle, built: [], cli_command: `rx logs index ${this.handle}` }
+          : null,
     };
-    return answer(200, status);
   }
 
   /** Whether `finishTask` was called. */

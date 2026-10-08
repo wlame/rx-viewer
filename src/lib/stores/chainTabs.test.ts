@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { CHAIN_TASK_ID, FakeChain, T0_MS, serveChain, type FakePart } from '../testing/fakeChain';
-import type { OpenFile } from '../types';
+import type { ChainResponse, FileLine, OpenFile } from '../types';
 import { LOCAL_NUMBERING_BASE } from '../utils/chainWindow';
-import { chainViewZones } from '../utils/chainZones';
+import { chainViewZones, chainZonesMemo, type EditorViewZone } from '../utils/chainZones';
 import { LINES_PER_PAGE, STREAM_LINES_PER_PAGE } from '../utils/slidingWindow';
 import { chainKey } from '../utils/tabKey';
 import { chainMode } from './chainMode';
@@ -343,6 +343,79 @@ describe('a pending chain tab', () => {
       part: 'app.log',
       localLine: 7,
     });
+  });
+});
+
+describe('the view zones of a chain tab', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * A chain of 10,000 parts, `agent.log.10099` to `agent.log.1` without
+   * the 100 numbers 50, 150, …, 9950, and the active file.
+   */
+  function largeParts(): { parts: FakePart[]; missing: string[] } {
+    const numbers = Array.from({ length: 100 }, (_, k) => 100 * k + 50);
+    const absent = new Set(numbers);
+    const parts: FakePart[] = [];
+    for (let n = 10_099; n >= 1; n--) {
+      if (!absent.has(n)) parts.push({ name: `agent.log.${n}`, lines: 2, key: String(n) });
+    }
+    parts.push({ name: 'agent.log', lines: 2, isActive: true });
+    return { parts, missing: numbers.map((n) => `agent.log.${n}`) };
+  }
+
+  // The editor pane builds the zones through one memo on every update of
+  // its tab; a build is an update whose lines or description are new.
+  it('builds them once per description and held lines of a 10,000-part chain, never on a progress tick or an anchor move', async () => {
+    const chain = await serve({ name: 'agent.log', state: 'pending', ...largeParts() });
+    chain.progress = [0.25, 0.5, 0.75];
+    const key = chainKey(chain.handle);
+    const chainTab = () => get(files).openFiles.find((f) => f.path === key)!;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    const zonesOf = chainZonesMemo();
+    const updates: { inputsChanged: boolean; zones: readonly EditorViewZone[] }[] = [];
+    let last: { lines: readonly FileLine[]; description: ChainResponse } | null = null;
+    const stop = files.subscribe((state) => {
+      const t = state.openFiles.find((f) => f.path === key);
+      const description = t?.chain?.description;
+      if (!t || !description) return;
+      const inputsChanged =
+        last === null || last.lines !== t.lines || last.description !== description;
+      last = { lines: t.lines, description };
+      updates.push({ inputsChanged, zones: zonesOf(t.lines, description) });
+    });
+    const builds = () => new Set(updates.map((u) => u.zones)).size;
+    const inputChanges = () => updates.filter((u) => u.inputsChanged).length;
+
+    try {
+      await files.openChain(chain.handle);
+      await vi.waitFor(() => expect(chainTab().chain?.indexTask?.progress).toBe(0.25));
+      const [updatesBefore, buildsBefore] = [updates.length, builds()];
+
+      for (const progress of [0.5, 0.75]) {
+        await vi.advanceTimersByTimeAsync(1000);
+        await vi.waitFor(() => expect(chainTab().chain?.indexTask?.progress).toBe(progress));
+      }
+      files.setAnchorLine(key, chainTab().startLine + 1);
+      files.setAnchorLine(key, chainTab().startLine);
+
+      expect(updates.length - updatesBefore).toBeGreaterThanOrEqual(4);
+      expect(builds()).toBe(buildsBefore);
+
+      chain.finishTask();
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(chainTab().chain?.numbering).toBe('global'));
+      await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+
+      expect(builds()).toBeGreaterThan(buildsBefore);
+      expect(builds()).toBe(inputChanges());
+      expect(chainTab().chain?.description?.missing).toHaveLength(100);
+    } finally {
+      stop();
+    }
   });
 });
 

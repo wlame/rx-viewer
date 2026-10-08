@@ -162,6 +162,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.
+- A log chain's tab builds the lines of text between its parts again
+  only when its lines or its description change, not at every update of
+  the tab (an index task's progress each second, the line kept after a
+  scroll), so the editor no longer removes and adds every one of them
+  each time. It places the missing parts with one pass over the parts
+  for each missing name.
 
 ## [0.6.0] - 2026-10-06
 

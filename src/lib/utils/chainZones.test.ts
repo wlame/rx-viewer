@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ChainPart, ChainResponse, FileLine } from '../types';
-import { chainGutterRuns, chainViewZones, partTimeLabel } from './chainZones';
+import { LINES_PER_PAGE } from './slidingWindow';
+import {
+  NO_ZONES,
+  chainGutterRuns,
+  chainViewZones,
+  chainZonesMemo,
+  partTimeLabel,
+} from './chainZones';
 
 function part(name: string, fields: Partial<ChainPart> = {}): ChainPart {
   return {
@@ -161,6 +168,115 @@ describe('chainViewZones', () => {
     );
 
     expect(zones.map((z) => z.kind)).toEqual(['missing', 'part']);
+  });
+});
+
+/** The numbers missing from the large chain: 50, 150, …, 9950. */
+const LARGE_MISSING = Array.from({ length: 100 }, (_, k) => 100 * k + 50);
+
+/**
+ * The largest chain a backend describes: 10,000 parts, `agent.log.10099`
+ * to `agent.log.1` without the 100 numbers of `LARGE_MISSING`, then the
+ * active file; the editor holds one line of each. In `numbered` order
+ * the numbers fall part by part. A chain's order is its parts' time
+ * order, which their lines decide, so `mixed` orders the numbers by
+ * another rule.
+ */
+function largeChain(order: 'numbered' | 'mixed'): { chain: ChainResponse; lines: FileLine[] } {
+  const absent = new Set(LARGE_MISSING);
+  let numbers: number[] = [];
+  for (let n = 10_099; n >= 1; n--) if (!absent.has(n)) numbers.push(n);
+  if (order === 'mixed')
+    numbers = [...numbers].sort((a, b) => ((a * 7919) % 10_007) - ((b * 7919) % 10_007));
+  const parts = numbers.map((n) => part(`agent.log.${n}`, { key: String(n), line_count: 1 }));
+  parts.push(part('agent.log', { is_active: true, line_count: 1 }));
+  return {
+    chain: chain({
+      name: 'agent.log',
+      parts,
+      missing: LARGE_MISSING.map((n) => `agent.log.${n}`),
+      missing_count: LARGE_MISSING.length,
+    }),
+    lines: held(1, ...parts.map((p): [string, number] => [p.name, 1])),
+  };
+}
+
+/** The fewest milliseconds `run` took in `times` runs. */
+function fastestOf(times: number, run: () => void): number {
+  let fastest = Infinity;
+  for (let i = 0; i < times; i++) {
+    const started = performance.now();
+    run();
+    fastest = Math.min(fastest, performance.now() - started);
+  }
+  return fastest;
+}
+
+describe('chainViewZones of a chain of 10,000 parts with 100 missing', () => {
+  it.each(['numbered', 'mixed'] as const)(
+    'puts each missing part before the part after its next higher number (%s order)',
+    (order) => {
+      const { chain: large, lines } = largeChain(order);
+      const lineOf = new Map(lines.map((line, i) => [line.part, i]));
+      const names = large.parts.map((p) => p.name);
+      // The next higher number of a missing number n is n + 1, which is there.
+      const after = (n: number) => names[names.indexOf(`agent.log.${n + 1}`) + 1];
+
+      const zones = chainViewZones(lines, large);
+
+      const missing = zones.filter((z) => z.kind === 'missing');
+      expect(missing.map((z) => [z.afterLineNumber, z.text])).toEqual(
+        LARGE_MISSING.map((n) => [lineOf.get(after(n)), `missing: agent.log.${n}`]).sort(
+          (a, b) => Number(a[0]) - Number(b[0]),
+        ),
+      );
+      expect(zones.filter((z) => z.kind === 'part')).toHaveLength(10_000);
+    },
+  );
+
+  // A build takes about 2 ms here; the bound leaves room for a slower
+  // machine and still fails a build that sorts the parts for each name.
+  it('builds them for a page of lines within 15 ms, whatever the order of the numbers', () => {
+    const { chain: large, lines } = largeChain('mixed');
+    const page = lines.slice(0, LINES_PER_PAGE);
+
+    const elapsed = fastestOf(5, () => chainViewZones(page, large));
+
+    expect(elapsed).toBeLessThan(15);
+  });
+});
+
+describe('chainZonesMemo', () => {
+  const parts = [part('a.1', { key: '1' }), part('a', { is_active: true })];
+  const lines = held(1, ['a.1', 1], ['a', 1]);
+
+  it('gives the zones it built again for the same lines and description', () => {
+    const zonesOf = chainZonesMemo();
+    const description = chain({ name: 'a', parts });
+
+    const first = zonesOf(lines, description);
+
+    expect(first).toEqual(chainViewZones(lines, description));
+    expect(zonesOf(lines, description)).toBe(first);
+  });
+
+  it('builds them again for another description or other lines', () => {
+    const zonesOf = chainZonesMemo();
+    const description = chain({ name: 'a', parts });
+    const first = zonesOf(lines, description);
+
+    const forDescription = zonesOf(lines, { ...description });
+    const forLines = zonesOf([...lines], description);
+
+    expect(forDescription).not.toBe(first);
+    expect(forLines).not.toBe(forDescription);
+    expect(forLines).toEqual(first);
+  });
+
+  it('gives one empty list while there is no description', () => {
+    const zonesOf = chainZonesMemo();
+    expect(zonesOf(lines, null)).toBe(NO_ZONES);
+    expect(zonesOf([], null)).toBe(NO_ZONES);
   });
 });
 

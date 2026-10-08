@@ -20,7 +20,7 @@
   import { isShortcut } from '$lib/utils/shortcuts';
   import { indexBuildLabel } from '$lib/samplesWait';
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
-  import { chainGutterRuns, chainViewZones } from '$lib/utils/chainZones';
+  import { chainGutterRuns, chainZonesMemo } from '$lib/utils/chainZones';
   import { chainLineLabels, topLineOf } from '$lib/utils/chainPane';
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import ChainInvalid from './ChainInvalid.svelte';
@@ -85,9 +85,11 @@
 
   // A log chain's tab: its description, the zones at its part edges, the
   // part-local gutter labels while it is pending, and why it cannot be
-  // read when it is invalid.
+  // read when it is invalid. The zones are built again only for new lines
+  // or a new description, so Monaco keeps them through other updates.
+  const zonesOf = chainZonesMemo();
   $: chainDescription = file.chain?.description ?? null;
-  $: chainZones = chainDescription ? chainViewZones(file.lines, chainDescription) : [];
+  $: chainZones = zonesOf(file.lines, chainDescription);
   $: lineLabels = file.chain ? chainLineLabels(file.lines, file.chain.numbering) : null;
   $: isChainInvalid = Boolean(
     file.chain && (chainDescription?.state === 'invalid' || file.chain.invalidDetail),
