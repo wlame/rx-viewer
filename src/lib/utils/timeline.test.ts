@@ -251,7 +251,7 @@ describe('the time helpers on a chain tab', () => {
 
   it('needs the log chain routes to jump a chain by time, and time queries to jump a file', () => {
     expect(timeJumpFeature(ready)).toBe('log_chains');
-    expect(timeJumpFeature(middleware)).toBe('samples_timestamps');
+    expect(timeJumpFeature(timedFile(null))).toBe('samples_timestamps');
     expect(timeJumpFeature(undefined)).toBe('samples_timestamps');
   });
 
