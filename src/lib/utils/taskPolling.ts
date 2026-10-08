@@ -3,7 +3,9 @@ import type { IndexTaskResult, TaskStatus } from '../types';
 import type { TabKey } from './tabKey';
 
 /**
- * Following a background index task (`POST /v1/index`) to its end.
+ * Following a background task to its end: `watchTask` for any task (a
+ * log chain's index task included), `pollTask` and `TaskPolls` for an
+ * index task (`POST /v1/index`), whose result is a line index.
  *
  * A poll has no attempt cap: an analysis of a multi-gigabyte file can run
  * for longer than any fixed limit, and a task that still reports `queued`
@@ -78,16 +80,28 @@ function completedIndex(task: TaskStatus): IndexTaskResult {
 }
 
 /**
- * Poll one index task until it completes, and resolve with its result.
- *
- * Rejects when the task completes without an index result, with the
- * task's own error when it fails, with the last request
- * error after several failed requests in a row or a 404, and with an
- * `AbortError` when the signal aborts.
+ * How a followed task ended: its last status, completed or failed, or
+ * gone: the backend answered 404, having forgotten the task (a restart,
+ * its retention, or a table that dropped a finished task). `wasSeen` says
+ * whether a status of the task was read before the 404; a task seen
+ * running and then gone has ended.
  */
-export async function pollTask(taskId: string, options: PollOptions): Promise<IndexTaskResult> {
+export type TaskEnd =
+  | { kind: 'completed'; task: TaskStatus }
+  | { kind: 'failed'; task: TaskStatus }
+  | { kind: 'gone'; error: unknown; wasSeen: boolean };
+
+/**
+ * Poll one task until it ends, and resolve with how it ended, whatever
+ * its operation: an index, a compression or a log chain's index task.
+ *
+ * Rejects with the last request error after several failed requests in
+ * a row, and with an `AbortError` when the signal aborts.
+ */
+export async function watchTask(taskId: string, options: PollOptions): Promise<TaskEnd> {
   const { fetchStatus, signal, intervalMs = DEFAULT_INTERVAL_MS, onStatus } = options;
   let consecutiveErrors = 0;
+  let wasSeen = false;
 
   for (;;) {
     if (signal.aborted) throw abortError();
@@ -98,19 +112,35 @@ export async function pollTask(taskId: string, options: PollOptions): Promise<In
       consecutiveErrors = 0;
     } catch (error) {
       if (signal.aborted) throw abortError();
+      if (isTaskGone(error)) return { kind: 'gone', error, wasSeen };
       consecutiveErrors++;
-      if (isTaskGone(error) || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) throw error;
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) throw error;
     }
 
     if (task) {
+      wasSeen = true;
       onStatus?.(task);
       const outcome = TASK_OUTCOME[task.status];
-      if (outcome === 'completed') return completedIndex(task);
-      if (outcome === 'failed') throw new Error(task.error || `Task ${taskId} failed`);
+      if (outcome) return { kind: outcome, task };
     }
 
     await sleep(intervalMs, signal);
   }
+}
+
+/**
+ * Poll one index task until it completes, and resolve with its result.
+ *
+ * Rejects when the task completes without an index result, with the
+ * task's own error when it fails, with the last request
+ * error after several failed requests in a row or a 404, and with an
+ * `AbortError` when the signal aborts.
+ */
+export async function pollTask(taskId: string, options: PollOptions): Promise<IndexTaskResult> {
+  const end = await watchTask(taskId, options);
+  if (end.kind === 'gone') throw end.error;
+  if (end.kind === 'failed') throw new Error(end.task.error || `Task ${taskId} failed`);
+  return completedIndex(end.task);
 }
 
 interface JoinOptions {

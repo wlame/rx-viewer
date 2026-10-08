@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api';
 import type { CompressTaskResult, IndexTaskResult, TaskStatus } from '../types';
-import { TaskPolls, pollTask } from './taskPolling';
+import { TaskPolls, pollTask, watchTask } from './taskPolling';
 import { isAbortError } from './latestRequest';
 
 const PATH = '/var/log/app.log';
@@ -243,6 +243,71 @@ describe('pollTask', () => {
     await result;
 
     expect(seen).toEqual(['queued', 'running', 'completed']);
+  });
+});
+
+describe('watchTask', () => {
+  const CHAIN_RESULT = { path: PATH, built: ['app.log.1'], cli_command: `rx logs index ${PATH}` };
+  const gone = () => new ApiError(404, 'Not Found', 'Task not found: t1');
+
+  function watch(fetchStatus: ReturnType<typeof statuses>) {
+    return watchTask('t1', {
+      fetchStatus,
+      signal: new AbortController().signal,
+      intervalMs: INTERVAL,
+    });
+  }
+
+  // A chain's index task has no line index in its result, which pollTask refuses.
+  it('ends with the completed status, whatever result the task carries', async () => {
+    const end = watch(statuses(task('running'), task('completed', CHAIN_RESULT)));
+
+    await advance(2);
+
+    await expect(end).resolves.toEqual({
+      kind: 'completed',
+      task: task('completed', CHAIN_RESULT),
+    });
+  });
+
+  it('ends with the failed status, which says why', async () => {
+    const end = watch(statuses(task('failed', null, 'app.log.1: build index: disk full')));
+
+    await advance(1);
+
+    await expect(end).resolves.toMatchObject({
+      kind: 'failed',
+      task: { error: 'app.log.1: build index: disk full' },
+    });
+  });
+
+  // The backend drops a finished task from its table; a 404 after the
+  // task was seen means it ended.
+  it('ends as gone, seen, when the task answers 404 after it was seen running', async () => {
+    const fetchStatus = statuses(task('running'), gone());
+    const end = watch(fetchStatus);
+
+    await advance(2);
+
+    await expect(end).resolves.toMatchObject({ kind: 'gone', wasSeen: true });
+    expect(fetchStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends as gone, not seen, when the first status request answers 404', async () => {
+    const end = watch(statuses(gone()));
+
+    await advance(1);
+
+    await expect(end).resolves.toMatchObject({ kind: 'gone', wasSeen: false });
+  });
+
+  it('rejects after several failed status requests in a row', async () => {
+    const end = watch(statuses(new TypeError('Failed to fetch')));
+    end.catch(() => {});
+
+    await advance(5);
+
+    await expect(end).rejects.toThrow('Failed to fetch');
   });
 });
 
