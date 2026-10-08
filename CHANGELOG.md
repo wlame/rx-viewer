@@ -101,7 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   part as a file at its line. The summary counts the log chains found.
   With chain mode off a search is the same as before.
 - The files a search skipped are listed under its summary, closed until
-  opened ("N files skipped"), each with the backend's reason: a binary
+  opened ("N files skipped"), each by its path under the searched folder
+  (the full path in its tooltip) with the backend's reason: a binary
   file, a file that cannot be read and, in chain mode, another encoding
   of a chain's part (`duplicate_part`). At most 100 are listed, followed
   by how many more there are.
