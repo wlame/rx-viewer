@@ -83,6 +83,7 @@ interchangeable backends, no vendoring.
 | `src/lib/types.ts`                                        | Aliases of the generated wire types, plus the app's own types                                                                                      |
 | `src/lib/stores/`                                         | `files`, `tree`, `trace`, `health`, `detectors`, `settings`, `notifications`, `version`, `layout`; `paneMemory` keeps each file tab's editor state |
 | `src/lib/utils/processContent.ts`, `editorDecorations.ts` | The editor's regex filter: hide and show rewrite the text, highlight draws decorations                                                             |
+| `src/lib/stores/chainTabs.ts`, `src/lib/utils/chain*.ts`  | Log chains: a chain's tab, its pages, zones, gutter, timeline and search marks, the files panel's chain rows and the mode switch                   |
 | `src/lib/utils/urlState.ts`, `src/lib/viewState.ts`       | The view in the URL (no router): one parse/serialize table per key; URL written from stores                                                        |
 | `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                                                                   |
 | `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing), `EditorHeader.svelte` (name, line readout, chips, toolbar)                  |
@@ -157,6 +158,26 @@ separate comment above, or eslint reads every word as another rule.
   zones, `ftz=<zone>@<key>`), so a chain and the file at its handle never
   share state. Code that reads a file (samples, index, time range) takes
   the file's path, which is its key.
+- Log chains act only while `chainModeOn` holds (`stores/chainMode.ts`:
+  the "Group rotated logs" switch, `chains=1`, and `log_chains` in
+  `/health`), and only through the `/v1/logs` routes. The files panel
+  shows a chain's row in place of its parts (`utils/chainTree.ts`) and
+  never lists the parts; they are reached by turning the mode off or from
+  the parts list of the chain's tab. A chain's tab (`stores/chainTabs.ts`)
+  numbers its lines by global line once the chain is ready and by each
+  part's base before (`utils/chainWindow.ts`), and a link names its
+  anchor as `chain`, `part` (a bare file name), `line` (in that part) and
+  `time`. The go-to box reads a global line or `part:line`
+  (`parseChainLineTarget`, `utils/chainParts.ts`). Switching the mode
+  turns tabs over through `stores/chainModeSwitch.ts`; a 409 is compared
+  by `utils/chainChanges.ts`. The README's "Log chains" and "Link
+  parameters" sections describe what a user sees.
+- Svelte 4 counts an object prop as changed at every update of its
+  owner, so a `$:` statement that reads `file` reruns at each progress
+  tick and scroll. Work over the held lines goes through
+  `utils/memoizeLast.ts` (or a memo such as `chainZonesMemo`), and a
+  component that hands an object to Monaco checks it is another object
+  first (`applyViewZones`, `redrawGutter`, `isSamePaneView`).
 - The status bar's equivalent command comes from `stores/commands.ts`,
   which records the backend's `cli_command` of each answer to a user
   action (search, file window, index, analysis). Record a new action's

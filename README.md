@@ -64,10 +64,14 @@ way.
   runs the analysis; the report lists line statistics and anomalies, and
   the editor's chips step through the anomalies of a category. Detector
   names, categories and severity levels come from `/v1/detectors`.
+- **Log chains.** On a backend that serves them, the rotated files of one
+  log (`app.log`, `app.log.1`, `app.log.2.gz`, …) open as one text, in
+  time order: see [Log chains](#log-chains).
 - **The URL holds the view.** A link or a reload reopens the file at its
   line, with its highlighting, filter and anomaly category, the sidebar
   tab and the search. Back and Forward step through the files opened, the
-  searches run and the tabs switched.
+  searches run and the tabs switched. See
+  [Link parameters](#link-parameters).
 - **The equivalent command.** The status bar shows the `rx` command the
   backend reports for the last answer, with a copy button and a list of
   recent commands.
@@ -87,26 +91,118 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | Anywhere                  | Esc                     | Close the shortcut list                                             |
 | In a search pattern field | Enter                   | Run the search                                                      |
 | In a search pattern field | Alt+C, Alt+W, Alt+R     | Switch match case, whole word, regular expression                   |
-| In the open file          | `:` or Cmd/Ctrl+G       | Go to a line of the file                                            |
+| In the open file          | `:` or Cmd/Ctrl+G       | Go to a line of the file; in a log chain's tab, see below           |
 | In the open file          | Cmd/Ctrl+F              | Find in the lines loaded in the editor                              |
 | In the open file          | Cmd/Alt+click on a chip | Next anomaly of the selected category; with Shift, the previous one |
+| While a panel is open     | Esc                     | Close the list of a log chain's parts                               |
 
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
 is the one to trust if the two ever differ.
 
+## Log chains
+
+A log chain is the set of files one rotated log leaves in a directory
+(`syslog`, `syslog.1`, `syslog.2.gz`, …, or `app-2026-10-01.log.gz` and
+`app.log`), read as one text with the oldest line first. The backend finds
+the chains by their file names and orders the parts by their timestamps;
+the viewer shows what it answers. Chains need a backend whose `/health`
+lists the `log_chains` feature (rx-go); with any other, nothing below
+shows.
+
+**Chain mode.** The "Group rotated logs" switch in the files panel's
+header turns it on; it is off by default. The link holds it as
+`chains=1`, and a link that does not name it opens in the mode chosen
+last in this browser. With the mode on, each folder shows one row per
+chain in place of its parts, with its name, `chain · N` (its parts), its
+size, `idx` once every part but the active file is indexed, and marks for
+missing or unreadable parts, a chain of more than 10,000 parts, and an
+invalid chain. Every file that is not a part stays listed. The parts
+themselves are not listed: turn the mode off to see them, or open the
+parts list in the chain's tab. A click or Enter opens the chain's tab;
+the row's menu indexes or re-indexes the parts. Turning the mode off
+turns each chain's tab into the file tab of the part that holds its line,
+at that line; turning it on turns the file tabs of parts into their
+chain's tab at the same line.
+
+**The chain's tab.** Opening a chain starts the index builds of its
+parts. Until they end the chain is _pending_: the tab shows each part's
+own line numbers, muted, and pages within one part, then into the next.
+Once it is _ready_ the gutter shows the chain's global line numbers, and
+the tab stays on the same line. Every second part's numbers are in a
+second colour. A line of text between two parts names the part below it
+with its times and its lines, and marks a time gap or a missing part; it
+is no line, so it moves no number, mark or jump. The caption reads
+`syslog [3/12]`, where 3 is the part of the top line. A row under the
+header shows the chain's state, lines, time range and index progress,
+and a parts list whose entries go to a part's first line. The status
+bar's equivalent command is the `rx logs samples` command of the lines
+shown, with each part's `rx samples PART --lines=A-B` under it.
+
+**Keys and jumps.** In a chain's tab the go-to box (`:` or Cmd/Ctrl+G)
+takes a line of the chain (`123456`) or a line of a part
+(`syslog.3.gz:500`). The timeline bar spans the chain, with a tick where
+each part starts, a band over each time gap and a dot where missing
+parts would be; it, the Go to time box and the timestamps stash jump
+once the chain is ready. The zone button sets a zone for the chain alone.
+
+**Search.** With the mode on, a search covers the same folders as log
+chains (`/v1/logs/trace`). A match reads `syslog:123456`, its line in the
+chain, with `syslog.3.gz:500`, its part's line, beside it (only the part's
+line while the chain is pending); a click opens the chain's tab there.
+
+**Rotation.** When the chain's files change on disk while its tab is open
+(the backend answers 409), a notice says how ("renamed 2, new 1,
+removed 1"), and the tab reloads and finds its line again by its time and
+text. A chain that is invalid after the change, or no chain any more,
+becomes the file tab of the file that held the line, or closes with a
+notice when that file is gone.
+
+## Link parameters
+
+The address bar holds the view; a link or a reload opens the same view.
+An unknown or invalid value is read as absent.
+
+| Parameter                                     | What it holds                                                                                                        |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `file`                                        | The active file's absolute path                                                                                      |
+| `chain`                                       | The active log chain's handle: its folder and name, `/var/log/syslog`                                                |
+| `part`                                        | With `chain`: the file name of the part that holds the line, `syslog.3.gz`                                           |
+| `line`                                        | The line the view is anchored on; with `part`, the line in that part                                                 |
+| `time`                                        | The time the file jumped to, or a chain's line time, `2026-10-03T14:00:00.123Z`                                      |
+| `highlight`                                   | `1` or `0`: syntax highlighting on or off; absent, the file's size decides                                           |
+| `filter`, `filter_mode`                       | The editor's regex filter and what it does: `highlight` (default), `hide` or `show`                                  |
+| `category`                                    | The anomaly category marked in the file                                                                              |
+| `tab`                                         | The sidebar tab: `files` or `search`                                                                                 |
+| `chains`                                      | `1`: chain mode on; `0`: off; absent, the mode chosen last                                                           |
+| `regexp`                                      | A search pattern, once per pattern                                                                                   |
+| `max_results`, `only_opened`                  | The search's cap (1 to 10,000, default 100) and "Only opened files"                                                  |
+| `ignore_case`, `word_regexp`, `fixed_strings` | The search's matching toggles                                                                                        |
+| `offsets`                                     | `1`: the search results show byte offsets                                                                            |
+| `stash`                                       | The timestamps stash: up to 7 instants, comma-separated                                                              |
+| `ftz`                                         | A zone chosen for a file, `ftz=UTC@/var/log/app.log`, or for a chain, `ftz=UTC@chain:/var/log/syslog`; once per file |
+
+A chain's tab writes `chain`, `part`, `line` and `time` together:
+`?chains=1&chain=/var/log/syslog&part=syslog.3.gz&line=500&time=2026-10-03T14:00:00.123Z`.
+A link with `chain` turns chain mode on. A link with `chains=1` and a
+`file` that names a part of a chain opens the chain's tab at that part
+and line.
+
 ## The API it calls
 
-| Request              | What for                                                 |
-| -------------------- | -------------------------------------------------------- |
-| `GET /health`        | Connection status, backend version, contract version     |
-| `GET /v1/tree`       | The file tree, and a file's size when a search opens it  |
-| `GET /v1/samples`    | A window of a file's lines, by line range or byte offset |
-| `GET /v1/trace`      | Search                                                   |
-| `GET /v1/index`      | A file's stored index: line count and anomalies          |
-| `POST /v1/index`     | Build an index, or run the analysis                      |
-| `GET /v1/tasks/{id}` | Follow an index or analysis task                         |
-| `GET /v1/detectors`  | Detector names, categories and severity levels           |
-| `GET /version.json`  | The viewer's own version, from its bundle                |
+| Request               | What for                                                 |
+| --------------------- | -------------------------------------------------------- |
+| `GET /health`         | Connection status, backend version, contract version     |
+| `GET /v1/tree`        | The file tree, and a file's size when a search opens it  |
+| `GET /v1/samples`     | A window of a file's lines, by line range or byte offset |
+| `GET /v1/time-range`  | A file's first and last time                             |
+| `GET /v1/trace`       | Search                                                   |
+| `GET /v1/index`       | A file's stored index: line count and anomalies          |
+| `POST /v1/index`      | Build an index, or run the analysis                      |
+| `GET /v1/tasks/{id}`  | Follow an index or analysis task                         |
+| `GET /v1/detectors`   | Detector names, categories and severity levels           |
+| `GET /v1/logs/*`      | Log chains: list, describe, samples and search           |
+| `POST /v1/logs/index` | Build the line indexes of a chain's parts                |
+| `GET /version.json`   | The viewer's own version, from its bundle                |
 
 `/health` reports `contract_version` (`MAJOR.MINOR`). The viewer reads
 contract major 1 (`src/lib/utils/contractVersion.ts`). A backend on
@@ -177,7 +273,7 @@ header shows and the backends read to name the bundle they cache:
 
 Each backend accepts a range of viewer versions and does not install a
 release outside it. Today rx-go (`internal/frontend/compat.go`) accepts
-`0.2.0 <= v < 0.5.0`, and rx-python, which is paused, `0.2.0 <= v < 0.4.0`.
+`0.2.0 <= v < 0.8.0`, and rx-python, which is paused, `0.2.0 <= v < 0.4.0`.
 A minor version past that range needs a backend release that widens it
 first; see the parity rules in `AGENTS.md`.
 
