@@ -226,6 +226,13 @@ export interface TreeNode extends TreeEntry {
   loading: boolean;
   children: TreeNode[];
   level: number;
+  /**
+   * A directory's log chains as `/v1/logs/chains` lists them, asked while
+   * chain mode is on; absent until they are listed, and when the listing
+   * failed. `children` keeps every entry `/v1/tree` lists either way
+   * (`utils/chainTree.ts` shows a chain in place of its parts).
+   */
+  chains?: readonly ChainEntry[];
 }
 
 /** A line of content with its line number */
