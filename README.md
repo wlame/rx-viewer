@@ -153,9 +153,14 @@ line while the chain is pending); a click opens the chain's tab there.
 **Rotation.** When the chain's files change on disk while its tab is open
 (the backend answers 409), a notice says how ("renamed 2, new 1,
 removed 1"), and the tab reloads and finds its line again by its time and
-text. A chain that is invalid after the change, or no chain any more,
+text; a notice says so when the line's text is not found again, and what
+the view shows instead. The search marks of the tab are dropped (search
+again). A chain that is invalid after the change, or no chain any more,
 becomes the file tab of the file that held the line, or closes with a
-notice when that file is gone.
+notice when that file is gone. Switching the mode checks the files first:
+a chain's tab finds its line in the renamed file before it becomes a
+file tab, and a file tab's line is looked for by its time and text when
+the chain shows other text at that line.
 
 ## Link parameters
 
