@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   historyModeFor,
+  chainModeInLink,
   parseViewState,
   serializeViewState,
   readViewState,
@@ -595,6 +596,34 @@ describe('a log chain in the URL', () => {
 
   it('leaves chain mode off for a link without it', () => {
     expect(parseViewState('?file=%2Fa.log').chains).toBe(false);
+  });
+
+  it.each([
+    ['?chains=1', true],
+    ['?chains=true', true],
+    ['?chains=0', false],
+    ['?chains=false', false],
+    ['?chains=yes', null],
+    ['?file=%2Fa.log', null],
+    ['', null],
+  ])('says whether the link %j names chain mode: %s', (query, expected) => {
+    expect(chainModeInLink(query)).toBe(expected);
+  });
+
+  it.each([
+    ['1', true],
+    ['true', true],
+    ['0', false],
+    ['', false],
+  ])('reads chain_parts=%j as listing the parts: %s', (value, expected) => {
+    expect(parseViewState(`?chain_parts=${value}`).chainParts).toBe(expected);
+  });
+
+  it('writes chain_parts=1 after chains=1, and nothing while it is off', () => {
+    expect(serializeViewState(view({ chains: true, chainParts: true }), '')).toBe(
+      '?chains=1&chain_parts=1',
+    );
+    expect(serializeViewState(view({ chains: true }), '')).toBe('?chains=1');
   });
 
   // The zone of a chain is kept under its tab key, apart from the zone of

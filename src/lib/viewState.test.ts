@@ -7,9 +7,10 @@ import { timeCursor } from './stores/timeCursor';
 import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
-import { chainMode } from './stores/chainMode';
+import { chainMode, chainPartsShown } from './stores/chainMode';
+import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
-import { fileViewOf, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
+import { fileViewOf, linkView, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_VIEW,
@@ -354,6 +355,7 @@ describe('restoreView', () => {
       category: 'error',
       tab: 'search',
       chains: false,
+      chainParts: false,
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
@@ -1006,5 +1008,70 @@ describe('chain mode in the URL', () => {
     await loadView(readViewState());
 
     expect(get(files).openFiles.some((f) => f.path === '/logs/small.log')).toBe(false);
+  });
+});
+
+describe('chain mode of a link that does not name it', () => {
+  it.each([
+    ['?chains=1', false, true],
+    ['?chains=0', true, false],
+    ['?file=%2Flogs%2Fa.log', true, true],
+    ['?file=%2Flogs%2Fa.log', false, false],
+    ['?chains=yes', true, true],
+  ])('opens %j with the mode last chosen %s in chain mode %s', (query, remembered, expected) => {
+    expect(linkView(query, remembered).chains).toBe(expected);
+  });
+
+  it('keeps the rest of the link as it reads', () => {
+    expect(linkView('?file=%2Flogs%2Fa.log&line=5', true)).toEqual({
+      ...DEFAULT_VIEW,
+      file: '/logs/a.log',
+      line: 5,
+      chains: true,
+    });
+  });
+});
+
+describe('the chain parts flag in the URL', () => {
+  let stopSync: () => void = () => {};
+
+  beforeEach(() => {
+    serveBackend();
+    stubWindow();
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    chainMode.set(false);
+    chainPartsShown.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('lists the parts for a link with chain_parts=1, and not for one without', async () => {
+    await restoreView({ ...DEFAULT_VIEW, chains: true, chainParts: true });
+    expect(get(chainPartsShown)).toBe(true);
+
+    await restoreView({ ...DEFAULT_VIEW, chains: true });
+    expect(get(chainPartsShown)).toBe(false);
+  });
+
+  it('keeps chain_parts=1 in the address bar', async () => {
+    stubWindow('?chains=1&chain_parts=1');
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(window.location.search).toBe('?chains=1&chain_parts=1');
+  });
+
+  // Only the switch is a choice; a link that turns the mode on is not.
+  it('remembers no mode a link turns on', async () => {
+    settings.update((current) => ({ ...current, chainMode: false }));
+
+    await loadView({ ...DEFAULT_VIEW, chains: true });
+
+    expect(get(chainMode)).toBe(true);
+    expect(get(settings).chainMode).toBe(false);
   });
 });

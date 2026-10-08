@@ -399,6 +399,11 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   sidebarWidth: number;
   monacoTheme: MonacoTheme;
+  /**
+   * The chain mode last chosen with the files panel's switch, which a
+   * link that does not name the mode (`chains=`) opens in.
+   */
+  chainMode: boolean;
 }
 
 export type Theme = 'light' | 'dark';

@@ -77,7 +77,7 @@ describe('editorThemeFor', () => {
 
 describe('parseSettings', () => {
   it('keeps every known setting with a valid value', () => {
-    const stored = { theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai' };
+    const stored = { theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai', chainMode: true };
     expect(parseSettings(stored)).toEqual(stored);
   });
 
@@ -89,7 +89,12 @@ describe('parseSettings', () => {
   });
 
   it('drops keys no control sets and values of the wrong kind', () => {
-    const parsed = parseSettings({ theme: 'sepia', sidebarWidth: '280', wrapLines: true });
+    const parsed = parseSettings({
+      theme: 'sepia',
+      sidebarWidth: '280',
+      wrapLines: true,
+      chainMode: 'on',
+    });
     expect(parsed).toEqual(DEFAULT_SETTINGS);
   });
 

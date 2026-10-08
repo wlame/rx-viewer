@@ -1,5 +1,5 @@
 import { derived, get } from 'svelte/store';
-import { chainMode } from './stores/chainMode';
+import { chainMode, chainPartsShown } from './stores/chainMode';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
 import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
@@ -9,7 +9,9 @@ import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
 import {
   DEFAULT_VIEW,
+  chainModeInLink,
   historyModeFor,
+  parseViewState,
   readViewState,
   serializeViewState,
   writeViewState,
@@ -106,11 +108,21 @@ export function chainPositionOf(view: Pick<ViewState, 'part' | 'line' | 'time'>)
 
 /** The view the stores describe now. */
 const currentView = derived(
-  [files, sidebarTab, chainMode, searchShowsOffsets, searchRequest, timeStash, fileZones],
-  ([$files, $tab, $chains, $offsets, $search, $stash, $fileZones]): ViewState => ({
+  [
+    files,
+    sidebarTab,
+    chainMode,
+    chainPartsShown,
+    searchShowsOffsets,
+    searchRequest,
+    timeStash,
+    fileZones,
+  ],
+  ([$files, $tab, $chains, $chainParts, $offsets, $search, $stash, $fileZones]): ViewState => ({
     ...tabViewOf(activeOpenFile($files)),
     tab: $tab,
     chains: $chains,
+    chainParts: $chainParts,
     offsets: $offsets,
     search: $search,
     stash: $stash,
@@ -293,6 +305,16 @@ async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<v
 }
 
 /**
+ * The view a page opens with: the one its query string describes, in
+ * the chain mode chosen last (`rememberedChainMode`) when the link does
+ * not name the mode. A link that names it wins.
+ */
+export function linkView(query: string, rememberedChainMode: boolean): ViewState {
+  const view = parseViewState(query);
+  return chainModeInLink(query) === null ? { ...view, chains: rememberedChainMode } : view;
+}
+
+/**
  * Bring the app to the view of the link it was opened with: the
  * timestamps stash and the file zones, then everything `restoreView`
  * restores. The zones come first, so the first requests for a file the
@@ -305,8 +327,9 @@ export async function loadView(view: ViewState): Promise<void> {
 }
 
 /**
- * Bring the app to the view a URL describes: chain mode, the results
- * switch, the search, the sidebar tab and the file. The stash and the
+ * Bring the app to the view a URL describes: chain mode and the chain
+ * parts flag, the results switch, the search, the sidebar tab and the
+ * file. The stash and the
  * file zones stay as they are. Resolves when the file's lines are
  * loaded. A later restore supersedes this one: Back pressed twice ends
  * on the second entry even when the first one's file is slower.
@@ -315,6 +338,7 @@ export async function restoreView(view: ViewState): Promise<void> {
   const generation = ++restoreGeneration;
   // A link to a chain's tab is a view in chain mode.
   chainMode.set(view.chains || view.chain !== null);
+  chainPartsShown.set(view.chainParts);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);

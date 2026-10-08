@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { health, settings, detectors } from '$lib/stores';
   import { contractRefused } from '$lib/stores/health';
-  import { readViewState } from '$lib/utils/urlState';
-  import { loadView, startViewSync } from '$lib/viewState';
+  import { linkView, loadView, startViewSync } from '$lib/viewState';
   import Header from './components/layout/Header.svelte';
   import Sidebar from './components/layout/Sidebar.svelte';
   import MainContent from './components/layout/MainContent.svelte';
@@ -19,11 +19,12 @@
     // Fetch detector metadata on app load (non-blocking)
     detectors.fetchDetectors();
 
-    // The link rebuilds the view. The URL follows the view only once that
-    // is done, so a half-restored view never overwrites the link.
+    // The link rebuilds the view, in the chain mode chosen last when it
+    // does not name the mode. The URL follows the view only once that is
+    // done, so a half-restored view never overwrites the link.
     let stopViewSync: (() => void) | null = null;
     let isDestroyed = false;
-    loadView(readViewState())
+    loadView(linkView(window.location.search, get(settings).chainMode))
       .catch((e) => console.error('Failed to restore the view from the URL:', e))
       .finally(() => {
         if (!isDestroyed) stopViewSync = startViewSync();

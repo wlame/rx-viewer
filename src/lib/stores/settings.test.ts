@@ -28,6 +28,29 @@ describe('settings', () => {
     expect(get(settings)).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('reads the chain mode chosen last back', async () => {
+    const stored = JSON.stringify({ ...DEFAULT_SETTINGS, chainMode: true });
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: () => stored, setItem: () => {} },
+    });
+
+    const { settings } = await import('./settings');
+
+    expect(get(settings).chainMode).toBe(true);
+  });
+
+  it('keeps the chain mode chosen for the page when storage refuses to save it', async () => {
+    blockStorage();
+    const { chainMode, chooseChainMode } = await import('./chainMode');
+    const { settings } = await import('./settings');
+
+    chooseChainMode(true);
+
+    expect(get(chainMode)).toBe(true);
+    expect(get(settings).chainMode).toBe(true);
+  });
+
   it('keeps a change for the page when storage refuses to save it', async () => {
     blockStorage();
     const { settings } = await import('./settings');

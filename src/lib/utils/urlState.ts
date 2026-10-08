@@ -92,6 +92,11 @@ export interface ViewState {
   tab: SidebarTab;
   /** Rotated logs are grouped into log chains (`chains=1`). */
   chains: boolean;
+  /**
+   * The files panel lists each chain's parts under its row
+   * (`chain_parts=1`): a flag for checking the chain rows.
+   */
+  chainParts: boolean;
   /** The search results show byte offsets instead of line numbers. */
   offsets: boolean;
   /** The last search run, or null for none. */
@@ -118,6 +123,7 @@ export const DEFAULT_VIEW: ViewState = {
   category: null,
   tab: 'tree',
   chains: false,
+  chainParts: false,
   offsets: false,
   search: null,
   stash: [],
@@ -383,6 +389,11 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     parse: (params) => isOn(params.get('chains')),
     serialize: (on) => (on ? [['chains', '1']] : []),
   },
+  chainParts: {
+    names: ['chain_parts'],
+    parse: (params) => isOn(params.get('chain_parts')),
+    serialize: (on) => (on ? [['chain_parts', '1']] : []),
+  },
   offsets: {
     names: ['offsets'],
     parse: (params) => isOn(params.get('offsets')),
@@ -420,6 +431,15 @@ function parseKey<K extends keyof ViewState>(key: K, params: URLSearchParams): V
 
 function serializeKey<K extends keyof ViewState>(key: K, view: ViewState): Param[] {
   return CODECS[key].serialize(view[key], view);
+}
+
+/**
+ * Whether a query string names chain mode: true or false for `chains=`
+ * `1` or `0` (`true`, `false`), null when it does not say (absent or
+ * unreadable), so that the mode chosen last applies.
+ */
+export function chainModeInLink(query: string): boolean | null {
+  return OPTIONAL_BOOLEANS[new URLSearchParams(query).get('chains') ?? ''] ?? null;
 }
 
 /** The view a query string (`?a=b…`, with or without the `?`) describes. */

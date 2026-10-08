@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { isChainModeOn } from './chainMode';
+import { afterEach, describe, expect, it } from 'vitest';
+import { get } from 'svelte/store';
+import { chainMode, chooseChainMode, isChainModeOn } from './chainMode';
+import { settings } from './settings';
 
 describe('isChainModeOn', () => {
   it.each([
@@ -13,4 +15,17 @@ describe('isChainModeOn', () => {
       expect(isChainModeOn(mode, { features })).toBe(expected);
     },
   );
+});
+
+describe('chooseChainMode', () => {
+  afterEach(() => chooseChainMode(false));
+
+  it.each([true, false])('sets the mode to %s and remembers it for a link without it', (on) => {
+    chooseChainMode(!on);
+
+    chooseChainMode(on);
+
+    expect(get(chainMode)).toBe(on);
+    expect(get(settings).chainMode).toBe(on);
+  });
 });
