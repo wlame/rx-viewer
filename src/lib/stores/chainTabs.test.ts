@@ -981,6 +981,27 @@ describe('a rotation while a chain tab is open', () => {
     );
   }
 
+  function fileTab(path: string): OpenFile {
+    const found = get(files).openFiles.find((f) => f.path === path);
+    if (!found) throw new Error(`${path} is not open`);
+    return found;
+  }
+
+  /** Serve the chain, and call `beforeRead` once, before the first read of a part as a file (`/v1/samples`). */
+  function hookFileSamples(beforeRead: () => void): void {
+    let isDone = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (!isDone && new URL(url, 'http://localhost').pathname === '/v1/samples') {
+          isDone = true;
+          beforeRead();
+        }
+        return chain.fetch(url, init);
+      }),
+    );
+  }
+
   /**
    * Rotate in two steps, as logrotate does: rename every file, then
    * compress the renamed B. The second step comes while the tab reads the
@@ -1079,6 +1100,56 @@ describe('a rotation while a chain tab is open', () => {
     expect(tab().anchorLine).toBe(1);
     expect(messages()).toContainEqual(
       expect.stringContaining('Cannot find the line app.log showed before its files changed'),
+    );
+  });
+
+  // A zone change reads the chain again; the files changed meanwhile, which
+  // only the description sent with the tab's fingerprint can tell.
+  it('finds its line in the renamed file when a zone change comes after a rotation it has not seen', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = anchorText();
+    chain.rotateTo(ROTATED, 'ready');
+
+    await files.setFileZone(KEY, '+02:00');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(readsOfNewAppLog1()).toEqual([]);
+    expect(anchorText()).toBe(before);
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+    expect(messages()).toContainEqual(expect.stringContaining('changed on disk'));
+  });
+
+  // rx-go answers 404 while the handle's file is missing, between the
+  // rename of the active file and the creation of the next one.
+  it('says the file tab it becomes shows other text when the handle names no chain after a rotation', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    chain.rotateTo(ROTATED, 'ready');
+    chain.isGone = true;
+
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() =>
+      expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.1']),
+    );
+    await vi.waitFor(() => expect(fileTab('/l/app.log.1').loading).toBe(false));
+
+    expect(messages()).toContainEqual(
+      'Line 500 of app.log.1 holds other text than app.log showed there: the file changed on disk',
+    );
+  });
+
+  it('says the file tab it becomes shows other text when its renamed file changes again before it reads it', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    chain.rotateTo(ROTATED, 'invalid');
+    hookFileSamples(() => chain.rotateTo([{ ...C, name: 'app.log.2.gz' }, D], 'invalid'));
+
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() =>
+      expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.2.gz']),
+    );
+    await vi.waitFor(() => expect(fileTab('/l/app.log.2.gz').loading).toBe(false));
+
+    expect(messages()).toContainEqual(
+      'Line 500 of app.log.2.gz holds other text than app.log showed there: the file changed on disk',
     );
   });
 

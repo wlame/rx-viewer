@@ -344,6 +344,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had it. A tab that stops reading because its files changed three times
   within a minute still names its line's file as it is called now, so
   turning the mode off then opens the file that holds the line.
+- Every way a log chain's tab, or the file tab it becomes, shows its line
+  again checks that line against the one it showed, by its text, or by
+  its time when the text is unknown: after a change of the files, a
+  reload in another zone, the end of the chain's indexing, a chain that
+  is no chain (a 404, as while the active file is renamed) or no valid
+  chain any more, and a mode switch. A reload in another zone now sends
+  the fingerprint of the files the tab holds, so a rotation the tab has
+  not seen is taken in like any other and the line is found in the
+  renamed file, where it used to read the file that took the old name.
+  Another line leaves the screen and the line is looked for by its time,
+  with a notice when it is not found. A file tab says so when its file
+  holds other text at the line, or no longer reaches it.
 - An older chain mode switch still waiting for the backend no longer
   moves a log chain's tab back over a newer view, such as the entry Back
   pressed twice lands on: a switch to the mode already set ends with the

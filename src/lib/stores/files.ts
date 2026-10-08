@@ -14,6 +14,7 @@ import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import { taskPolls } from '../utils/taskPolling';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { anchorAt } from '../utils/chainWindow';
+import type { KnownLine } from '../utils/knownLine';
 import type {
   OpenFile,
   FileMatch,
@@ -1057,10 +1058,10 @@ function createFilesStore() {
 
   /**
    * Bring a chain's tab up to its chain's files before chain mode turns
-   * it into a file tab; resolves its anchor line's text, or null when it
-   * knows none (`stores/chainTabs.ts`).
+   * it into a file tab; resolves what it knows of its anchor line, its
+   * text and time (`stores/chainTabs.ts`).
    */
-  function settleChain(key: TabKey): Promise<string | null> {
+  function settleChain(key: TabKey): Promise<KnownLine> {
     return chains.settle(key);
   }
 

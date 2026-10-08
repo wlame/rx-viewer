@@ -54,6 +54,7 @@ import {
   readGlobalWindow,
 } from '../utils/chainWindow';
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
+import { checkShownLine, fileLineNotice, heldLineAt, type KnownLine } from '../utils/knownLine';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
 import { retryAfterMs } from '../utils/retryAfter';
 import type { SampleWindow } from '../utils/sampleWindow';
@@ -271,29 +272,40 @@ function resolvePosition(position: ChainPosition, chain: ChainResponse): ChainPo
   return timeMs === null ? { kind: 'start' } : { kind: 'time', ms: timeMs };
 }
 
-/**
- * The line a tab showed before its chain's files changed, which it looks
- * for until it shows lines again: its time, and its text, or null for
- * either when the tab did not know it. A rotation never changes either.
- */
-interface LostLine {
-  timeMs: number | null;
-  text: string | null;
-}
-
 /** The line a tab looks for after a change of its chain's files, and where its file is now. */
-interface ChainChange extends LostLine {
+interface ChainChange extends KnownLine {
   /** The anchor in the file that held it, under that file's name now; null when that file is gone. */
   moved: ChainAnchor | null;
 }
+
+/**
+ * Where a tab's check of the line it shows ended (`checkLine`): `same`,
+ * it shows the line it knew there; `unknown`, it knew nothing to compare;
+ * `found`, it showed another line and found the known one again by its
+ * time (and text); `notFound`, no line has the known text (or time), and
+ * `where` says what the view shows; `stopped`, a newer load or change of
+ * the files took over, or the tab shows no line (it says why itself).
+ */
+type LineSearch =
+  { kind: 'same' | 'unknown' | 'found' | 'stopped' } | { kind: 'notFound'; where: string };
+
+const STOPPED: LineSearch = { kind: 'stopped' };
 
 /** The notice of a line a tab cannot show again: `what` names the line, `where` what the view shows. */
 function lineNotFoundNotice(what: string, where: string): string {
   return `Cannot find ${what}; ${where}`;
 }
 
-/** What a view shows after it looked for a line by its time. */
+/** What a view shows after it looked for a line by its time and found one at or after it. */
 const SHOWS_TIME_LINE = 'the view shows the first line at or after its time';
+
+/** What a view shows after it looked for a line by a time after the chain's last line. */
+const SHOWS_END = "the view shows the chain's end, before its time";
+
+/** What a view shows where it looked for a line by its time: the line at or after it, or the end. */
+function whereByTime(landed: FileLine, timeMs: number): string {
+  return (landed.timestampMs ?? -Infinity) >= timeMs ? SHOWS_TIME_LINE : SHOWS_END;
+}
 
 export function createChainTabs(deps: ChainTabDeps) {
   /** The description request of each chain tab; a newer one supersedes an older one. */
@@ -319,7 +331,7 @@ export function createChainTabs(deps: ChainTabDeps) {
    * shows lines again: a change that comes first keeps looking for the
    * same line, though the tab shows none of it or another one.
    */
-  const lostLines = new Map<TabKey, LostLine>();
+  const lostLines = new Map<TabKey, KnownLine>();
   /** How many times the files of each tab's chain changed, so a search for its line knows a newer one took over. */
   const changeCounts = new Map<TabKey, number>();
 
@@ -624,11 +636,14 @@ export function createChainTabs(deps: ChainTabDeps) {
   /**
    * The handle names no chain (any more): the tab closes, and the part
    * that held its anchor opens as a file at the anchor's line when the
-   * tab knows one; otherwise a notice says why.
+   * tab knows one; otherwise a notice says why. The handle names no chain
+   * while its files are being rotated too, so the file may hold other
+   * text at that line now: a notice says so (`openFileChecked`).
    */
   async function closeAsNoChain(key: TabKey): Promise<void> {
     const handle = handleOf(key);
     const anchor = chainOf(key)?.anchor ?? null;
+    const known = knownAnchorLine(key);
     forget(key);
     deps.closeTab(key);
     if (anchor === null) {
@@ -643,7 +658,23 @@ export function createChainTabs(deps: ChainTabDeps) {
       );
       return;
     }
-    await deps.openFileAt(path, anchor.line);
+    await openFileChecked(path, anchor.line, known, nameOf(handle));
+  }
+
+  /**
+   * Open the file `path` at `line`, as the file tab a chain's tab
+   * (`chainName`) becomes, and say so when the line it shows there is not
+   * the line the chain's tab knew (`known`): the file changed on disk.
+   */
+  async function openFileChecked(
+    path: string,
+    line: number,
+    known: KnownLine,
+    chainName: string,
+  ): Promise<void> {
+    await deps.openFileAt(path, line);
+    const notice = fileLineNotice(deps.getTab(path), line, known, chainName);
+    if (notice !== null) notifications.info(notice, NOTICE_MS);
   }
 
   /**
@@ -902,11 +933,13 @@ export function createChainTabs(deps: ChainTabDeps) {
    * by global numbers once the chain is ready, from a part before. The
    * answer's command, with each piece's command, goes to the command line
    * when `record` holds (a user's step, not a page while scrolling).
+   * Resolves whether the tab took the answer to this request: false when
+   * a newer load superseded it, it failed, or the chain's files changed.
    */
-  async function show(key: TabKey, position: ChainPosition, record = true): Promise<void> {
+  async function show(key: TabKey, position: ChainPosition, record = true): Promise<boolean> {
     const held = chainOf(key);
     const chain = held?.description;
-    if (!held || !chain) return;
+    if (!held || !chain) return false;
     const target = resolvePosition(position, chain);
     const request = requestFor(target, chain, held.counts);
     if (request === null) {
@@ -918,25 +951,26 @@ export function createChainTabs(deps: ChainTabDeps) {
         reachedStart: true,
         reachedEnd: true,
       }));
-      return;
+      return true;
     }
     deps.patchTab(key, () => ({ loading: true, error: null }));
     let answer: Awaited<ReturnType<typeof loadChainSamples>> | typeof SUPERSEDED;
     try {
       answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
     } catch (error) {
-      if (isAbortError(error)) return;
+      if (isAbortError(error)) return false;
       if (isNoChain(error)) await closeAsNoChain(key);
       else showFailure(key, error);
-      return;
+      return false;
     }
-    if (answer === SUPERSEDED) return;
+    if (answer === SUPERSEDED) return false;
     try {
-      await applyAnswer(key, target, request, answer, record);
+      return await applyAnswer(key, target, request, answer, record);
     } catch (error) {
       // An answer the tab cannot show, such as a piece that numbers its
       // lines with no whole number: the tab says why and shows no line.
       if (!isAbortError(error)) showError(key, error);
+      return false;
     }
   }
 
@@ -956,21 +990,25 @@ export function createChainTabs(deps: ChainTabDeps) {
     showError(key, error);
   }
 
-  /** What a window's answer does to the tab: its lines, a changed chain, or an invalid one. */
+  /**
+   * What a window's answer does to the tab: its lines, a changed chain, or
+   * an invalid one. Resolves whether the tab took it (`show`): a change
+   * of the chain's files is read again instead.
+   */
   async function applyAnswer(
     key: TabKey,
     position: ChainPosition,
     request: ChainRequest,
     answer: Exclude<LogSamplesAnswer, { kind: 'building' }>,
     record: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (answer.kind === 'changed') {
       await readAgainAfterChange(key, answer.chain);
-      return;
+      return false;
     }
     if (answer.kind === 'invalid') {
       showInvalid(key, answer.detail);
-      return;
+      return true;
     }
     const samples = answer.samples;
     const timeValue = timeValueOf(position);
@@ -978,14 +1016,12 @@ export function createChainTabs(deps: ChainTabDeps) {
       const tab = deps.getTab(key);
       const label = position.kind === 'time' ? timeLabelFor(position.ms, tab) : timeValue;
       notifications.info(`No line at or after ${label} in ${nameOf(handleOf(key))}`);
-      await show(key, { kind: 'end' }, record);
-      return;
+      return show(key, { kind: 'end' }, record);
     }
     const isEmpty = piecesOf(samples).length === 0;
     if (isEmpty && position.kind !== 'start' && position.kind !== 'end') {
       // A line past the end: the end is the nearest lines that exist.
-      await show(key, { kind: 'end' }, record);
-      return;
+      return show(key, { kind: 'end' }, record);
     }
     if (samples.state === 'ready') showGlobalWindow(key, position, samples);
     else showLocalWindow(key, request, samples);
@@ -997,6 +1033,7 @@ export function createChainTabs(deps: ChainTabDeps) {
         piecesOf(samples).map((p) => p.cli_command),
       );
     followAnswer(key, samples);
+    return true;
   }
 
   /**
@@ -1040,7 +1077,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     const change = noteChange(key, chain);
     if (change === null) return;
     if (chain.state === 'invalid') {
-      await leaveInvalidChain(key, chain, change.moved);
+      await leaveInvalidChain(key, chain, change);
       return;
     }
     await findAnchorAgain(key, chain, change);
@@ -1063,12 +1100,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     const tab = deps.getTab(key);
     const before = tab?.chain?.description ?? null;
     const anchor = tab?.chain?.anchor ?? null;
-    // A line still looked for since an earlier change is the one to find:
-    // the tab shows none of it now, or the line of another file.
-    const lost = lostLines.get(key) ?? {
-      timeMs: anchor?.timeMs ?? null,
-      text: tab && anchor ? anchorTextOf(tab, anchor) : null,
-    };
+    const lost = knownAnchorLine(key);
     lostLines.set(key, lost);
     changeCounts.set(key, (changeCounts.get(key) ?? 0) + 1);
     const changes = before === null ? null : compareParts(before.parts, chain.parts);
@@ -1099,12 +1131,10 @@ export function createChainTabs(deps: ChainTabDeps) {
     return { moved, ...lost };
   }
 
-  /** The text of the line the tab `key` is anchored on, or null when it holds no such line. */
-  function heldAnchorText(key: TabKey): string | null {
+  /** The line the tab `key` is anchored on, or null when it holds no such line. */
+  function heldAnchorLine(key: TabKey): FileLine | null {
     const tab = deps.getTab(key);
-    if (!tab) return null;
-    const line = tab.lines[tab.anchorLine - tab.startLine];
-    return line?.lineNumber === tab.anchorLine ? line.content : null;
+    return tab ? heldLineAt(tab, tab.anchorLine) : null;
   }
 
   /** Drop the lines of the tab `key`, which are not the line it looks for. */
@@ -1120,6 +1150,23 @@ export function createChainTabs(deps: ChainTabDeps) {
       line.part === anchor.part &&
       line.localLine === anchor.line;
     return isAnchorLine ? line.content : null;
+  }
+
+  /**
+   * What the tab `key` knows of its anchor line: the line it still looks
+   * for since a change of its files (it shows none of it now, or the line
+   * of another file), else the text of the anchor line it holds and the
+   * anchor's time; null for either it does not know.
+   */
+  function knownAnchorLine(key: TabKey): KnownLine {
+    const lost = lostLines.get(key);
+    if (lost !== undefined) return lost;
+    const tab = deps.getTab(key);
+    const anchor = tab?.chain?.anchor ?? null;
+    return {
+      text: tab && anchor ? anchorTextOf(tab, anchor) : null,
+      timeMs: anchor?.timeMs ?? null,
+    };
   }
 
   /**
@@ -1139,11 +1186,12 @@ export function createChainTabs(deps: ChainTabDeps) {
    * line with the anchor's text there, else to the time's line. Before
    * the chain is ready (a numbered rotation renames every part, and each
    * is indexed again), the file that held the anchor is read under its
-   * new name at the same line; a line there with other text (the rename
-   * map paired another file) leaves the screen, and the time is read.
-   * Without a time or that file, the chain's start. A notice says when
-   * the view shows no line with the anchor's text. A newer change of the
-   * files takes the search over.
+   * new name at the same line, and checked (`checkLine`): another line
+   * there (the rename map paired another file) leaves the screen, and the
+   * time is read. Without a time or that file, the chain's start. A
+   * notice says when the view shows no line with the anchor's text (or,
+   * without one, its time). A newer change of the files takes the search
+   * over.
    */
   async function findAnchorAgain(
     key: TabKey,
@@ -1152,57 +1200,93 @@ export function createChainTabs(deps: ChainTabDeps) {
   ): Promise<void> {
     const change = changeCounts.get(key);
     const isOvertaken = () => changeCounts.get(key) !== change;
+    let search: LineSearch;
     if (chain.state === 'ready' && timeMs !== null) {
-      await showByTimeAndText(key, timeMs, text);
-      if (!isOvertaken()) endLineSearch(key, text, SHOWS_TIME_LINE);
-      return;
-    }
-    if (moved !== null) {
+      search = await lookByTime(key, { text, timeMs }, false);
+    } else if (moved !== null) {
       await show(key, { kind: 'local', part: moved.part, line: moved.line, timeMs }, false);
       if (isOvertaken()) return;
-      const shown = heldAnchorText(key);
-      if (shown === null || text === null || shown === text || timeMs === null) {
-        const where = `the view shows line ${moved.line} of ${moved.part}, which holds other text now`;
-        endLineSearch(key, text, where);
-        return;
-      }
-      dropLines(key);
+      search = await checkLine(key, { text, timeMs }, false);
+    } else if (timeMs !== null) {
+      search = await lookByTime(key, { text, timeMs }, false);
+    } else {
+      await show(key, { kind: 'start' }, false);
+      const check = checkShownLine(heldAnchorLine(key), { text, timeMs });
+      search =
+        check === 'other'
+          ? { kind: 'notFound', where: "the view shows the chain's start" }
+          : { kind: check };
     }
-    if (timeMs !== null) {
-      await showByTimeAndText(key, timeMs, text);
-      if (!isOvertaken()) endLineSearch(key, text, SHOWS_TIME_LINE);
-      return;
-    }
-    await show(key, { kind: 'start' }, false);
-    if (!isOvertaken()) endLineSearch(key, text, "the view shows the chain's start");
+    if (!isOvertaken()) endLineSearch(key, search);
   }
 
   /**
    * End the search for the line the tab `key` showed before its files
-   * changed, once it shows lines again: a notice says when they hold no
-   * line with its text (`where` says what the view shows instead). A tab
-   * that shows no line (a failed read, which it says itself) looks for the
+   * changed, once it shows lines again: a notice says when it is not
+   * found (`search.where` says what the view shows instead). A tab that
+   * shows no line (a failed read, which it says itself) looks for the
    * same line at the next change.
    */
-  function endLineSearch(key: TabKey, text: string | null, where: string): void {
+  function endLineSearch(key: TabKey, search: LineSearch): void {
     const tab = deps.getTab(key);
     if (!tab || tab.lines.length === 0) return;
     lostLines.delete(key);
-    if (text === null || heldAnchorText(key) === text) return;
+    if (search.kind !== 'notFound') return;
     const what = `the line ${tab.name} showed before its files changed`;
-    notifications.info(lineNotFoundNotice(what, where), NOTICE_MS);
+    notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
   }
 
   /**
-   * Show the chain at the instant `ms`, then go to the nearest held line
-   * whose text is `text`, which the time's line and its context hold when
-   * several lines share the anchor's time.
+   * The one check of the line the tab `key` shows at its anchor after it
+   * read its chain again, against the line it knew there (`known`):
+   * after a change of the files, a reload in another zone, the end of an
+   * index task, a mode switch. The same line, or nothing known to
+   * compare, stays. Another line (or none) leaves the screen, and the
+   * known line is looked for by its time (`lookByTime`); without a time it
+   * stays, and the answer says the view shows other text.
    */
-  async function showByTimeAndText(key: TabKey, ms: number, text: string | null): Promise<void> {
-    await show(key, { kind: 'time', ms }, false);
+  async function checkLine(key: TabKey, known: KnownLine, record: boolean): Promise<LineSearch> {
+    const check = checkShownLine(heldAnchorLine(key), known);
+    if (check !== 'other') return { kind: check };
+    if (known.timeMs === null) return { kind: 'notFound', where: otherLineWhere(key) };
+    dropLines(key);
+    return lookByTime(key, { ...known, timeMs: known.timeMs }, record);
+  }
+
+  /** What the view of the tab `key` shows when its anchor line is another line than the one it knew. */
+  function otherLineWhere(key: TabKey): string {
+    const anchor = chainOf(key)?.anchor ?? null;
+    return anchor !== null && heldAnchorLine(key) !== null
+      ? `the view shows line ${anchor.line} of ${anchor.part}, which holds other text now`
+      : 'the view shows another line';
+  }
+
+  /**
+   * Show the chain at the known line's time, then go to the nearest held
+   * line with its text, which the time's line and its context hold when
+   * several lines share that time. Resolves `found` when the view shows a
+   * line with the known text (or, without one, the known time).
+   */
+  async function lookByTime(
+    key: TabKey,
+    known: KnownLine & { timeMs: number },
+    record: boolean,
+  ): Promise<LineSearch> {
+    const change = changeCounts.get(key);
+    const isShown = await show(key, { kind: 'time', ms: known.timeMs }, record);
+    if (!isShown || changeCounts.get(key) !== change) return STOPPED;
+    goToKnownLine(key, known);
+    const landed = heldAnchorLine(key);
+    if (landed === null) return STOPPED;
+    if (checkShownLine(landed, known) === 'same') return { kind: 'found' };
+    return { kind: 'notFound', where: whereByTime(landed, known.timeMs) };
+  }
+
+  /** Move the anchor of the tab `key` to the nearest held line with the known text, when it holds one. */
+  function goToKnownLine(key: TabKey, known: KnownLine): void {
     const tab = deps.getTab(key);
-    if (!tab || text === null) return;
-    const found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, text);
+    if (!tab || known.text === null) return;
+    const found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, known.text);
     if (found === null || found === tab.anchorLine) return;
     deps.patchTab(key, (t) => ({
       scrollToLine: found,
@@ -1218,12 +1302,13 @@ export function createChainTabs(deps: ChainTabDeps) {
    * The chain is invalid after its files changed: its tab becomes the
    * file tab of the file that held its anchor line, at that line, under
    * the file's name now; when that file is gone, or the tab had no
-   * anchor, the tab closes. A notice says which.
+   * anchor, the tab closes. A notice says which, and another when the
+   * file holds other text at the line (`openFileChecked`).
    */
   async function leaveInvalidChain(
     key: TabKey,
     chain: ChainResponse,
-    moved: ChainAnchor | null,
+    { moved, text, timeMs }: ChainChange,
   ): Promise<void> {
     const handle = handleOf(key);
     const codes = chain.reasons.map((reason) => reason.code).join(', ');
@@ -1240,7 +1325,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       `${chain.name} is no longer a valid log chain${codes ? ` (${codes})` : ''}; ${moved.part} opens as a file`,
       NOTICE_MS,
     );
-    await deps.openFileAt(partPath(handle, moved.part), moved.line);
+    await openFileChecked(partPath(handle, moved.part), moved.line, { text, timeMs }, chain.name);
   }
 
   /**
@@ -1273,55 +1358,48 @@ export function createChainTabs(deps: ChainTabDeps) {
    * Bring the tab `key` up to its chain's files before another tab takes
    * its line (chain mode turning off): the chain is described with the
    * tab's fingerprint, and a change is taken in (`refresh`), so the
-   * anchor names the file that holds the line now. Resolves the text of
-   * the anchor line: the line the tab holds, else the line it still looks
-   * for since a change; null when it knows neither.
+   * anchor names the file that holds the line now. Resolves what the tab
+   * knows of its anchor line (`knownAnchorLine`), which the file tab is
+   * checked against.
    */
-  async function settle(key: TabKey): Promise<string | null> {
+  async function settle(key: TabKey): Promise<KnownLine> {
     await refresh(key);
-    return heldAnchorText(key) ?? lostLines.get(key)?.text ?? null;
+    return knownAnchorLine(key);
   }
 
   /**
    * Check that the tab `key` shows at its anchor the line another tab
    * showed there: a file tab of one of the chain's parts, before chain
-   * mode turned on, which knew no fingerprint to send. Other text there
-   * means the files changed since that tab read them (a rotation renamed
-   * them): the other file's line leaves the screen, and the line is looked
-   * for by its time and text; a notice says when it is not found. Resolves
-   * whether the tab showed the line where the other tab had it, which it
-   * cannot tell (false) when either text is unknown.
+   * mode turned on, which knew no fingerprint to send. Another line there
+   * (or none) means the files changed since that tab read them (a
+   * rotation renamed them): it leaves the screen, and the line is looked
+   * for by its time and text (`checkLine`); a notice says when it is not
+   * found. Resolves whether the tab showed the line where the other tab
+   * had it, which it cannot tell (false) when that tab knew nothing of it.
    */
   async function confirmLine(key: TabKey, line: LineToFind): Promise<boolean> {
-    const shown = heldAnchorText(key);
-    if (shown === null || line.text === null) return false;
-    if (shown === line.text) return true;
-    const tab = deps.getTab(key);
-    const anchor = tab?.chain?.anchor ?? null;
-    const what = `${line.what} in ${tab?.name}, whose files changed since`;
-    if (line.timeMs === null) {
-      const where = anchor
-        ? `the view shows line ${anchor.line} of ${anchor.part}, which holds other text`
-        : 'the view shows another line';
-      notifications.info(lineNotFoundNotice(what, where), NOTICE_MS);
-      return false;
+    const search = await checkLine(key, line, false);
+    if (search.kind === 'notFound') {
+      const what = `${line.what} in ${deps.getTab(key)?.name}, whose files changed since`;
+      notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
     }
-    dropLines(key);
-    await showByTimeAndText(key, line.timeMs, line.text);
-    const after = deps.getTab(key);
-    if (after && after.lines.length > 0 && heldAnchorText(key) !== line.text) {
-      notifications.info(lineNotFoundNotice(what, SHOWS_TIME_LINE), NOTICE_MS);
-    }
-    return false;
+    return search.kind === 'same';
   }
 
   /**
    * Show the tab's anchor line again, by its part and its line in it; the
    * start without one. A tab that has not found its line since its files
    * changed looks for it by its time and text (`findAnchorAgain`), since
-   * its anchor's file may be another one.
+   * its anchor's file may be another one. The line it shows is checked
+   * against the line it knew (`known`, by default what it knows now):
+   * another line is looked for by its time, with a notice when it is not
+   * found (`checkLine`).
    */
-  async function showAnchorLine(key: TabKey, record: boolean): Promise<void> {
+  async function showAnchorLine(
+    key: TabKey,
+    record: boolean,
+    known: KnownLine = knownAnchorLine(key),
+  ): Promise<void> {
     const anchor = chainOf(key)?.anchor ?? null;
     const lost = lostLines.get(key);
     const chain = chainOf(key)?.description;
@@ -1329,11 +1407,19 @@ export function createChainTabs(deps: ChainTabDeps) {
       await findAnchorAgain(key, chain, { moved: anchor, ...lost });
       return;
     }
-    const position: ChainPosition =
-      anchor === null
-        ? { kind: 'start' }
-        : { kind: 'local', part: anchor.part, line: anchor.line, timeMs: anchor.timeMs };
-    await show(key, position, record);
+    if (anchor === null) {
+      await show(key, { kind: 'start' }, record);
+      return;
+    }
+    const change = changeCounts.get(key);
+    const position: ChainPosition = { kind: 'local', ...anchor };
+    const isShown = await show(key, position, record);
+    if (!isShown || changeCounts.get(key) !== change) return;
+    const search = await checkLine(key, known, record);
+    if (search.kind === 'notFound') {
+      const what = `the line ${deps.getTab(key)?.name} showed`;
+      notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
+    }
   }
 
   /**
@@ -1665,9 +1751,9 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /** Show the chain's end, as the user asks. */
-  function jumpToEnd(key: TabKey): Promise<void> {
+  async function jumpToEnd(key: TabKey): Promise<void> {
     lostLines.delete(key);
-    return show(key, { kind: 'end' });
+    await show(key, { kind: 'end' });
   }
 
   /**
@@ -1744,7 +1830,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     const changedMessage = `The files of ${chain.name} changed on disk while the jump ran; ask for the time again`;
     if (change === null) return { kind: 'refused', message: changedMessage };
     if (chain.state === 'invalid') {
-      await leaveInvalidChain(key, chain, change.moved);
+      await leaveInvalidChain(key, chain, change);
       return { kind: 'refused', message: `${chain.name} is no longer a valid log chain` };
     }
     const outcome: TimeJumpOutcome = isRetry
@@ -1805,14 +1891,31 @@ export function createChainTabs(deps: ChainTabDeps) {
     }
   }
 
+  /**
+   * The chain is described with the fingerprint of the files the tab
+   * holds, so a change of them since (a rotation it has not seen) is
+   * taken in as any other change. The anchor line is known by its text
+   * only: the anchor's time was read in the old zone, and a zone moves
+   * every time and never a text.
+   */
   async function readAgainInZone(key: TabKey): Promise<void> {
-    deps.patchTab(key, (tab) => ({ chain: tab.chain && { ...tab.chain, description: null } }));
+    const known: KnownLine = { text: knownAnchorLine(key).text, timeMs: null };
+    if (lostLines.has(key)) lostLines.set(key, known);
     const described = await describe(key);
-    if (described === null || described.chain.state === 'invalid') {
+    if (described === null) {
       deps.patchTab(key, () => ({ loading: false }));
       return;
     }
-    await showAnchorLine(key, true);
+    if (described.isChanged) {
+      lostLines.set(key, known);
+      await readAgainAfterChange(key, described.chain);
+      return;
+    }
+    if (described.chain.state === 'invalid') {
+      deps.patchTab(key, () => ({ loading: false }));
+      return;
+    }
+    await showAnchorLine(key, true, known);
   }
 
   /** Forget what was kept for the tab `key`; it is closing. */

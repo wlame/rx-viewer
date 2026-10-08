@@ -176,8 +176,14 @@ separate comment above, or eslint reads every word as another rule.
   `time`. The go-to box reads a global line or `part:line`
   (`parseChainLineTarget`, `utils/chainParts.ts`). Switching the mode
   turns tabs over through `stores/chainModeSwitch.ts`; a 409 is compared
-  by `utils/chainChanges.ts`. The README's "Log chains" and "Link
-  parameters" sections describe what a user sees.
+  by `utils/chainChanges.ts`. A tab never shows another file's line in
+  silence: every place that shows a chain's line again after its files
+  may have changed (a 409, a reload, a 404, a zone change, a mode
+  switch) checks it against the line it knew through `checkShownLine`
+  (`utils/knownLine.ts`; `checkLine` in `chainTabs.ts` for a chain's tab,
+  `fileLineNotice` for the file tab it becomes). A new such place uses
+  them too. The README's "Log chains" and "Link parameters" sections
+  describe what a user sees.
 - Svelte 4 counts an object prop as changed at every update of its
   owner, so a `$:` statement that reads `file` reruns at each progress
   tick and scroll. Work over the held lines goes through

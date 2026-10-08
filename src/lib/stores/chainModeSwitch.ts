@@ -39,6 +39,7 @@ import {
   type ChainMerge,
 } from '../utils/chainSwitch';
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
+import { fileLineNotice, type KnownLine } from '../utils/knownLine';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { chainMode } from './chainMode';
 import type { ChainPosition, LineToFind } from './chainTabs';
@@ -189,9 +190,9 @@ async function turnChainsIntoFiles(generation: number): Promise<void> {
     .openFiles.filter((f) => isChainKey(f.path))
     .map((f) => f.path);
   if (keys.length === 0) return;
-  const texts = await Promise.all(keys.map((key) => files.settleChain(key)));
+  const lines = await Promise.all(keys.map((key) => files.settleChain(key)));
   if (generation !== switchGeneration) return;
-  const textOf = new Map(keys.map((key, i) => [key, texts[i]]));
+  const lineOf = new Map(keys.map((key, i) => [key, lines[i]]));
 
   // The tabs as they are now: a chain that is no chain any more already became its part's file tab.
   const before = get(files);
@@ -203,7 +204,8 @@ async function turnChainsIntoFiles(generation: number): Promise<void> {
   turnTabs(() => {
     for (const tab of chainTabs) {
       const isActive = tab.path === before.activeFilePath;
-      const path = turnChainIntoFile(tab, isActive, loads, textOf.get(tab.path) ?? null);
+      const known = lineOf.get(tab.path) ?? { text: null, timeMs: null };
+      const path = turnChainIntoFile(tab, isActive, loads, known);
       if (isActive) active = path;
       revealed ??= path;
       if (isActive && path !== null) revealed = path;
@@ -219,14 +221,14 @@ async function turnChainsIntoFiles(generation: number): Promise<void> {
  * Turn one chain's tab into its part's file tab and return the file's
  * path; null when the tab knows no part yet, and closes. A part already
  * open as a file keeps its tab, moved to the line when the chain's tab
- * was the active one. `text` is the anchor line's text in the chain's
- * tab, which the file tab is checked against once it reads the line.
+ * was the active one. `known` is what the chain's tab knew of its anchor
+ * line, which the file tab is checked against once it reads the line.
  */
 function turnChainIntoFile(
   tab: OpenFile,
   isActive: boolean,
   loads: Promise<unknown>[],
-  text: string | null,
+  known: KnownLine,
 ): string | null {
   const target = fileTargetOfChainTab(tab);
   if (target === null) {
@@ -237,7 +239,7 @@ function turnChainIntoFile(
   const { path, line } = target;
   const name = nameOf(path);
   const marks = fileMatchesOfPart(get(files).matches.get(tab.path) ?? [], name);
-  const check = () => checkFileLine({ path, line, text, chainName: tab.name, marks });
+  const check = () => checkFileLine({ path, line, known, chainName: tab.name, marks });
   if (placeOf(path) >= 0) {
     files.closeFile(tab.path);
     if (isActive) loads.push(files.jumpToLine(path, line).then(check));
@@ -266,33 +268,30 @@ function turnChainIntoFile(
   return path;
 }
 
-/** A file tab a chain's tab turned into, with what the chain's tab showed at its line. */
+/** A file tab a chain's tab turned into, with what the chain's tab knew of its line. */
 interface TurnedFile {
   path: string;
   line: number;
-  /** The text the chain's tab showed at the line, or null when it held none. */
-  text: string | null;
+  /** The text and time of the line the chain's tab showed there, each null when it did not know it. */
+  known: KnownLine;
   chainName: string;
   /** The search marks carried into the file tab. */
   marks: FileMatch[];
 }
 
 /**
- * Say so when a file tab a chain's tab turned into shows other text at
- * its line than the chain's tab showed: the file changed on disk while
- * the mode switched. The marks carried with it are dropped then.
+ * Say so when a file tab a chain's tab turned into shows another line at
+ * its line than the chain's tab showed, or holds no such line: the file
+ * changed on disk while the mode switched (`fileLineNotice`). The marks
+ * carried with it are dropped then.
  */
-function checkFileLine({ path, line, text, chainName, marks }: TurnedFile): void {
+function checkFileLine({ path, line, known, chainName, marks }: TurnedFile): void {
   const tab = get(files).openFiles.find((f) => f.path === path);
-  if (!tab || text === null) return;
-  const held = tab.lines[line - tab.startLine];
-  if (held?.lineNumber !== line || held.content === text) return;
+  const notice = fileLineNotice(tab, line, known, chainName);
+  if (notice === null) return;
   const dropsMarks = marks.length > 0 && get(files).matches.get(path) === marks;
   if (dropsMarks) files.setMatches(path, []);
-  notifications.info(
-    `Line ${line} of ${nameOf(path)} holds other text than ${chainName} showed there: the file changed on disk${dropsMarks ? '; search again' : ''}`,
-    NOTICE_MS,
-  );
+  notifications.info(`${notice}${dropsMarks ? '; search again' : ''}`, NOTICE_MS);
 }
 
 /**

@@ -240,6 +240,36 @@ describe('switching chain mode after a rotation the tabs have not seen', () => {
     );
   });
 
+  // The rotation comes between the switch's description and the file
+  // tab's read, and the file that takes the part's name ends before the line.
+  it("says so when the part's file no longer reaches the line by the time its file tab reads it", async () => {
+    const shortC: FakePart = { ...C, lines: 10, size: 600 };
+    const chain = await serve({ parts: [A, B, shortC] });
+    chainMode.set(true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (new URL(url, 'http://localhost').pathname === '/v1/samples') {
+          chain.rotateTo([
+            ROTATED[0],
+            { ...shortC, name: 'app.log.1', isActive: false },
+            ROTATED[2],
+          ]);
+        }
+        return chain.fetch(url, init);
+      }),
+    );
+
+    await switchChainMode(false);
+    await settled('/l/app.log.1');
+
+    expect(lineInView('/l/app.log.1').text ?? '').not.toContain('B local=500');
+    expect(messages()).toContainEqual(
+      'app.log.1 holds no line 500 now, where app.log showed one: the file changed on disk',
+    );
+  });
+
   it("turns a file tab into the chain's tab at the line it showed after its file was renamed, without its marks", async () => {
     const chain = await serve({ parts: [A, B, C] });
     await files.openFile('/l/app.log.1', { scrollToLine: 500 });
