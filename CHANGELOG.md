@@ -264,6 +264,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A link whose `highlight` or `chains` is the name of a property every
   JavaScript object has, such as `constructor` or `__proto__`, is read
   as one that does not name it, rather than as switched on.
+- A file named `constructor` or `__proto__`, or with such an extension,
+  opens with the log grammar like any other file of unknown type,
+  rather than with a property of the language table; and a task whose
+  status is such a name is followed on, not taken as ended.
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.

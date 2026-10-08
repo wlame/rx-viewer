@@ -105,20 +105,22 @@ export const FILENAME_LANGUAGES: Record<string, string> = {
 };
 
 /**
- * Detect Monaco language ID from filename
+ * Detect Monaco language ID from filename. A file name is outside text,
+ * so the tables are asked for their own keys only: a file named
+ * `constructor` or `x.__proto__` names no language.
  */
 export function detectMonacoLanguage(filename: string): string {
   const lowerName = filename.toLowerCase();
 
   // Check special filenames first
   const baseName = lowerName.split('/').pop() || lowerName;
-  if (FILENAME_LANGUAGES[baseName]) {
+  if (Object.hasOwn(FILENAME_LANGUAGES, baseName)) {
     return FILENAME_LANGUAGES[baseName];
   }
 
   // Check extension
   const ext = baseName.split('.').pop()?.toLowerCase();
-  if (ext && EXTENSION_LANGUAGES[ext]) {
+  if (ext && Object.hasOwn(EXTENSION_LANGUAGES, ext)) {
     return EXTENSION_LANGUAGES[ext];
   }
 

@@ -16,11 +16,18 @@ import type { TabKey } from './tabKey';
 /** Reads one task status; the signal cancels the request. */
 export type FetchTaskStatus = (taskId: string, signal: AbortSignal) => Promise<TaskStatus>;
 
-/** What a task status means for the poll loop. A status not listed keeps the poll going. */
-const TASK_OUTCOME: Record<string, 'completed' | 'failed'> = {
-  completed: 'completed',
-  failed: 'failed',
-};
+/** A task status that ends the poll loop. */
+type TaskOutcome = 'completed' | 'failed';
+
+/**
+ * What a task status means for the poll loop. A status not listed keeps
+ * the poll going. A Map, so a status that names a property every object
+ * has (`constructor`) is no outcome.
+ */
+const TASK_OUTCOME: ReadonlyMap<string, TaskOutcome> = new Map<string, TaskOutcome>([
+  ['completed', 'completed'],
+  ['failed', 'failed'],
+]);
 
 const DEFAULT_INTERVAL_MS = 1000;
 
@@ -121,7 +128,7 @@ export async function watchTask(taskId: string, options: PollOptions): Promise<T
     if (task) {
       wasSeen = true;
       onStatus?.(task);
-      const outcome = TASK_OUTCOME[task.status];
+      const outcome = TASK_OUTCOME.get(task.status);
       if (outcome) return { kind: outcome, task };
     }
 

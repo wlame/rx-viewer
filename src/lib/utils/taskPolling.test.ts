@@ -301,6 +301,21 @@ describe('watchTask', () => {
     await expect(end).resolves.toMatchObject({ kind: 'gone', wasSeen: false });
   });
 
+  // A status is the backend's text: a name every object has is no outcome.
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty'])(
+    'keeps watching a task whose status reads %s',
+    async (status) => {
+      const end = watch(statuses(task(status), task('completed', CHAIN_RESULT)));
+
+      await advance(2);
+
+      await expect(end).resolves.toEqual({
+        kind: 'completed',
+        task: task('completed', CHAIN_RESULT),
+      });
+    },
+  );
+
   it('rejects after several failed status requests in a row', async () => {
     const end = watch(statuses(new TypeError('Failed to fetch')));
     end.catch(() => {});

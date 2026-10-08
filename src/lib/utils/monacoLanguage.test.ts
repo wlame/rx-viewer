@@ -51,4 +51,16 @@ describe('detectMonacoLanguage', () => {
   ])('reads %s as %s', (name, expected) => {
     expect(detectMonacoLanguage(name)).toBe(expected);
   });
+
+  // A file name is outside text: a name every object has is no language.
+  it.each([
+    'constructor',
+    '__proto__',
+    'toString',
+    'app.constructor',
+    'app.__proto__',
+    'x.valueOf',
+  ])('reads %s as a log', (name) => {
+    expect(detectMonacoLanguage(name)).toBe('logfile');
+  });
 });
