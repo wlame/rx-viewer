@@ -533,6 +533,36 @@ describe('a log chain in the URL', () => {
     );
   });
 
+  it("reads the fingerprint of the chain's files beside the chain", () => {
+    const query = '?chain=%2Fvar%2Flog%2Fapp.log&part=app.log.1&line=500&fp=00000000000000a1';
+
+    expect(parseViewState(query)).toEqual(
+      view({ chain: handle, part: 'app.log.1', line: 500, fingerprint: '00000000000000a1' }),
+    );
+  });
+
+  // rx-go writes a fingerprint as 16 lowercase hex digits.
+  it.each([
+    ['upper case', '00000000000000A1'],
+    ['15 digits', '0000000000000a1'],
+    ['17 digits', '000000000000000a1'],
+    ['not hex', '00000000000000g1'],
+    ['empty', ''],
+    ['an inherited name', 'constructor'],
+  ])(
+    'reads a fingerprint that is not 16 hex digits (%s) as none, and keeps the chain',
+    (_name, fp) => {
+      const parsed = parseViewState(new URLSearchParams({ chain: handle, fp }).toString());
+
+      expect(parsed.fingerprint).toBeNull();
+      expect(parsed.chain).toBe(handle);
+    },
+  );
+
+  it('reads a fingerprint without a chain as none', () => {
+    expect(parseViewState('?file=%2Fa.log&fp=00000000000000a1').fingerprint).toBeNull();
+  });
+
   it('keeps the chain of a link that names a file too', () => {
     const parsed = parseViewState('?file=%2Fvar%2Flog%2Fapp.log.1&chain=%2Fvar%2Flog%2Fapp.log');
 
@@ -647,6 +677,7 @@ describe('a log chain in the URL', () => {
       part,
       line: 500,
       time: instant,
+      fingerprint: '0123456789abcdef',
       fileZones: [
         { path: chain, zone: 'UTC' },
         { path: `chain:${chain}`, zone: '+05:30' },
@@ -667,6 +698,21 @@ describe('a log chain in the URL', () => {
 
   it('writes no part without a chain', () => {
     expect(serializeViewState(view({ file: '/a.log', part: 'app.log.1' }), '')).toBe(
+      '?file=%2Fa.log',
+    );
+  });
+
+  it("writes the fingerprint of the chain's files as fp after the line and its time", () => {
+    const query = serializeViewState(
+      view({ chain: handle, part: 'app.log.1', line: 500, fingerprint: '00000000000000a1' }),
+      '',
+    );
+
+    expect(query).toBe('?chain=%2Fvar%2Flog%2Fapp.log&part=app.log.1&line=500&fp=00000000000000a1');
+  });
+
+  it('writes no fingerprint without a chain', () => {
+    expect(serializeViewState(view({ file: '/a.log', fingerprint: '00000000000000a1' }), '')).toBe(
       '?file=%2Fa.log',
     );
   });
@@ -705,6 +751,22 @@ describe('a log chain in the URL', () => {
         name: 'moving the line into another part',
         previous: view({ chain: handle, part: 'app.log.2.gz', line: 9 }),
         next: view({ chain: handle, part: 'app.log.1', line: 4 }),
+        mode: 'replace',
+      },
+      {
+        name: "the chain's files changing on disk",
+        previous: view({
+          chain: handle,
+          part: 'app.log.1',
+          line: 4,
+          fingerprint: '00000000000000a1',
+        }),
+        next: view({
+          chain: handle,
+          part: 'app.log.2.gz',
+          line: 4,
+          fingerprint: '00000000000000b2',
+        }),
         mode: 'replace',
       },
       { name: 'closing the chain', previous: chainA, next: DEFAULT_VIEW, mode: 'replace' },

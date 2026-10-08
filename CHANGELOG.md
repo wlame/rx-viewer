@@ -365,6 +365,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now. A link whose part is gone says so too. Back and Forward check an
   entry the same way, unless the chain is read in another zone than when
   the entry was made, since a zone moves every time.
+- A link to a line of a log chain carries the fingerprint of the
+  chain's files it was made on (`fp=`). After a rotation its part's name
+  may hold another file; a link whose fingerprint is not the chain's now
+  no longer shows that file's line, even for a moment, and no longer
+  needs a time to tell. It goes by the link's time, and without one (a
+  line without a timestamp, such as one at the head of a part before the
+  chain is ready) it opens at the chain's start and says "The files of
+  NAME changed since this link was made; the line could not be found
+  again". A global line in such a link opens at the start the same way.
+  Back and Forward do the same with an entry, after the chain's open tab
+  takes in any change it has not seen yet, and a time written in another
+  zone than the chain is read in is not used. A `file=` link that names
+  a part in chain mode, which carries no fingerprint, is checked against
+  its time when it names one.
 - A log chain's tab that knew both the text and the time of its line
   knows it again only by both, where it used to go by the text alone: a
   file the rotation paired by mistake, whose line there holds the same

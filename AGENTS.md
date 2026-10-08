@@ -172,15 +172,19 @@ separate comment above, or eslint reads every word as another rule.
   the parts list of the chain's tab. A chain's tab (`stores/chainTabs.ts`)
   numbers its lines by global line once the chain is ready and by each
   part's base before (`utils/chainWindow.ts`), and a link names its
-  anchor as `chain`, `part` (a bare file name), `line` (in that part) and
-  `time`. The go-to box reads a global line or `part:line`
+  anchor as `chain`, `part` (a bare file name), `line` (in that part),
+  `time` and `fp`, the fingerprint of the files it read the line in. A
+  link whose `fp` is not the chain's now never reads its part's line: it
+  goes by its time, or to the start, with a notice (`showChangedLink`).
+  The go-to box reads a global line or `part:line`
   (`parseChainLineTarget`, `utils/chainParts.ts`). Switching the mode
   turns tabs over through `stores/chainModeSwitch.ts`; a 409 is compared
   by `utils/chainChanges.ts`. A tab never shows another file's line in
   silence: every place that shows a chain's line again after its files
   may have changed (a 409, a reload, a 404, a zone change, a mode
-  switch, a link through `checkLinkLine`) checks it against the line it
-  knew through `checkShownLine` (`utils/knownLine.ts`; `checkLine` in
+  switch, a link without `fp` through `checkLinkLine`) checks it against
+  the line it knew through `checkShownLine` (`utils/knownLine.ts`, by
+  text and time, a time only in the zone it was read in; `checkLine` in
   `chainTabs.ts` for a chain's tab, `fileLineNotice` for the file tab it
   becomes). A new such place uses them too. The README's "Log chains" and "Link parameters" sections
   describe what a user sees.

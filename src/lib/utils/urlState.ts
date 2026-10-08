@@ -3,7 +3,8 @@
  *
  * The URL names what a user would bookmark, share or come back to: the
  * active file or log chain, the line its view is anchored on or the
- * time it jumped to, its highlighting, filter and anomaly category, the
+ * time it jumped to (in a chain, with the fingerprint of the files that
+ * line was read in), its highlighting, filter and anomaly category, the
  * sidebar tab, whether rotated logs are grouped into chains, the last
  * search, whether its results show byte offsets, the timestamps stash,
  * and the time zones chosen for files and chains. Each key has one row
@@ -83,6 +84,13 @@ export interface ViewState {
    * after it; with both, the line wins.
    */
   time: number | null;
+  /**
+   * The fingerprint of the active chain's files that `part` and `line`
+   * name a line of, or null; always null without a chain. When the
+   * chain's files are others when the link is opened, `part` may name
+   * another file and `line` another line.
+   */
+  fingerprint: string | null;
   /** Syntax highlighting on or off; null means the file's size-based default. */
   highlight: boolean | null;
   /** The active file's regex filter, or null for none. */
@@ -113,6 +121,7 @@ export const DEFAULT_VIEW: ViewState = {
   part: null,
   line: null,
   time: null,
+  fingerprint: null,
   highlight: null,
   filter: null,
   category: null,
@@ -209,6 +218,16 @@ function parsePart(params: URLSearchParams): string | null {
   const part = params.get('part');
   if (part === null || parseChain(params) === null) return null;
   return isBareName(part) ? part : null;
+}
+
+/** A fingerprint of a chain's files as rx writes one: 16 lowercase hex digits. */
+const FINGERPRINT = /^[0-9a-f]{16}$/;
+
+/** The fingerprint a link names: 16 lowercase hex digits, and only beside a chain; otherwise null. */
+function parseFingerprint(params: URLSearchParams): string | null {
+  const fingerprint = params.get('fp');
+  if (fingerprint === null || parseChain(params) === null) return null;
+  return FINGERPRINT.test(fingerprint) ? fingerprint : null;
 }
 
 /** A whole number written in plain digits, from `min` up to the safe-integer limit, or null. */
@@ -348,6 +367,13 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     // scroll may change, so its time is no step.
     isStep: (previous, next, nextView) =>
       nextView.chain === null && next !== null && next !== previous,
+  },
+  // The chain's files changing on disk rewrites the entry.
+  fingerprint: {
+    names: ['fp'],
+    parse: parseFingerprint,
+    serialize: (fingerprint, view) =>
+      fingerprint === null || view.chain === null ? [] : [['fp', fingerprint]],
   },
   highlight: {
     names: ['highlight'],

@@ -271,6 +271,12 @@ export interface ChainAnchor {
   part: string;
   line: number;
   timeMs: number | null;
+  /**
+   * The fingerprint of the files a link named this line in, while the tab
+   * has not read the line yet; absent for a line the tab read, which its
+   * description's fingerprint names.
+   */
+  fingerprint?: string;
 }
 
 /**

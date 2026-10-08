@@ -24,7 +24,7 @@ import { nameOf } from './utils/chainSwitch';
 import { fileZoneOf } from './utils/fileZones';
 import { chainHandleOf, chainKey } from './utils/tabKey';
 import type { ChainPosition } from './stores/chainTabs';
-import type { OpenFile, TreeNode } from './types';
+import type { ChainTab, OpenFile, TreeNode } from './types';
 
 /**
  * The URL and the app's state, kept equal in both directions.
@@ -72,19 +72,33 @@ export function fileViewOf(file: OpenFile | undefined): FileView {
 }
 
 /** The part of the view that belongs to the active tab, a file's or a chain's. */
-type TabView = FileView & Pick<ViewState, 'chain' | 'part'>;
+type TabView = FileView & Pick<ViewState, 'chain' | 'part' | 'fingerprint'>;
+
+/**
+ * The fingerprint of the files a chain's tab names its anchor line in:
+ * the one a link named it with while the tab has not read it, else that
+ * of the tab's description, from whose files it read the line. Null
+ * without an anchor or before the tab knows either.
+ */
+function anchorFingerprintOf(chain: ChainTab | undefined): string | null {
+  const anchor = chain?.anchor ?? null;
+  if (anchor === null) return null;
+  return anchor.fingerprint ?? chain?.description?.fingerprint ?? null;
+}
 
 /**
  * What the URL says about the active tab. A file's tab is its
  * `fileViewOf`, with no chain. A chain's tab names the chain by its
  * handle, never as a file, and its anchor line by the part that holds
- * it, its line in that part (left out at line 1) and its timestamp,
- * which finds the line again when the part is gone.
+ * it, its line in that part (left out at line 1), its timestamp, which
+ * finds the line again when the part is gone, and the fingerprint of the
+ * files it read the line in, which tells a link opened after a rotation
+ * that the part's name may hold another file.
  */
 export function tabViewOf(tab: OpenFile | undefined): TabView {
   const view = fileViewOf(tab);
   const handle = tab ? chainHandleOf(tab.path) : null;
-  if (handle === null) return { ...view, chain: null, part: null };
+  if (handle === null) return { ...view, chain: null, part: null, fingerprint: null };
   const anchor = tab?.chain?.anchor ?? null;
   return {
     ...view,
@@ -93,20 +107,25 @@ export function tabViewOf(tab: OpenFile | undefined): TabView {
     part: anchor?.part ?? null,
     line: anchor !== null && anchor.line > 1 ? anchor.line : null,
     time: anchor?.timeMs ?? null,
+    fingerprint: anchorFingerprintOf(tab?.chain),
   };
 }
 
 /**
  * Where a link puts a chain's tab: at a part's line (line 1 without a
  * line), found again by the time when the part is gone; at a time; at a
- * global line; or at its start.
+ * global line; or at its start. A part's line and a global line carry
+ * the fingerprint of the files the link named them in.
  */
-export function chainPositionOf(view: Pick<ViewState, 'part' | 'line' | 'time'>): ChainPosition {
+export function chainPositionOf(
+  view: Pick<ViewState, 'part' | 'line' | 'time' | 'fingerprint'>,
+): ChainPosition {
+  const { fingerprint } = view;
   if (view.part !== null) {
-    return { kind: 'local', part: view.part, line: view.line ?? 1, timeMs: view.time };
+    return { kind: 'local', part: view.part, line: view.line ?? 1, timeMs: view.time, fingerprint };
   }
   if (view.time !== null) return { kind: 'time', ms: view.time };
-  if (view.line !== null) return { kind: 'global', line: view.line };
+  if (view.line !== null) return { kind: 'global', line: view.line, fingerprint };
   return { kind: 'start' };
 }
 
@@ -251,31 +270,56 @@ async function showFile(
   return { loaded: Promise.all([loaded, jumpToViewTime(path, time)]).then(() => undefined) };
 }
 
-/** Whether a chain's tab is on the position a view names. */
+/**
+ * Whether a chain's tab is on the position a view names: at its part and
+ * line, or its global line, in the files the view names them in.
+ */
 function isOnPosition(tab: OpenFile, position: ChainPosition): boolean {
   const anchor = tab.chain?.anchor ?? null;
   if (position.kind === 'local') {
-    return anchor !== null && anchor.part === position.part && anchor.line === position.line;
+    const isSameFiles =
+      position.fingerprint == null || position.fingerprint === anchorFingerprintOf(tab.chain);
+    return (
+      isSameFiles &&
+      anchor !== null &&
+      anchor.part === position.part &&
+      anchor.line === position.line
+    );
   }
-  if (position.kind === 'global')
-    return tab.chain?.numbering === 'global' && tab.anchorLine === position.line;
+  if (position.kind === 'global') {
+    const isSameFiles =
+      position.fingerprint == null || position.fingerprint === tab.chain?.description?.fingerprint;
+    return isSameFiles && tab.chain?.numbering === 'global' && tab.anchorLine === position.line;
+  }
   return false;
+}
+
+/** `position` without the time of its line: a time that names another instant names nothing. */
+function withoutLineTime(position: ChainPosition): ChainPosition {
+  return position.kind === 'local' ? { ...position, timeMs: null } : position;
 }
 
 /**
  * Open the chain a view names, or bring its tab forward, at the view's
  * part and line (by its time when the part is gone), or at `position`,
- * with its highlighting and filter. Resolves when its lines arrive. The
- * line a view names by its part, line and time is checked once shown
- * (`files.checkChainLinkLine`): after a rotation the part's name may hold
- * another file, and the time finds the line.
+ * with its highlighting and filter. Resolves when its lines arrive.
+ *
+ * A link made on files that are not the chain's now (its fingerprint is
+ * another) goes by the time of its line, or to the start without one,
+ * with a notice (`stores/chainTabs.ts`): after a rotation the part's
+ * name may hold another file. A link without a fingerprint names the
+ * files as they are when it is opened; its line is checked once shown
+ * (`files.checkChainLinkLine`) against its time, when it has one. The
+ * time of a line written in another zone than the chain is read in now
+ * names another instant, and is not used.
  */
 async function showChain(
   handle: string,
   view: ViewState,
-  position: ChainPosition = chainPositionOf(view),
+  named: ChainPosition = chainPositionOf(view),
 ): Promise<void> {
   const key = chainKey(handle);
+  const position = isReadInViewZone(view, key) ? named : withoutLineTime(named);
   const open = get(files).openFiles.find((f) => f.path === key);
   if (open) {
     files.setActiveFile(key);
@@ -290,7 +334,7 @@ async function showChain(
     files.setRegexFilter(key, view.filter);
     await loaded;
   }
-  if (position.kind === 'local' && isReadInViewZone(view, key)) {
+  if (position.kind === 'local' && position.fingerprint == null) {
     await files.checkChainLinkLine(key, {
       part: position.part,
       line: position.line,
@@ -311,12 +355,14 @@ function isReadInViewZone(view: Pick<ViewState, 'fileZones'>, key: string): bool
 
 /**
  * Where a chain's tab goes for a view that names one of its parts as a
- * file: the file's line in that part, or the time the view jumped the
- * file to.
+ * file: the file's line in that part, checked against the view's time
+ * when it names one too, or the time the view jumped the file to. A file
+ * view carries no fingerprint: it names the file at its path when it is
+ * opened.
  */
 function partPosition(path: string, view: ViewState): ChainPosition {
   if (view.line === null && view.time !== null) return { kind: 'time', ms: view.time };
-  return { kind: 'local', part: nameOf(path), line: view.line ?? 1, timeMs: null };
+  return { kind: 'local', part: nameOf(path), line: view.line ?? 1, timeMs: view.time };
 }
 
 /**

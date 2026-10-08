@@ -81,15 +81,26 @@ import { tree } from './tree';
 /**
  * Where a chain's tab goes: its start or end, a global line, a part's
  * line, a time (an instant), or a time as a person typed it, which the
- * backend reads.
+ * backend reads. A link's global line or part's line carries the
+ * `fingerprint` of the files it names it in: in other files the line may
+ * be another.
  */
 export type ChainPosition =
   | { kind: 'start' }
   | { kind: 'end' }
-  | { kind: 'global'; line: number }
-  | { kind: 'local'; part: string; line: number; timeMs?: number | null }
+  | { kind: 'global'; line: number; fingerprint?: string | null }
+  | {
+      kind: 'local';
+      part: string;
+      line: number;
+      timeMs?: number | null;
+      fingerprint?: string | null;
+    }
   | { kind: 'time'; ms: number }
   | { kind: 'typedTime'; text: string };
+
+/** A position a link names by a line of the files of its fingerprint. */
+type LinkedPosition = Extract<ChainPosition, { kind: 'global' | 'local' }>;
 
 /** What the files store hands the chain tabs: its tabs, and its request slot per tab. */
 export interface ChainTabDeps {
@@ -202,10 +213,28 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The anchor a position names before its line is read: only a part's line names one. */
+/**
+ * The anchor a position names before its line is read: only a part's
+ * line names one, in the files of its fingerprint when it has one.
+ */
 function anchorOfPosition(position: ChainPosition): ChainAnchor | null {
   if (position.kind !== 'local') return null;
-  return { part: position.part, line: position.line, timeMs: position.timeMs ?? null };
+  const anchor: ChainAnchor = {
+    part: position.part,
+    line: position.line,
+    timeMs: position.timeMs ?? null,
+  };
+  return position.fingerprint == null ? anchor : { ...anchor, fingerprint: position.fingerprint };
+}
+
+/**
+ * `position` when it names a line of other files than `chain` describes
+ * (a link's line, made on files of another fingerprint), else null.
+ */
+function linkOfOtherFiles(position: ChainPosition, chain: ChainResponse): LinkedPosition | null {
+  if (position.kind !== 'local' && position.kind !== 'global') return null;
+  const isOther = position.fingerprint != null && position.fingerprint !== chain.fingerprint;
+  return isOther ? position : null;
 }
 
 /** A new chain tab, loading, with nothing known of the chain yet. */
@@ -270,11 +299,23 @@ function countsOf(chain: ChainResponse): Map<string, number> {
   return counts;
 }
 
-/** The position a target names in a chain as described: a gone part falls back to its time. */
+/**
+ * The position a target names in a chain as described: a gone part, or
+ * a line a link names in other files, falls back to its time, else to
+ * the start.
+ */
 function resolvePosition(position: ChainPosition, chain: ChainResponse): ChainPosition {
+  const changed = linkOfOtherFiles(position, chain);
+  if (changed !== null) {
+    return byTimeOrStart(changed.kind === 'local' ? (changed.timeMs ?? null) : null);
+  }
   if (position.kind !== 'local') return position;
   if (chain.parts.some((part) => part.name === position.part)) return position;
-  const timeMs = position.timeMs ?? null;
+  return byTimeOrStart(position.timeMs ?? null);
+}
+
+/** The position of a line known only by its time: that time, or the start without one. */
+function byTimeOrStart(timeMs: number | null): ChainPosition {
   return timeMs === null ? { kind: 'start' } : { kind: 'time', ms: timeMs };
 }
 
@@ -1180,13 +1221,14 @@ export function createChainTabs(deps: ChainTabDeps) {
 
   /**
    * The anchor in the file that held it, under that file's name after the
-   * change; null when the file is gone. Without a comparison (the tab
-   * held no description), the part keeps its name.
+   * change, which names it in the files as they are now; null when the
+   * file is gone. Without a comparison (the tab held no description), the
+   * part keeps its name, and a link's anchor the files it named it in.
    */
   function movedAnchor(anchor: ChainAnchor, changes: PartChanges | null): ChainAnchor | null {
     if (changes === null) return anchor;
     const name = changes.nameMap.get(anchor.part);
-    return name === undefined ? null : { ...anchor, part: name };
+    return name === undefined ? null : { part: name, line: anchor.line, timeMs: anchor.timeMs };
   }
 
   /**
@@ -1436,25 +1478,70 @@ export function createChainTabs(deps: ChainTabDeps) {
     const search: LineSearch = isAtTimeElsewhere
       ? { kind: 'found' }
       : await checkLine(key, known, true);
+    sayWhereLinkLanded(tab.name, link, search);
+  }
+
+  /**
+   * Say where the line of a link made on files that changed since landed
+   * in the chain `name` (`search`): at the link's time, or nowhere with
+   * its time, and what the view shows then. A line found at the link's
+   * part and line, or a search a newer one took over, says nothing.
+   */
+  function sayWhereLinkLanded(
+    name: string,
+    link: { part: string; line: number },
+    search: LineSearch,
+  ): void {
     if (search.kind === 'found') {
       notifications.info(
-        `The files of ${tab.name} changed since this link was made; the view shows the line at the link's time`,
+        `The files of ${name} changed since this link was made; the view shows the line at the link's time`,
         NOTICE_MS,
       );
     } else if (search.kind === 'notFound') {
-      const what = `line ${link.line} of ${link.part} that this link names, in ${tab.name}, whose files changed since it was made`;
+      const what = `line ${link.line} of ${link.part} that this link names, in ${name}, whose files changed since it was made`;
       notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
     }
+  }
+
+  /**
+   * Show the line a link names in files that changed since it was made
+   * (its fingerprint is not the chain's now): after a rotation its part's
+   * name may hold another file, and its global line be another line, so
+   * the tab never reads either. It goes by the link's time, to the link's
+   * line of its part where several lines share that time; without a time,
+   * to the chain's start. A notice says the files changed since the link
+   * was made, and whether its line was found again.
+   */
+  async function showChangedLink(key: TabKey, link: LinkedPosition): Promise<void> {
+    const name = deps.getTab(key)?.name ?? nameOf(handleOf(key));
+    const timeMs = link.kind === 'local' ? (link.timeMs ?? null) : null;
+    if (link.kind === 'global' || timeMs === null) {
+      await show(key, { kind: 'start' });
+      notifications.info(
+        `The files of ${name} changed since this link was made; the line could not be found again`,
+        NOTICE_MS,
+      );
+      return;
+    }
+    const place = { part: link.part, line: link.line };
+    const search = await lookByTime(key, { text: null, timeMs, place }, true);
+    sayWhereLinkLanded(name, place, search);
+  }
+
+  /** Drop the anchor of the tab `key`: a link named it in other files than the tab reads. */
+  function dropAnchor(key: TabKey): void {
+    deps.patchTab(key, (tab) => ({ chain: tab.chain && { ...tab.chain, anchor: null } }));
   }
 
   /**
    * Show the tab's anchor line again, by its part and its line in it; the
    * start without one. A tab that has not found its line since its files
    * changed looks for it by its time and text (`findAnchorAgain`), since
-   * its anchor's file may be another one. The line it shows is checked
-   * against the line it knew (`known`, by default what it knows now):
-   * another line is looked for by its time, with a notice when it is not
-   * found (`checkLine`).
+   * its anchor's file may be another one; so does an anchor a link named
+   * in other files than the chain's now (`showChangedLink`). The line it
+   * shows is checked against the line it knew (`known`, by default what
+   * it knows now): another line is looked for by its time, with a notice
+   * when it is not found (`checkLine`).
    */
   async function showAnchorLine(
     key: TabKey,
@@ -1472,8 +1559,14 @@ export function createChainTabs(deps: ChainTabDeps) {
       await show(key, { kind: 'start' }, record);
       return;
     }
-    const change = changeCounts.get(key);
     const position: ChainPosition = { kind: 'local', ...anchor };
+    const changed = chain ? linkOfOtherFiles(position, chain) : null;
+    if (changed !== null) {
+      dropAnchor(key);
+      await showChangedLink(key, changed);
+      return;
+    }
+    const change = changeCounts.get(key);
     const isShown = await show(key, position, record);
     if (!isShown || changeCounts.get(key) !== change) return;
     const search = await checkLine(key, known, record);
@@ -1494,7 +1587,9 @@ export function createChainTabs(deps: ChainTabDeps) {
    * files: a chain whose files changed since opens at its start, and an
    * open tab stays where it is (it describes its chain first when its
    * own description is not of those files); either says to search again.
-   * Resolves whether the tab shows the files `fingerprint` names.
+   * Resolves whether the tab shows the files `fingerprint` names. A
+   * link's position that carries a fingerprint of other files than the
+   * chain's now is shown by its time, or at the start (`showChangedLink`).
    */
   async function openChain(handle: string, options: OpenChainOptions = {}): Promise<boolean> {
     const { position = { kind: 'start' }, syntaxHighlighting, fingerprint } = options;
@@ -1521,16 +1616,20 @@ export function createChainTabs(deps: ChainTabDeps) {
     }
     const described = await describe(key);
     if (described === null) return false;
+    // The tab never names a line of other files than it reads.
+    const changed = linkOfOtherFiles(position, described.chain);
+    if (changed !== null) dropAnchor(key);
     if (described.chain.state === 'invalid') {
       deps.patchTab(key, () => ({ loading: false }));
       return isSearched();
     }
     if (!isSearched()) {
-      deps.patchTab(key, (tab) => ({ chain: tab.chain && { ...tab.chain, anchor: null } }));
+      dropAnchor(key);
       await show(key, { kind: 'start' });
       return changedSinceSearch(key);
     }
-    await show(key, position);
+    if (changed !== null) await showChangedLink(key, changed);
+    else await show(key, position);
     return isSearched() || changedSinceSearch(key);
   }
 
@@ -1565,14 +1664,30 @@ export function createChainTabs(deps: ChainTabDeps) {
 
   /**
    * Move the tab `key` to `position`: at once when it holds that line,
-   * otherwise by loading the window around it. The tab becomes active.
+   * otherwise by loading the window around it. The tab becomes active. A
+   * link's line in other files than the tab holds is first checked
+   * against the chain as it is now (the link may be newer than the tab's
+   * files); in other files still, the tab goes by the link's time, or to
+   * the start (`showChangedLink`).
    */
   async function moveTo(key: TabKey, position: ChainPosition): Promise<void> {
+    if (!deps.getTab(key)?.chain) return;
+    deps.setActive(key);
+    const described = chainOf(key)?.description;
+    if (described && linkOfOtherFiles(position, described) !== null) {
+      await refresh(key);
+      const now = chainOf(key)?.description;
+      const changed = now ? linkOfOtherFiles(position, now) : null;
+      if (changed !== null) {
+        lostLines.delete(key);
+        await showChangedLink(key, changed);
+        return;
+      }
+    }
     const tab = deps.getTab(key);
     if (!tab?.chain) return;
     // A move the user asks for: the tab looks for a line lost to a change no more.
     lostLines.delete(key);
-    deps.setActive(key);
     const held = heldPosition(tab, position);
     if (held !== null) {
       deps.patchTab(key, (t) => ({

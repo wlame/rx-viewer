@@ -16,10 +16,12 @@ import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_VIEW,
   readViewState,
+  serializeViewState,
   type SearchState,
   type ViewState,
 } from './utils/urlState';
 import type { ChainAnchor, ChainTab, OpenFile } from './types';
+import { chainDescription } from './testing/chainDescription';
 import { FakeChain, T0_MS, serveChain, type FakePart } from './testing/fakeChain';
 import { notifications } from './stores/notifications';
 
@@ -352,6 +354,7 @@ describe('restoreView', () => {
       part: null,
       line: 4_200,
       time: null,
+      fingerprint: null,
       highlight: null,
       filter: { pattern: 'LINE 42', mode: 'hide' },
       category: 'error',
@@ -816,7 +819,12 @@ describe('tabViewOf', () => {
   it('writes a file tab as fileViewOf does, with no chain', () => {
     const file = openFile({ path: '/logs/a.log', anchorLine: 169 });
 
-    expect(tabViewOf(file)).toEqual({ ...fileViewOf(file), chain: null, part: null });
+    expect(tabViewOf(file)).toEqual({
+      ...fileViewOf(file),
+      chain: null,
+      part: null,
+      fingerprint: null,
+    });
   });
 
   // The URL names a chain by its handle, never by its tab key, and a
@@ -829,7 +837,12 @@ describe('tabViewOf', () => {
   });
 
   it('writes no chain when no tab is open', () => {
-    expect(tabViewOf(undefined)).toEqual({ ...fileViewOf(undefined), chain: null, part: null });
+    expect(tabViewOf(undefined)).toEqual({
+      ...fileViewOf(undefined),
+      chain: null,
+      part: null,
+      fingerprint: null,
+    });
   });
 
   it('writes the part, the local line and the time of a chain tab anchor', () => {
@@ -850,6 +863,51 @@ describe('tabViewOf', () => {
     tab.chain = chainTabWith({ part: 'app.log.1', line: 1, timeMs: null });
 
     expect(tabViewOf(tab)).toMatchObject({ part: 'app.log.1', line: null, time: null });
+  });
+
+  // A line without a timestamp has nothing but the fingerprint to tell,
+  // after a rotation, that its part's name holds another file.
+  it("writes the fingerprint of the chain's files beside the part and line, also of a line without a time", () => {
+    const tab = openFile({ path: chainKey('/logs/app.log'), anchorLine: 3500 });
+    tab.chain = {
+      ...chainTabWith({ part: 'app.log.1', line: 500, timeMs: null }),
+      description: chainDescription({ fingerprint: '00000000000000a1' }),
+    };
+
+    const view = tabViewOf(tab);
+    const query = new URLSearchParams(
+      serializeViewState({ ...DEFAULT_VIEW, chains: true, ...view }, ''),
+    );
+
+    expect(view).toMatchObject({ part: 'app.log.1', line: 500, time: null });
+    expect(view.fingerprint).toBe('00000000000000a1');
+    expect(query.get('fp')).toBe('00000000000000a1');
+    expect(query.has('time')).toBe(false);
+  });
+
+  // Until the tab reads the line a link named, it names it as the link
+  // did: a reload then checks the link's files again.
+  it('writes the fingerprint a link named its anchor with until the tab reads the line', () => {
+    const tab = openFile({ path: chainKey('/logs/app.log') });
+    tab.chain = {
+      ...chainTabWith({
+        part: 'app.log.1',
+        line: 500,
+        timeMs: null,
+        fingerprint: '00000000000000a1',
+      }),
+      description: chainDescription({ fingerprint: '00000000000000b2' }),
+    };
+
+    expect(tabViewOf(tab).fingerprint).toBe('00000000000000a1');
+  });
+
+  it('writes no fingerprint for a chain tab at its start, which names no line', () => {
+    const tab = openFile({ path: chainKey('/logs/app.log') });
+    tab.chain = { ...chainTabWith({ part: 'x', line: 1, timeMs: null }), anchor: null };
+    tab.chain.description = chainDescription();
+
+    expect(tabViewOf(tab)).toMatchObject({ part: null, fingerprint: null });
   });
 });
 
@@ -1093,6 +1151,173 @@ describe('a link to a chain line opened after a rotation', () => {
 
     expect(anchorText()).toContain('B local=500');
     expect(messages()).toContainEqual(expect.stringContaining('changed since this link was made'));
+  });
+
+  /** The fingerprint of the files before the rotation, which a link made then carries. */
+  const FP_BEFORE = '00000000000000a1';
+
+  /** A chain link to line `line` of `part`, made on the files of `fp`, at `time` when given. */
+  function linkTo(part: string, line: number, fp: string, time?: string): string {
+    const params = new URLSearchParams({ chains: '1', chain: '/l/app.log', part });
+    params.set('line', String(line));
+    if (time !== undefined) params.set('time', time);
+    params.set('fp', fp);
+    return `?${params.toString()}`;
+  }
+
+  /** Whether any samples request read the part `part` of the files as they are now. */
+  function readPartNow(part: string): boolean {
+    return chain.samplesRequests.some(
+      (q) => q.get('part') === part && q.get('fingerprint') === chain.fingerprint,
+    );
+  }
+
+  // The link names B's line 500, which has no time of its own; the part's
+  // name holds C now. Only the fingerprint can tell.
+  it('opens a link to a line without a time made before a rotation at the start, and says the line is not found again', async () => {
+    stubWindow(linkTo('app.log.1', 500, FP_BEFORE));
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(readPartNow('app.log.1')).toBe(false);
+    expect(anchorText()).not.toContain('C local=500');
+    expect(chainTab().anchorLine).toBe(1);
+    expect(anchorText()).toContain('B local=1');
+    expect(messages()).toEqual([
+      'The files of app.log changed since this link was made; the line could not be found again',
+    ]);
+  });
+
+  it("goes by the time of a link made before a rotation, and reads no line of the file that took its part's name", async () => {
+    stubWindow(linkTo('app.log.1', 500, FP_BEFORE, B500_TIME));
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(readPartNow('app.log.1')).toBe(false);
+    expect(anchorText()).toContain('B local=500');
+    expect(chainTab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+    expect(messages()).toEqual([
+      "The files of app.log changed since this link was made; the view shows the line at the link's time",
+    ]);
+  });
+
+  it('opens the part and line of a link made on the files as they are, and says nothing', async () => {
+    chain.rotateTo(ROTATED, 'ready');
+    stubWindow(linkTo('app.log.1', 500, chain.fingerprint));
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('C local=500');
+    expect(chain.samplesRequests.map((q) => q.get('part'))).toEqual(['app.log.1']);
+    expect(messages()).toEqual([]);
+  });
+
+  // A part's line in a link is read by global number only through the
+  // files the link was made on.
+  it('opens a global line of a link made before a rotation at the start, with the notice', async () => {
+    stubWindow(`?chains=1&chain=%2Fl%2Fapp.log&line=3500&fp=${FP_BEFORE}`);
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(chainTab().anchorLine).toBe(1);
+    expect(messages()).toEqual([
+      'The files of app.log changed since this link was made; the line could not be found again',
+    ]);
+  });
+
+  it('goes by the time of an entry Back returns to, made before a rotation the open tab took in', async () => {
+    stubWindow(linkTo('app.log.1', 500, FP_BEFORE, B500_TIME));
+    await health.check();
+    const entry = readViewState();
+    await loadView(entry);
+    chain.rotateTo(ROTATED, 'ready');
+    await files.loadMore(chainKey('/l/app.log'), 'after');
+    await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+    // The tab now sits at the part and line the entry names, in other files.
+    await files.goToChainLine(chainKey('/l/app.log'), {
+      kind: 'local',
+      part: 'app.log.1',
+      line: 500,
+    });
+    expect(anchorText()).toContain('C local=500');
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    const reads = chain.samplesRequests.length;
+
+    await restoreView(entry);
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chain.samplesRequests.slice(reads).some((q) => q.get('part') === 'app.log.1')).toBe(
+      false,
+    );
+    expect(messages()).toContainEqual(expect.stringContaining('changed since this link was made'));
+  });
+
+  it('goes to the start for an entry without a time that Back returns to, made before a rotation the open tab took in', async () => {
+    stubWindow(linkTo('app.log.1', 500, FP_BEFORE));
+    await health.check();
+    const entry = readViewState();
+    await loadView(entry);
+    chain.rotateTo(ROTATED, 'ready');
+    await files.goToChainLine(chainKey('/l/app.log'), { kind: 'global', line: 1600 });
+    await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+
+    await restoreView(entry);
+
+    expect(anchorText()).not.toContain('C local=500');
+    expect(chainTab().anchorLine).toBe(1);
+    expect(messages()).toContainEqual(
+      'The files of app.log changed since this link was made; the line could not be found again',
+    );
+  });
+
+  // The open tab still holds the files of before; the link names them as
+  // they are now, so the tab takes the rotation in before it moves.
+  it('takes in a rotation the open tab has not seen before it opens a link made after it', async () => {
+    stubWindow(linkTo('app.log.1', 100, FP_BEFORE));
+    await health.check();
+    await loadView(readViewState());
+    expect(anchorText()).toContain('B local=100');
+    chain.rotateTo(ROTATED, 'ready');
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+
+    stubWindow(linkTo('app.log.1', 500, chain.fingerprint));
+    await restoreView(readViewState());
+    await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+
+    expect(anchorText()).toContain('C local=500');
+    expect(messages().some((m) => m.includes('changed since this link was made'))).toBe(false);
+  });
+
+  // A file link names a path and carries no fingerprint; a time beside its
+  // line still tells the chain's tab that the part's name holds another file.
+  it("goes by the time of a file link in chain mode when the file's line has another time now", async () => {
+    stubWindow(`?chains=1&file=%2Fl%2Fapp.log.1&line=500&time=${encodeURIComponent(B500_TIME)}`);
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('B local=500');
+    expect(messages()).toContainEqual(expect.stringContaining('changed since this link was made'));
+  });
+
+  // A link written by hand names the files as they are when it is opened.
+  it('opens the part and line of a link without a fingerprint as the files are now', async () => {
+    stubWindow('?chains=1&chain=%2Fl%2Fapp.log&part=app.log.1&line=500');
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('C local=500');
   });
 
   // A zone moves every time a link names; an entry made in another zone

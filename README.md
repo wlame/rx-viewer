@@ -195,6 +195,7 @@ An unknown or invalid value is read as absent.
 | `part`                                        | With `chain`: the file name of the part that holds the line, `syslog.3.gz`                                           |
 | `line`                                        | The line the view is anchored on; with `part`, the line in that part                                                 |
 | `time`                                        | The time the file jumped to, or a chain's line time, `2026-10-03T14:00:00.123Z`                                      |
+| `fp`                                          | With `chain`: the fingerprint of the chain's files the line was read in, 16 hex digits                               |
 | `highlight`                                   | `1` or `0`: syntax highlighting on or off; absent, the file's size decides                                           |
 | `filter`, `filter_mode`                       | The editor's regex filter and what it does: `highlight` (default), `hide` or `show`                                  |
 | `category`                                    | The anomaly category marked in the file                                                                              |
@@ -207,17 +208,24 @@ An unknown or invalid value is read as absent.
 | `stash`                                       | The timestamps stash: up to 7 instants, comma-separated                                                              |
 | `ftz`                                         | A zone chosen for a file, `ftz=UTC@/var/log/app.log`, or for a chain, `ftz=UTC@chain:/var/log/syslog`; once per file |
 
-A chain's tab writes `chain`, `part`, `line` and `time` together:
-`?chains=1&chain=/var/log/syslog&part=syslog.3.gz&line=500&time=2026-10-03T14:00:00.123Z`.
+A chain's tab writes `chain`, `part`, `line`, `time` and `fp` together:
+`?chains=1&chain=/var/log/syslog&part=syslog.3.gz&line=500&time=2026-10-03T14:00:00.123Z&fp=3f9a0c51e2d87b46`.
 A link with `chain` turns chain mode on. A link with `chains=1` and a
 `file` that names a part of a chain opens the chain's tab at that part
 and line. A rotation after a link was made gives the name of its `part`
-to another file: the tab opens at `part` and `line` only while that line
-has the link's `time`, and otherwise goes by the time, on the same line
-of its part where several lines share that time, with a notice that the
-files changed since the link was made (or that no line has its time
-now). A link whose `part` is gone goes by its time too. Back and Forward
-check an entry the same way, unless the chain is read in another zone
+to another file, and changes the chain's fingerprint. A link whose `fp`
+is not the chain's now never shows the line its `part` and `line` name
+in the files as they are: it goes by its `time`, on the same line of its
+part where several lines share that time, with a notice that the files
+changed since the link was made (or that no line has its time now); a
+link without a `time` (a line without a timestamp) opens at the chain's
+start with a notice that the line could not be found again. A link
+without `fp`, such as one written by hand, names the files as they are
+when it is opened: it opens at `part` and `line` only while that line
+has the link's `time`, when it names one, and otherwise goes by the time
+the same way. A `file` link carries no fingerprint either. A link whose
+`part` is gone goes by its time too. Back and Forward check an entry the
+same way; a time is not used when the chain is read in another zone
 than when the entry was made.
 
 ## The API it calls
