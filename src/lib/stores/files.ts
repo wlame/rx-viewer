@@ -190,6 +190,11 @@ function createFilesStore() {
     setActive: (key) => setActiveFile(key),
     loads: fileLoads,
     openFileAt: (path, line) => openFile(path, { scrollToLine: line }),
+    dropMatches: (key) => {
+      const hadMatches = (get({ subscribe }).matches.get(key)?.length ?? 0) > 0;
+      if (hadMatches) setMatches(key, []);
+      return hadMatches;
+    },
   });
 
   /**

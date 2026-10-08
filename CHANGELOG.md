@@ -313,6 +313,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tab cannot find the line's text again, a notice says so and what the
   view shows instead: the first line at or after the line's time, or the
   chain's start.
+- A change of a log chain's files drops the search marks of its tab,
+  which name parts and lines of the files as they were, and a notice
+  says to search again: a mark no longer lands on another file's line
+  that took the old name.
 
 ## [0.6.0] - 2026-10-06
 

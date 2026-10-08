@@ -97,6 +97,8 @@ export interface ChainTabDeps {
   loads: LatestRequestMap;
   /** Open a file's tab at a line: a chain that is no longer one falls back to its part. */
   openFileAt(path: string, line: number): Promise<void>;
+  /** Drop the search marks of a tab; whether it had any. */
+  dropMatches(key: TabKey): boolean;
 }
 
 export interface OpenChainOptions {
@@ -1025,8 +1027,9 @@ export function createChainTabs(deps: ChainTabDeps) {
   /**
    * Take in a change of the chain's files: count it towards the stop,
    * compare the parts the tab held with the chain's parts now and say how
-   * they changed, keep the new description, drop the lines, and name the
-   * anchor's file as it is called now, so a later change maps it from
+   * they changed, keep the new description, drop the lines and the search
+   * marks (they name parts and lines of the files as they were), and name
+   * the anchor's file as it is called now, so a later change maps it from
    * that name. Null when the files changed too often and the tab stopped.
    */
   function noteChange(key: TabKey, chain: ChainResponse): ChainChange | null {
@@ -1054,6 +1057,12 @@ export function createChainTabs(deps: ChainTabDeps) {
     const changes = before === null ? null : compareParts(before.parts, chain.parts);
     const moved = anchor && movedAnchor(anchor, changes);
     notifications.info(changeNotice(chain.name, changes), NOTICE_MS);
+    if (deps.dropMatches(key)) {
+      notifications.info(
+        `The search marks of ${chain.name} are dropped: they name its files as they were; search again`,
+        NOTICE_MS,
+      );
+    }
     applyDescription(key, chain, true);
     deps.patchTab(key, (t) => ({
       lines: [],

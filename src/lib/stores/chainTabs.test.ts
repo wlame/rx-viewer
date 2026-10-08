@@ -1082,6 +1082,34 @@ describe('a rotation while a chain tab is open', () => {
     );
   });
 
+  it('drops its search marks, and says to search again, when its files change', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    files.setMatches(KEY, [
+      { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'B local=500' },
+    ]);
+
+    chain.rotateTo(ROTATED, 'ready');
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+    await files.goToChainLine(KEY, { kind: 'local', part: 'app.log.1', line: 500 });
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(anchorText()).toContain('C local=500');
+    expect(get(files).matches.get(KEY) ?? []).toEqual([]);
+    expect(messages()).toContainEqual(expect.stringContaining('search again'));
+  });
+
+  it('keeps the search marks of a tab whose files did not change', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const marks = [{ lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'B local=500' }];
+    files.setMatches(KEY, marks);
+
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(get(files).matches.get(KEY)).toEqual(marks);
+  });
+
   it('says what changed and shows the same line in the renamed part while the chain is pending', async () => {
     await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
     const before = anchorText();
