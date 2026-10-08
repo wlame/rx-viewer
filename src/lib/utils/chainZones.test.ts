@@ -124,26 +124,32 @@ describe('chainViewZones', () => {
 
   it('puts a missing numbered part where its number would be', () => {
     const numbered = [
-      part('dpkg.log.5.gz', { key: '5' }),
-      part('dpkg.log.3.gz', { key: '3' }),
-      part('dpkg.log.1', { key: '1' }),
-      part('dpkg.log', { is_active: true }),
+      part('agent.log.5.gz', { key: '5' }),
+      part('agent.log.3.gz', { key: '3' }),
+      part('agent.log.1', { key: '1' }),
+      part('agent.log', { is_active: true }),
     ];
     const zones = chainViewZones(
-      held(1, ['dpkg.log.5.gz', 2], ['dpkg.log.3.gz', 1], ['dpkg.log.3.gz', 2], ['dpkg.log.1', 1]),
+      held(
+        1,
+        ['agent.log.5.gz', 2],
+        ['agent.log.3.gz', 1],
+        ['agent.log.3.gz', 2],
+        ['agent.log.1', 1],
+      ),
       chain({
-        name: 'dpkg.log',
+        name: 'agent.log',
         parts: numbered,
-        missing: ['dpkg.log.2', 'dpkg.log.4'],
+        missing: ['agent.log.2', 'agent.log.4'],
         missing_count: 2,
       }),
     );
 
     expect(zones.map((z) => [z.afterLineNumber, z.kind, z.text])).toEqual([
-      [1, 'missing', 'missing: dpkg.log.4'],
-      [1, 'part', 'dpkg.log.3.gz · 2 lines'],
-      [3, 'missing', 'missing: dpkg.log.2'],
-      [3, 'part', 'dpkg.log.1 · 2 lines'],
+      [1, 'missing', 'missing: agent.log.4'],
+      [1, 'part', 'agent.log.3.gz · 2 lines'],
+      [3, 'missing', 'missing: agent.log.2'],
+      [3, 'part', 'agent.log.1 · 2 lines'],
     ]);
   });
 
