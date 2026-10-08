@@ -22,6 +22,7 @@
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
   import { chainGutterRuns, chainZonesMemo } from '$lib/utils/chainZones';
   import { chainLineLabels, topLineOf } from '$lib/utils/chainPane';
+  import { matchedTabLines } from '$lib/utils/chainSearch';
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import ChainInvalid from './ChainInvalid.svelte';
   import './editorDecorations.css';
@@ -104,7 +105,7 @@
   // Everything the decorations mark; any change to it repaints them.
   $: paneView = {
     editorWindow: { startLine: file.startLine, lineCount: file.lines.length },
-    matchedFileLines: fileMatches.map((match) => match.lineNumber),
+    matchedFileLines: matchedTabLines(file, fileMatches),
     highlightedRange: file.highlightedLines,
     anomalies: file.anomalies,
     selectedCategory:

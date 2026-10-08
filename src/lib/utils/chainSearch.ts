@@ -16,6 +16,7 @@ import type {
   ChainTraceResponse,
   FileLine,
   FileMatch,
+  OpenFile,
   SearchMatch,
   SearchResponse,
 } from '../types';
@@ -139,4 +140,17 @@ export function chainMatchedLines(
     if (marked.has(partLineKey(line.part, line.localLine))) positions.push(line.lineNumber);
   }
   return positions;
+}
+
+/**
+ * The lines of a tab that its search matches mark, by the tab's own
+ * numbering: a file's matches at their lines, a chain's at the held
+ * lines of their parts.
+ */
+export function matchedTabLines(
+  tab: Pick<OpenFile, 'lines'> & { chain?: unknown },
+  matches: readonly FileMatch[],
+): number[] {
+  if (tab.chain) return chainMatchedLines(tab.lines, matches);
+  return matches.map((match) => match.lineNumber);
 }

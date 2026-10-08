@@ -9,6 +9,7 @@ import type { FileLine, FileMatch, SearchMatch, TraceResponse } from '../types';
 import {
   chainMatchedLines,
   chainPlaceOf,
+  matchedTabLines,
   chainPositionOf,
   chainTabMatches,
   isChainSearchAnswer,
@@ -224,5 +225,25 @@ describe('chainMatchedLines', () => {
     expect(chainMatchedLines(lines, [{ lineNumber: 1, patternId: 'p1', pattern: 'x' }])).toEqual(
       [],
     );
+  });
+});
+
+describe('matchedTabLines', () => {
+  const lines: FileLine[] = [
+    { lineNumber: 3001, content: 'a', part: 'app.log.1', localLine: 1 },
+    { lineNumber: 3002, content: 'b', part: 'app.log.1', localLine: 2 },
+  ];
+
+  it("marks a file's matches at their lines", () => {
+    const marks = [{ lineNumber: 2, patternId: 'p1', pattern: 'x' }];
+
+    expect(matchedTabLines({ lines, chain: undefined }, marks)).toEqual([2]);
+  });
+
+  it("marks a chain's matches at the held lines of their parts", () => {
+    const marks = [{ lineNumber: 2, part: 'app.log.1', patternId: 'p1', pattern: 'x' }];
+    const tab = { lines, chain: { numbering: 'global' as const } };
+
+    expect(matchedTabLines(tab, marks)).toEqual([3002]);
   });
 });
