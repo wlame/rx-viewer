@@ -62,14 +62,20 @@ function isTimed(part: ChainPart): part is TimedPart {
   return part.first_ms !== null && !isEmptyPart(part);
 }
 
-/** The ticks of the parts after the first one with lines, those in one slice merged. */
+/**
+ * The ticks of the parts after the one that starts first, in time order,
+ * those in one slice merged. The parts are sorted here, as the gaps are,
+ * so the bound on the ticks does not rest on the order the description
+ * lists them in.
+ */
 function partTicks(
   chain: ChainResponse,
   axis: TimeAxis,
   label: (ms: number) => string,
 ): TimelineTick[] {
+  const timed = chain.parts.filter(isTimed).sort((a, b) => a.first_ms - b.first_ms);
   const groups: { slice: number; fraction: number; parts: TimedPart[] }[] = [];
-  for (const part of chain.parts.filter(isTimed).slice(1)) {
+  for (const part of timed.slice(1)) {
     const fraction = fractionOf(part.first_ms, axis);
     const slice = sliceOf(fraction);
     const last = groups.at(-1);

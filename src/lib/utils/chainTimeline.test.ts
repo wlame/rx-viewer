@@ -104,4 +104,28 @@ describe('chainTimelineMarks', () => {
     const merged = marks?.ticks.find((tick) => tick.title.includes('parts start'));
     expect(merged?.title).toMatch(/^agent\.log\.\d+ … agent\.log\.\d+: \d+ parts start here$/);
   });
+
+  // The bound holds whatever order the description lists the parts in.
+  it('merges the ticks of 10,000 parts listed out of time order into a bounded number, in time order', () => {
+    const count = 10_000;
+    const half = count / 2;
+    // Early and late parts take turns: 0, 5000, 1, 5001, …
+    const parts = Array.from({ length: count }, (_, i) => {
+      const at = i % 2 === 0 ? i / 2 : half + (i - 1) / 2;
+      return part(`agent.log.${count - at}`, {
+        key: String(count - at),
+        first_ms: T0 + at * 1000,
+        max_ms: T0 + at * 1000 + 999,
+      });
+    });
+    const marks = chainTimelineMarks(
+      described({ parts, gaps: [], missing: [], missing_count: 0, last_ms: T0 + count * 1000 }),
+    );
+
+    const fractions = marks?.ticks.map((tick) => tick.fraction) ?? [];
+    expect(fractions.length).toBeLessThanOrEqual(MAX_TIMELINE_MARKS + 1);
+    expect(fractions).toEqual([...fractions].sort((a, b) => a - b));
+    // The earliest part starts the axis and has no tick.
+    expect(marks?.ticks[0].title).not.toContain('agent.log.10000 ');
+  });
 });

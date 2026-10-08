@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to its last time. A tick marks where each part starts (its tooltip
   names the part and its first time), a shaded band covers each time
   gap, and a red dot marks where missing parts would be; marks that fall
-  close together on a chain of many parts become one. The slider reads
+  close together on a chain of many parts become one, whatever order the
+  backend lists the parts in. The slider reads
   out the part that holds its time. Until the chain is ready the bar
   says why it does not jump. The zone button before the axis shows the
   zone the chain is read in and chooses one for the chain alone
