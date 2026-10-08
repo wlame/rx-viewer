@@ -54,9 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tooltip names them), parts that cannot be read, a chain of more than
   10,000 parts, and `invalid` with the reasons once its tab found it
   so. A click or Enter opens the chain's tab, and its menu indexes or
-  re-indexes every part. Only the files the backend names as parts of a
-  chain give way to its row: every other file stays listed, another
-  encoding of a part included. The parts themselves are not listed:
+  re-indexes every part. Turning the mode on lists the chains of the
+  open folders on screen; a collapsed folder's chains are listed when it
+  is opened. Only the files the backend names as parts of a chain give
+  way to its row: every other file stays listed, another encoding of a
+  part included. The parts themselves are not listed:
   turning the mode off shows them, and a chain's tab lists them. Turning
   the mode off or on keeps the folders open as they were.
 - Switching chain mode keeps the line in view. Turning the mode off

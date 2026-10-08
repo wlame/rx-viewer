@@ -222,19 +222,28 @@ function createTreeStore() {
     await refreshChains(path);
   }
 
-  /** Every directory whose entries are loaded: expanded, or holding entries. */
-  function loadedDirectories(nodes: TreeNode[]): string[] {
-    return nodes.flatMap((node) => {
-      if (node.type !== 'directory') return [];
-      const isLoaded = node.expanded || node.children.length > 0;
-      return [...(isLoaded ? [node.path] : []), ...loadedDirectories(node.children)];
-    });
+  /**
+   * The expanded directories on screen among `nodes` and under them: a
+   * collapsed directory and every directory under it are left out, an
+   * expanded one among them too, as the panel does not show them.
+   */
+  function shownDirectories(nodes: readonly TreeNode[]): string[] {
+    return nodes.flatMap((node) =>
+      node.type === 'directory' && node.expanded
+        ? [node.path, ...shownDirectories(node.children)]
+        : [],
+    );
   }
 
-  /** List the chains of every loaded directory that has none listed, all at once. */
-  async function listChainsOfLoadedDirectories(): Promise<void> {
-    const paths = loadedDirectories(get({ subscribe }).roots);
-    await Promise.all(paths.map(ensureChains));
+  /**
+   * List the chains of the expanded directories among `nodes` and under
+   * them that the panel shows and that have none listed, all at once. A
+   * collapsed directory is listed when it is expanded.
+   */
+  async function listChainsOfShownDirectories(
+    nodes: readonly TreeNode[] = get({ subscribe }).roots,
+  ): Promise<void> {
+    await Promise.all(shownDirectories(nodes).map(ensureChains));
   }
 
   async function toggleExpanded(path: string) {
@@ -249,12 +258,15 @@ function createTreeStore() {
         roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: false })),
       }));
     } else if (node.children.length > 0) {
-      // Already loaded, just expand; chains a failed listing left out are asked again.
+      // Already loaded, just expand. Its chains, and those of the expanded
+      // folders it shows again, are asked for when not listed: the mode
+      // may have turned on while it was collapsed, or a listing failed.
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: true })),
       }));
-      await ensureChains(path);
+      const expanded = findNode(get({ subscribe }).roots, path);
+      if (expanded) await listChainsOfShownDirectories([expanded]);
     } else {
       // Load and expand
       await loadDirectory(path);
@@ -365,7 +377,7 @@ function createTreeStore() {
     selectPath,
     markIndexed,
     expandToPath,
-    listChainsOfLoadedDirectories,
+    listChainsOfShownDirectories,
     refreshChains,
     noteChainDescription,
   };
@@ -374,9 +386,10 @@ function createTreeStore() {
 export const tree = createTreeStore();
 
 // Turning chain mode on (or the backend's features arriving with it on)
-// lists the chains of the directories already loaded. Their rows are
-// worked out from the entries and the chains as they are shown, so
-// turning it off and on again collapses nothing and asks for nothing.
+// lists the chains of the expanded directories on screen; a collapsed one
+// is listed when it is expanded. The rows are worked out from the entries
+// and the chains as they are shown, so turning the mode off and on again
+// collapses nothing and asks for nothing.
 chainModeOn.subscribe((on) => {
-  if (on) void tree.listChainsOfLoadedDirectories();
+  if (on) void tree.listChainsOfShownDirectories();
 });

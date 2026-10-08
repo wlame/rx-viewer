@@ -153,7 +153,7 @@ describe('the tree in chain mode', () => {
     expect(tree.nodeAt(LOG_DIR)?.chains).toBeUndefined();
   });
 
-  it('lists the chains of every loaded folder when the mode turns on, and collapses none', async () => {
+  it('lists the chains of every expanded folder on screen when the mode turns on, and collapses none', async () => {
     await start(false);
     await tree.toggleExpanded(LOG_DIR);
     await tree.toggleExpanded(`${LOG_DIR}/pkgcache`);
@@ -169,6 +169,46 @@ describe('the tree in chain mode', () => {
     );
     expect(tree.nodeAt(LOG_DIR)?.expanded).toBe(true);
     expect(tree.nodeAt(`${LOG_DIR}/pkgcache`)?.expanded).toBe(true);
+  });
+
+  // A folder the panel does not show is listed when it is shown again.
+  it('lists no chains of a collapsed folder when the mode turns on, and lists them when it is expanded', async () => {
+    await start(false);
+    await tree.toggleExpanded(LOG_DIR);
+    await tree.toggleExpanded(LOG_DIR);
+
+    chainMode.set(true);
+    await vi.waitFor(() => expect(tree.nodeAt(LOG_ROOT)?.chains).toBeDefined());
+
+    expect(backend.requestsTo('/v1/logs/chains')).toEqual([listed('/v1/logs/chains', LOG_ROOT)]);
+    expect(tree.nodeAt(LOG_DIR)?.chains).toBeUndefined();
+
+    await tree.toggleExpanded(LOG_DIR);
+
+    expect(backend.requestsTo('/v1/logs/chains')).toContain(listed('/v1/logs/chains', LOG_DIR));
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
+  });
+
+  // An expanded folder inside a collapsed one is not on screen either; it
+  // is listed when its parent is expanded.
+  it('lists the chains of an expanded folder inside a collapsed one when the parent is expanded', async () => {
+    const pkgcache = `${LOG_DIR}/pkgcache`;
+    await start(false);
+    await tree.toggleExpanded(LOG_DIR);
+    await tree.toggleExpanded(pkgcache);
+    await tree.toggleExpanded(LOG_DIR);
+
+    chainMode.set(true);
+    await vi.waitFor(() => expect(tree.nodeAt(LOG_ROOT)?.chains).toBeDefined());
+
+    expect(backend.requestsTo('/v1/logs/chains')).toEqual([listed('/v1/logs/chains', LOG_ROOT)]);
+
+    await tree.toggleExpanded(LOG_DIR);
+
+    expect([...backend.requestsTo('/v1/logs/chains')].sort()).toEqual(
+      [LOG_ROOT, LOG_DIR, pkgcache].map((dir) => listed('/v1/logs/chains', dir)).sort(),
+    );
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
   });
 
   it('keeps the folders and the listed chains through the mode turning off and on', async () => {
