@@ -184,13 +184,15 @@ separate comment above, or eslint reads every word as another rule.
   `time` and `fp`, the fingerprint of the files it read the line in. A
   link whose `fp` is not the chain's now never reads its part's line: it
   goes by its time, or to the start, with a notice (`showChangedLink`).
+  Any other link's part's line is checked against its time
+  (`checkLinkLine`): an active file rewritten in place keeps the `fp`.
   The go-to box reads a global line or `part:line`
   (`parseChainLineTarget`, `utils/chainParts.ts`). Switching the mode
   turns tabs over through `stores/chainModeSwitch.ts`; a 409 is compared
   by `utils/chainChanges.ts`. A tab never shows another file's line in
   silence: every place that shows a chain's line again after its files
   may have changed (a 409, a reload, a 404, a zone change, a mode
-  switch, a link without `fp` through `checkLinkLine`) checks it against
+  switch, a link through `checkLinkLine`) checks it against
   the line it knew through `checkShownLine` (`utils/knownLine.ts`, by
   text and time, a time only in the zone it was read in; `checkLine` in
   `chainTabs.ts` for a chain's tab, `fileLineNotice` for the file tab it

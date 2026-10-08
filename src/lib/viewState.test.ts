@@ -1217,6 +1217,63 @@ describe('a link to a chain line opened after a rotation', () => {
     expect(messages()).toEqual([]);
   });
 
+  it("opens the part and line of a link made on the files as they are while that line has the link's time, and says nothing", async () => {
+    stubWindow(linkTo('app.log.1', 500, chain.fingerprint, B500_TIME));
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chain.samplesRequests.map((q) => q.has('timestamps'))).toEqual([false]);
+    expect(messages()).toEqual([]);
+  });
+
+  /** The time of C's line 500, which a link made before the active file was rewritten names. */
+  const C500_TIME = new Date(T0_MS + 5000_000).toISOString();
+
+  /**
+   * The active file rewritten in place, as by a program that truncates its
+   * log when it starts: the same name, device and inode, so the chain keeps
+   * its fingerprint, and new lines from a later time.
+   */
+  function rewriteActiveInPlace(): void {
+    chain.parts = [A, B, { ...C, text: 'D', startSecond: 9001 }];
+  }
+
+  it("goes by the link's time when the active file was rewritten in place, which keeps the chain's fingerprint", async () => {
+    const fingerprint = chain.fingerprint;
+    stubWindow(linkTo('app.log', 500, fingerprint, C500_TIME));
+    rewriteActiveInPlace();
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(chain.fingerprint).toBe(fingerprint);
+    expect(anchorText()).not.toContain('D local=500');
+    expect(messages()).toEqual([
+      'Cannot find line 500 of app.log that this link names, in app.log, whose files changed since it was made; the view shows the first line at or after its time',
+    ]);
+  });
+
+  it('goes by the time of an entry Back returns to when the active file was rewritten in place since', async () => {
+    stubWindow(linkTo('app.log', 500, chain.fingerprint, C500_TIME));
+    await health.check();
+    const entry = readViewState();
+    await loadView(entry);
+    expect(anchorText()).toContain('C local=500');
+    await files.goToChainLine(chainKey('/l/app.log'), { kind: 'global', line: 100 });
+    // The tab no longer holds the entry's line, so Back reads it again.
+    expect(chainTab().endLine).toBeLessThan(5000);
+    rewriteActiveInPlace();
+
+    await restoreView(entry);
+
+    expect(anchorText()).not.toContain('D local=500');
+    expect(messages()).toContainEqual(
+      'Cannot find line 500 of app.log that this link names, in app.log, whose files changed since it was made; the view shows the first line at or after its time',
+    );
+  });
+
   // A part's line in a link is read by global number only through the
   // files the link was made on.
   it('opens a global line of a link made before a rotation at the start, with the notice', async () => {

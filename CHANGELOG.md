@@ -385,6 +385,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chain is ready) it opens at the chain's start and says "The files of
   NAME changed since this link was made; the line could not be found
   again". A global line in such a link opens at the start the same way.
+  A link whose fingerprint is the chain's now is still checked against
+  its time, when it names one: an active file rewritten in place, as by
+  a program that truncates its log when it starts, keeps the chain's
+  fingerprint, and such a link then goes by its time with a notice.
   Back and Forward do the same with an entry, after the chain's open tab
   takes in any change it has not seen yet, and a time written in another
   zone than the chain is read in is not used. A `file=` link that names

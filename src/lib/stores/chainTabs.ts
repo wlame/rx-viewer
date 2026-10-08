@@ -102,6 +102,9 @@ export type ChainPosition =
 /** A position a link names by a line of the files of its fingerprint. */
 type LinkedPosition = Extract<ChainPosition, { kind: 'global' | 'local' }>;
 
+/** A part's line a link names, with that line's time and the fingerprint of its files when it has them. */
+export type LocalPosition = Extract<ChainPosition, { kind: 'local' }>;
+
 /** What the files store hands the chain tabs: its tabs, and its request slot per tab. */
 export interface ChainTabDeps {
   getTab(key: TabKey): OpenFile | undefined;
@@ -1449,31 +1452,36 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
-   * Check the line a link (or a history entry) without a fingerprint
-   * names in the tab `key`, which went there: a part, a line in it and
-   * that line's time. A rotation since the link was made gives the part's
-   * name to another file, whose line there has another time: that line
-   * leaves the screen, and the link's time finds the line (`checkLine`),
-   * on the same line of its part where several lines share that time. A
-   * notice says the files changed since the link was made, or that no
-   * line has its time now. A link without a time leaves nothing to check
-   * the part's line against: a notice says the view shows it as the files
-   * are now. A tab that shows no line (an invalid chain, a failed read)
-   * says why itself.
+   * Check the line a link (or a history entry) names in the tab `key`,
+   * which went there: a part, a line in it, that line's time and the
+   * fingerprint of the files it was made on. A link made on other files
+   * than the chain's now was shown by its time, or at the start, already
+   * (`showChangedLink`). Any other link's part's line must have the
+   * link's time: a rotation since a link without a fingerprint was made
+   * gives the part's name to another file, and an active file rewritten
+   * in place (a program that truncates its log when it starts) keeps the
+   * chain's fingerprint, and either holds a line of another time there.
+   * That line leaves the screen, and the link's time finds the line
+   * (`checkLine`), on the same line of its part where several lines share
+   * that time. A notice says the files changed since the link was made,
+   * or that no line has its time now. A link with neither a time nor a
+   * fingerprint leaves nothing to check the part's line against: a notice
+   * says the view shows it as the files are now. A tab that shows no line
+   * (an invalid chain, a failed read) says why itself.
    */
-  async function checkLinkLine(
-    key: TabKey,
-    link: { part: string; line: number; timeMs: number | null },
-  ): Promise<void> {
+  async function checkLinkLine(key: TabKey, link: LocalPosition): Promise<void> {
     const tab = deps.getTab(key);
     if (!tab?.chain || tab.lines.length === 0) return;
-    if (link.timeMs === null) {
-      sayLinkUnchecked(key, tab.name, link);
+    const described = tab.chain.description;
+    if (described && linkOfOtherFiles(link, described) !== null) return;
+    const timeMs = link.timeMs ?? null;
+    if (timeMs === null) {
+      if (link.fingerprint == null) sayLinkUnchecked(key, tab.name, link);
       return;
     }
     const known: KnownLine = {
       text: null,
-      timeMs: link.timeMs,
+      timeMs,
       place: { part: link.part, line: link.line },
     };
     const held = heldAnchorLine(key);

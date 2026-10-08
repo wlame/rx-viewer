@@ -219,12 +219,15 @@ in the files as they are: it goes by its `time`, on the same line of its
 part where several lines share that time, with a notice that the files
 changed since the link was made (or that no line has its time now); a
 link without a `time` (a line without a timestamp) opens at the chain's
-start with a notice that the line could not be found again. A link
-without `fp`, such as one written by hand, names the files as they are
-when it is opened: it opens at `part` and `line` only while that line
-has the link's `time`, when it names one, and otherwise goes by the time
-the same way; without a `time`, a notice says the view shows that line
-as the files are now. A `file` link carries no fingerprint either: a
+start with a notice that the line could not be found again. Any other
+link opens at `part` and `line` only while that line has the link's
+`time`, when it names one, and otherwise goes by the time the same way:
+an active file rewritten in place (by a program that truncates its log
+when it starts) keeps the chain's fingerprint, so an equal `fp` does not
+prove the line is the same. A link without `fp`, such as one written by
+hand, names the files as they are when it is opened: without a `time`, a
+notice says the view shows that line as the files are now. A `file`
+link carries no fingerprint either: a
 link with `chains=1` and a `file` that names a part is checked the same
 way, so without a `time` it gets that notice too. A link whose `part` is
 gone goes by its time too. Back and Forward check an entry the

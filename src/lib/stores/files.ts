@@ -27,6 +27,7 @@ import {
   createChainTabs,
   type ChainPosition,
   type LineToFind,
+  type LocalPosition,
   type OpenChainOptions,
 } from './chainTabs';
 import { commandLog } from './commands';
@@ -1076,13 +1077,11 @@ function createFilesStore() {
 
   /**
    * Check the line a link names in a chain's tab that went there: its
-   * part's line must have the link's time, or the time finds the line,
-   * with a notice that the files changed since (`stores/chainTabs.ts`).
+   * part's line must have the link's time, whatever the link's
+   * fingerprint, or the time finds the line, with a notice that the files
+   * changed since (`stores/chainTabs.ts`).
    */
-  function checkChainLinkLine(
-    key: TabKey,
-    link: { part: string; line: number; timeMs: number | null },
-  ): Promise<void> {
+  function checkChainLinkLine(key: TabKey, link: LocalPosition): Promise<void> {
     return chains.checkLinkLine(key, link);
   }
 

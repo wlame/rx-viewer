@@ -307,11 +307,13 @@ function withoutLineTime(position: ChainPosition): ChainPosition {
  * A link made on files that are not the chain's now (its fingerprint is
  * another) goes by the time of its line, or to the start without one,
  * with a notice (`stores/chainTabs.ts`): after a rotation the part's
- * name may hold another file. A link without a fingerprint names the
- * files as they are when it is opened; its line is checked once shown
- * (`files.checkChainLinkLine`) against its time, when it has one. The
- * time of a line written in another zone than the chain is read in now
- * names another instant, and is not used.
+ * name may hold another file. Any other link's part's line is checked
+ * once shown (`files.checkChainLinkLine`) against its time, when it has
+ * one: the same fingerprint does not tell an active file rewritten in
+ * place from the one the link was made on. A link with neither a
+ * fingerprint nor a time gets a notice that it names the files as they
+ * are when it is opened. The time of a line written in another zone than
+ * the chain is read in now names another instant, and is not used.
  */
 async function showChain(
   handle: string,
@@ -334,13 +336,7 @@ async function showChain(
     files.setRegexFilter(key, view.filter);
     await loaded;
   }
-  if (position.kind === 'local' && position.fingerprint == null) {
-    await files.checkChainLinkLine(key, {
-      part: position.part,
-      line: position.line,
-      timeMs: position.timeMs ?? null,
-    });
-  }
+  if (position.kind === 'local') await files.checkChainLinkLine(key, position);
 }
 
 /**
