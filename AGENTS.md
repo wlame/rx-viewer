@@ -118,9 +118,19 @@ just check                        # ci + package + audit
 Run a backend on the proxy port first: `rx serve --port=8080 --search-root=/var/log`
 (rx-go). Bun is the package manager; Node is not used for tooling.
 Every recipe runs bun from the `PATH` when it is installed and from the
-`oven/bun` image when it is not, so the gates run on a host that keeps no
-JavaScript runtime. `just bun <args>` runs any other bun command the same
-way, and `just shell` opens the image.
+`oven/bun` image when it is not (`scripts/bun.sh`, and
+`scripts/with-bun.sh` for the gates, `fmt` and `gen-types`), so the gates
+run on a host that keeps no JavaScript runtime. `just bun <args>` runs any
+other bun command the same way, and `just shell` opens the image.
+
+**Nothing but a fixed string is pasted into a shell line.** A recipe that
+takes arguments has `[positional-arguments]` and reads `"$1"` or `"$@"`; a
+computed value (the version, from a tag name) is exported and read as
+`"$BUILD_VERSION"`; a workflow passes every `${{ … }}` to a `run:` script
+through `env:`. A tag name may hold a quote, `;` or `$(`.
+`src/lib/testing/releasePath.test.ts` fails on any other `{{…}}` in a
+recipe and any `${{` in a `run:` script, and checks that `release.yml`
+refuses a tag that is not exactly `vX.Y.Z` before anything runs.
 
 **`just typecheck` is green and must stay that way.** `svelte-check` reports
 0 errors and 0 warnings. The a11y suppression that used to hide warnings is
@@ -255,12 +265,13 @@ Paste the output.
   through the mount: every gate (`fmt-check`, `types-check`,
   `typecheck`, `lint`, `test`, `build`), `fmt` and `gen-types` run on a
   snapshot of the repo that `scripts/bun-on-snapshot.sh` pipes to the
-  container, with rx-go's OpenAPI document in it and `node_modules`
-  mounted read-only. `just ci` runs all six gates in one container on
-  one snapshot. A gate's commands live in `scripts/gates.sh`, which
-  the recipes call directly where bun is on the `PATH`; add or change a
-  gate there. The script writes back only the files the command
-  changed, and only when the host's copy still equals the snapshot
+  container (through `scripts/with-bun.sh`), with rx-go's OpenAPI
+  document in it and `node_modules` mounted read-only. `just ci` runs
+  all six gates in one container on one snapshot. A gate's commands live
+  in `scripts/gates.sh`, which `scripts/with-bun.sh` runs directly where
+  bun is on the `PATH`; add or change a gate there. The snapshot script
+  writes back only the files the command changed, and only when the
+  host's copy still equals the snapshot
   (otherwise it prints `not written:` and fails; run it again), and
   `build` replaces the host's `dist/` when it succeeds. `dev`,
   `test-watch`, `preview`, `install` and `just bun` still use the

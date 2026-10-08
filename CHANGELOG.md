@@ -288,6 +288,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`ftz=<zone>@chain:<handle>`) for a part whose lines write a zone too;
   they used to write those in UTC.
 
+### Security
+
+- No tag name, version or recipe argument is pasted into a shell line of
+  the release path any more, where a quote, `;` or `$(` in it would run
+  as code. A pushed tag that is not exactly `vX.Y.Z` stops `release.yml`
+  at its first step, the tag a release resolves is checked the same way
+  before a later step reads it, and every workflow expression reaches a
+  script through `env:`. The justfile recipes take their arguments as
+  single words (`"$1"`, `"$@"`), read the version from `BUILD_VERSION`,
+  and run bun through `scripts/bun.sh` and `scripts/with-bun.sh`;
+  `just release-notes` takes only `X.Y.Z`, `just dev` only a number and
+  `just release-remote` only `major`, `minor` or `patch`. A test fails
+  when a recipe pastes anything but a variable set to a fixed string, or
+  a workflow pastes an expression into a `run:` script.
+
 ## [0.6.0] - 2026-10-06
 
 ### Added

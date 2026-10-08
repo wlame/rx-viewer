@@ -11,6 +11,12 @@ name: Release
 # default GITHUB_TOKEN does not trigger further workflows, so a separate
 # "cut" workflow that pushed a tag would never fire the build. The dispatch
 # path therefore carries the job through to the end itself.
+#
+# A tag name reaches the shell of later steps, and git allows a quote, `;`,
+# `$(` or a backtick in one. So the name is checked as exactly vX.Y.Z
+# before any step reads it, and every expression reaches a script through
+# env:, never pasted into its text (src/lib/testing/releasePath.test.ts
+# fails on a paste).
 on:
   push:
     tags:
@@ -34,6 +40,21 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # The `v*.*.*` filter above lets a name such as v1.0.0';id;' through,
+      # so a tag push stops here unless the name is exactly vX.Y.Z, before
+      # anything is checked out or run. The name is read from the
+      # environment, never pasted into the script, so this check runs no
+      # part of it.
+      - name: check the tag name
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          if ! [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'ERROR: the tag name %q is not vX.Y.Z; nothing is built or released\n' "$GITHUB_REF_NAME"
+            exit 1
+          fi
+          printf 'tag name %s is vX.Y.Z\n' "$GITHUB_REF_NAME"
+
       - name: checkout
         uses: actions/checkout@v4
         with:
@@ -70,25 +91,38 @@ jobs:
       # github-actions[bot] to push to main or cut releases locally.
       - name: cut the release
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          PART: ${{ inputs.part }}
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          ./scripts/release.sh "${{ inputs.part }}"
+          ./scripts/release.sh "$PART"
           tag=$(git describe --tags --abbrev=0)
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'ERROR: the tag name %q is not vX.Y.Z; nothing is pushed\n' "$tag"
+            exit 1
+          fi
           git push origin HEAD:main
           git push origin "refs/tags/${tag}"
 
-      # One name for both paths. On a tag push the ref is the tag; after a
-      # dispatch cut, HEAD is the commit that was just tagged.
+      # One name for both paths, checked as vX.Y.Z before a later step
+      # reads it. On a tag push the ref is the tag; after a dispatch cut,
+      # HEAD is the commit that was just tagged.
       - name: resolve the tag
         id: release_tag
+        shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            tag="${GITHUB_REF_NAME}"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"
           else
             tag=$(git describe --tags --abbrev=0)
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'ERROR: the tag name %q is not vX.Y.Z; nothing is released\n' "$tag"
+            exit 1
           fi
           echo "Releasing ${tag}"
           echo "name=${tag}" >> "$GITHUB_OUTPUT"
@@ -99,12 +133,14 @@ jobs:
         run: just package
 
       - name: verify the bundle carries the tag
+        env:
+          TAG: ${{ steps.release_tag.outputs.name }}
         run: |
           set -euo pipefail
           version=$(python3 -c "import json;print(json.load(open('dist/version.json'))['version'])")
           echo "dist/version.json version: $version"
-          [ "$version" = "${{ steps.release_tag.outputs.name }}" ] \
-            || { echo "ERROR: version.json ($version) does not match ${{ steps.release_tag.outputs.name }}"; exit 1; }
+          [ "$version" = "$TAG" ] \
+            || { echo "ERROR: version.json ($version) does not match $TAG"; exit 1; }
 
       - name: release notes
         run: |
