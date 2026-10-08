@@ -313,10 +313,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is checked like any other, and a file it cannot read fails it. It
   also refuses an expression in the `args` or the `entrypoint` of a
   `docker://` step (which make the container's command, such as
-  `sh -c "…"`), and in any action input named `command` or `run`, which
-  actions that retry or wrap a command run in a shell; and it refuses a
-  file that holds a lone CR, U+0085, U+2028 or U+2029, where another
-  YAML reader may end a line that this one reads as a comment.
+  `sh -c "…"`), in any action input named `command`, `cmd`, `run` or
+  `shell`, which actions that retry or wrap a command run in a shell or
+  run it with, and in the `env` value of a variable whose value is code
+  or a file a shell or an interpreter runs (`BASH_ENV`, `NODE_OPTIONS`,
+  `LD_PRELOAD`, …). It compares every key in upper case, as GitHub's
+  runner names an action's inputs, so `Script:`, `SCRIPT:` and a key
+  spelled with a long s (`ſcript`) are refused like `script:`. And it
+  refuses a file that holds a lone CR, U+0085, U+2028 or U+2029, where
+  another YAML reader may end a line that this one reads as a comment.
 - `dist/version.json` is always valid JSON: the build refuses a version
   (a tag name, as `git describe` prints it or a release was started for)
   that holds any character but letters, digits, `.`, `_`, `+` and `-`,

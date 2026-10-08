@@ -206,6 +206,100 @@ describe('the workflow guard', () => {
     expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
   });
 
+  // An action reads an input under any case (`INPUT_SCRIPT` for `Script`),
+  // and GitHub reads a step's keys under any case.
+  it.each([
+    [
+      'Script',
+      '      - uses: actions/github-script@v7\n        with:\n          Script: console.log("${{ github.ref_name }}")',
+    ],
+    [
+      'SCRIPT',
+      '      - uses: actions/github-script@v7\n        with:\n          SCRIPT: console.log("${{ github.ref_name }}")',
+    ],
+    [
+      'Command',
+      '      - uses: some/retry@v3\n        with:\n          Command: echo ${{ github.ref_name }}',
+    ],
+    [
+      'Run under with',
+      '      - uses: some/action@v1\n        with:\n          Run: echo ${{ github.ref_name }}',
+    ],
+    [
+      'Args of a docker:// step',
+      '      - uses: docker://alpine:3\n        with:\n          entrypoint: /bin/sh\n          Args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'ENTRYPOINT of a docker:// step',
+      '      - uses: docker://alpine:3\n        with:\n          ENTRYPOINT: ${{ inputs.program }}',
+    ],
+    [
+      'args under With of a docker:// step',
+      '      - uses: docker://alpine:3\n        With:\n          args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'args of a step whose Uses names a docker:// image',
+      '      - Uses: docker://alpine:3\n        with:\n          args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'args of a step that names an action under uses and a docker:// image under USES',
+      '      - uses: some/action@v1\n        USES: docker://alpine:3\n        with:\n          args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'a script input spelled with a long s, which upper-cases to SCRIPT',
+      '      - uses: actions/github-script@v7\n        with:\n          \u017fcript: console.log("${{ github.ref_name }}")',
+    ],
+    [
+      'a shell input, which names the program that runs a command',
+      '      - uses: some/retry@v3\n        with:\n          Shell: ${{ inputs.shell }}',
+    ],
+    [
+      'a cmd input',
+      '      - uses: some/action@v1\n        with:\n          CMD: echo ${{ github.ref_name }}',
+    ],
+    ['Run as a step key', '      - Run: echo ${{ github.ref_name }}'],
+    [
+      'Shell as a step key',
+      '      - Shell: bash -c "echo ${{ github.ref_name }}; {0}"\n        run: echo hi',
+    ],
+  ])('refuses %s, whatever its case', (_name, steps) => {
+    const violations = workflowExpressionViolations('w.yml', workflowWith(steps), 'workflow');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/^w\.yml: jobs\.build\.steps\[0\]\./);
+  });
+
+  it('lets an expression through in an if, an env value and an input written in another case', () => {
+    const workflow = workflowWith(
+      [
+        '      - uses: actions/checkout@v4',
+        "        IF: ${{ github.ref == 'refs/heads/main' }}",
+        '        With:',
+        '          Ref: ${{ github.ref }}',
+        '      - run: echo "$TAG"',
+        '        Env:',
+        '          TAG: ${{ github.ref_name }}',
+      ].join('\n'),
+    );
+
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
+  });
+
+  // The value of these variables is code, or the path of a file that the
+  // shell or the interpreter of the next step runs.
+  it.each(['BASH_ENV', 'bash_env', 'ENV', 'NODE_OPTIONS', 'LD_PRELOAD', 'PERL5OPT', 'RUBYOPT'])(
+    'refuses an expression in the env value %s',
+    (name) => {
+      const workflow = workflowWith(
+        `      - run: echo hi\n        env:\n          ${name}: \${{ github.event.pull_request.title }}`,
+      );
+
+      expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([
+        `w.yml: jobs.build.steps[0].env.${name} holds a \${{ … }} expression outside the places GitHub hands it to no shell and no script; pass it through env: and read it as "$NAME"`,
+      ]);
+    },
+  );
+
   // GitHub hands the args input of an action, not a docker:// image, to
   // that action as data.
   it('lets an expression through in the args of an action that is no docker:// image', () => {

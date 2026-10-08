@@ -198,9 +198,11 @@ const EXPRESSION = '${{';
  * The places of a workflow or an action where GitHub hands a value to no
  * shell and no script: the only places a `${{ … }}` may stand. A place
  * names the mapping keys and sequence items from the document's root:
- * `*` is any key, `#` any item. Every other place is refused, so a new
- * form of a shell step (a key spelled another way, a value reached
- * through an alias or a merge) is refused rather than missed.
+ * `*` is any key, `#` any item. Keys compare in any case, as GitHub reads
+ * a step's keys and an action reads its inputs (`INPUT_SCRIPT` for
+ * `Script`). Every other place is refused, so a new form of a shell step
+ * (a key spelled another way, a value reached through an alias or a
+ * merge) is refused rather than missed.
  */
 const EXPRESSION_PLACES: Record<WorkflowFileKind, readonly string[]> = {
   workflow: [
@@ -229,21 +231,49 @@ const EXPRESSION_PLACES: Record<WorkflowFileKind, readonly string[]> = {
 
 /**
  * Action inputs that hold code the action runs, refused under any `with`:
- * actions/github-script runs `script`, and actions that retry or wrap a
- * command run `command` or `run` in a shell.
+ * actions/github-script runs `script`, actions that retry or wrap a
+ * command run `command`, `cmd` or `run` in a shell, and `shell` names the
+ * program that runs it. Compared in upper case (`foldKey`).
  */
-const CODE_INPUTS: ReadonlySet<string> = new Set(['script', 'command', 'run']);
+const CODE_INPUTS: ReadonlySet<string> = new Set(['SCRIPT', 'COMMAND', 'CMD', 'RUN', 'SHELL']);
 
 /**
  * The inputs of a `docker://` step that make its container's command:
  * `entrypoint` the program and `args` its arguments (`-c "…"` for a
  * shell). Refused under the `with` of a step that is not known to use an
- * action rather than a docker:// image.
+ * action rather than a docker:// image. Compared in upper case.
  */
-const DOCKER_COMMAND_INPUTS: ReadonlySet<string> = new Set(['args', 'entrypoint']);
+const DOCKER_COMMAND_INPUTS: ReadonlySet<string> = new Set(['ARGS', 'ENTRYPOINT']);
 
 /** A step's `uses` that runs a container image, whose `with` makes its command. */
 const DOCKER_IMAGE = /^docker:\/\//i;
+
+/**
+ * Environment variables whose value is code, or the path of a file that
+ * a shell or an interpreter of the step runs (bash sources `BASH_ENV`,
+ * node reads `--require` and `--import` from `NODE_OPTIONS`), compared in
+ * upper case: an expression in their `env` value is refused. Names a
+ * workflow may set to anything else still pass.
+ */
+const CODE_ENV_NAMES: ReadonlySet<string> = new Set([
+  'BASH_ENV',
+  'ENV',
+  'NODE_OPTIONS',
+  'LD_PRELOAD',
+  'LD_LIBRARY_PATH',
+  'PERL5OPT',
+  'RUBYOPT',
+  'PYTHONSTARTUP',
+  'JAVA_TOOL_OPTIONS',
+  '_JAVA_OPTIONS',
+  'DOTNET_STARTUP_HOOKS',
+  'GIT_SSH_COMMAND',
+  'PROMPT_COMMAND',
+  'PS4',
+  'SHELLOPTS',
+  'BASHOPTS',
+  'PATH',
+]);
 
 /**
  * A character some YAML readers end a line at and this parser does not:
@@ -259,7 +289,16 @@ const MAX_ALIASES = 100;
 /** A place in a document: its mapping keys and sequence items from the root. */
 type Place = readonly (string | number)[];
 
-/** Whether `place` is the place `pattern` names (see `EXPRESSION_PLACES`). */
+/**
+ * A key as GitHub compares it: in upper case, as the runner names an
+ * input's variable (`INPUT_SCRIPT` for `Script`, and for `ſcript`, whose
+ * long s upper-cases to S) and compares a step's keys in any case.
+ */
+function foldKey(key: string): string {
+  return key.toUpperCase();
+}
+
+/** Whether `place` is the place `pattern` names (see `EXPRESSION_PLACES`), its keys in any case. */
 function isPlaceOf(place: Place, pattern: string): boolean {
   const steps = pattern.split('.');
   return (
@@ -267,9 +306,15 @@ function isPlaceOf(place: Place, pattern: string): boolean {
     steps.every((step, i) => {
       const at = place[i];
       if (step === '#') return typeof at === 'number';
-      return typeof at === 'string' && (step === '*' || step === at);
+      return typeof at === 'string' && (step === '*' || foldKey(step) === foldKey(at));
     })
   );
+}
+
+/** The key at `place`'s position `at` from its end (-1 the last), folded (`foldKey`); null for an item. */
+function keyAt(place: Place, at: number): string | null {
+  const key = place.at(at);
+  return typeof key === 'string' ? foldKey(key) : null;
 }
 
 /** The value at `place` in a document read into plain values, or undefined when there is none. */
@@ -282,24 +327,36 @@ function valueAt(document: unknown, place: Place): unknown {
   return value;
 }
 
-/** Whether a step (or a job) uses an action or a workflow, named by a string, and no docker:// image. */
+/**
+ * Whether a step (or a job) uses an action or a workflow, and no
+ * docker:// image: it has one `uses` key, in any case, and its value is a
+ * string that names no image. Two spellings of `uses`, or a `uses` that
+ * is not there as text (merged in, say), are not known to name no image.
+ */
 function usesNoImage(step: unknown): boolean {
-  const uses = valueAt(step, ['uses']);
-  return typeof uses === 'string' && !DOCKER_IMAGE.test(uses);
+  if (typeof step !== 'object' || step === null) return false;
+  const uses = Object.entries(step).filter(([key]) => foldKey(key) === 'USES');
+  if (uses.length !== 1) return false;
+  const [[, value]] = uses;
+  return typeof value === 'string' && !DOCKER_IMAGE.test(value.trim());
 }
 
 /**
  * Whether GitHub hands the value at `place` of a `kind` file (`document`)
  * to no shell and no script: a listed place, but no input that holds code
- * (`CODE_INPUTS`) and no input that makes a docker:// step's command.
+ * (`CODE_INPUTS`), no input that makes a docker:// step's command
+ * (`DOCKER_COMMAND_INPUTS`) and no `env` value of a variable whose value
+ * is code (`CODE_ENV_NAMES`). Every key compares in any case.
  */
 function isExpressionPlace(kind: WorkflowFileKind, place: Place, document: unknown): boolean {
-  const name = place.at(-1);
-  if (place.at(-2) === 'with' && typeof name === 'string') {
+  const name = keyAt(place, -1);
+  const parent = keyAt(place, -2);
+  if (name !== null && parent === 'WITH') {
     if (CODE_INPUTS.has(name)) return false;
     const step = valueAt(document, place.slice(0, -2));
     if (DOCKER_COMMAND_INPUTS.has(name) && !usesNoImage(step)) return false;
   }
+  if (name !== null && parent === 'ENV' && CODE_ENV_NAMES.has(name)) return false;
   return EXPRESSION_PLACES[kind].some((pattern) => isPlaceOf(place, pattern));
 }
 
