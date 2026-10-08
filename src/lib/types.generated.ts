@@ -1747,6 +1747,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description No index task runs for the chain, and none can start now: as many log chain index tasks as the server runs at once are running or waiting. No task started; ask again once one of them has ended. At most 128 run or wait at once: half the line-index build queue, as many as the part builds of all chains may take. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
             /** @description Any other error */
             default: {
                 headers: {
@@ -1865,6 +1874,15 @@ export interface operations {
             };
             /** @description rx failed while serving the request */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A request by global line or by time on a pending chain whose index task does not run and cannot start now: as many log chain index tasks as the server runs at once are running or waiting. Ask again once one of them has ended. At most 128 run or wait at once: half the line-index build queue, as many as the part builds of all chains may take. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
