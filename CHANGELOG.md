@@ -311,9 +311,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parser (`yaml`, a new development dependency), so a step spelled as a
   flow mapping, with a quoted key, an alias, a merge key or an escape
   is checked like any other, and a file it cannot read fails it. It
-  also refuses an expression in the `args` or the `entrypoint` of a
-  `docker://` step (which make the container's command, such as
-  `sh -c "…"`), in any action input named `command`, `cmd`, `run` or
+  also refuses an expression in the `args` or the `entrypoint` input of
+  any step or job (which make a container's command, such as
+  `sh -c "…"`, for a `docker://` step and for a local or published
+  container action whose `action.yml` names neither), in any action
+  input named `command`, `cmd`, `run` or
   `shell`, which actions that retry or wrap a command run in a shell or
   run it with, and in the `env` value of a variable whose value is code
   or a file a shell or an interpreter runs (`BASH_ENV`, `NODE_OPTIONS`,

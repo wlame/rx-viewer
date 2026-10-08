@@ -233,20 +233,21 @@ const EXPRESSION_PLACES: Record<WorkflowFileKind, readonly string[]> = {
  * Action inputs that hold code the action runs, refused under any `with`:
  * actions/github-script runs `script`, actions that retry or wrap a
  * command run `command`, `cmd` or `run` in a shell, and `shell` names the
- * program that runs it. Compared in upper case (`foldKey`).
+ * program that runs it. `entrypoint` and `args` make a container's
+ * command (`/bin/sh` and `-c "…"`) for a `docker://` step and for any
+ * container action whose action.yml names no entrypoint or args, local
+ * or published, which the guard cannot tell from the step. Compared in
+ * upper case (`foldKey`).
  */
-const CODE_INPUTS: ReadonlySet<string> = new Set(['SCRIPT', 'COMMAND', 'CMD', 'RUN', 'SHELL']);
-
-/**
- * The inputs of a `docker://` step that make its container's command:
- * `entrypoint` the program and `args` its arguments (`-c "…"` for a
- * shell). Refused under the `with` of a step that is not known to use an
- * action rather than a docker:// image. Compared in upper case.
- */
-const DOCKER_COMMAND_INPUTS: ReadonlySet<string> = new Set(['ARGS', 'ENTRYPOINT']);
-
-/** A step's `uses` that runs a container image, whose `with` makes its command. */
-const DOCKER_IMAGE = /^docker:\/\//i;
+const CODE_INPUTS: ReadonlySet<string> = new Set([
+  'SCRIPT',
+  'COMMAND',
+  'CMD',
+  'RUN',
+  'SHELL',
+  'ENTRYPOINT',
+  'ARGS',
+]);
 
 /**
  * Environment variables whose value is code, or the path of a file that
@@ -317,45 +318,16 @@ function keyAt(place: Place, at: number): string | null {
   return typeof key === 'string' ? foldKey(key) : null;
 }
 
-/** The value at `place` in a document read into plain values, or undefined when there is none. */
-function valueAt(document: unknown, place: Place): unknown {
-  let value = document;
-  for (const at of place) {
-    if (typeof value !== 'object' || value === null) return undefined;
-    value = (value as Record<string | number, unknown>)[at];
-  }
-  return value;
-}
-
 /**
- * Whether a step (or a job) uses an action or a workflow, and no
- * docker:// image: it has one `uses` key, in any case, and its value is a
- * string that names no image. Two spellings of `uses`, or a `uses` that
- * is not there as text (merged in, say), are not known to name no image.
+ * Whether GitHub hands the value at `place` of a `kind` file to no shell
+ * and no script: a listed place, but no input that holds code or makes a
+ * container's command (`CODE_INPUTS`) and no `env` value of a variable
+ * whose value is code (`CODE_ENV_NAMES`). Every key compares in any case.
  */
-function usesNoImage(step: unknown): boolean {
-  if (typeof step !== 'object' || step === null) return false;
-  const uses = Object.entries(step).filter(([key]) => foldKey(key) === 'USES');
-  if (uses.length !== 1) return false;
-  const [[, value]] = uses;
-  return typeof value === 'string' && !DOCKER_IMAGE.test(value.trim());
-}
-
-/**
- * Whether GitHub hands the value at `place` of a `kind` file (`document`)
- * to no shell and no script: a listed place, but no input that holds code
- * (`CODE_INPUTS`), no input that makes a docker:// step's command
- * (`DOCKER_COMMAND_INPUTS`) and no `env` value of a variable whose value
- * is code (`CODE_ENV_NAMES`). Every key compares in any case.
- */
-function isExpressionPlace(kind: WorkflowFileKind, place: Place, document: unknown): boolean {
+function isExpressionPlace(kind: WorkflowFileKind, place: Place): boolean {
   const name = keyAt(place, -1);
   const parent = keyAt(place, -2);
-  if (name !== null && parent === 'WITH') {
-    if (CODE_INPUTS.has(name)) return false;
-    const step = valueAt(document, place.slice(0, -2));
-    if (DOCKER_COMMAND_INPUTS.has(name) && !usesNoImage(step)) return false;
-  }
+  if (name !== null && parent === 'WITH' && CODE_INPUTS.has(name)) return false;
   if (name !== null && parent === 'ENV' && CODE_ENV_NAMES.has(name)) return false;
   return EXPRESSION_PLACES[kind].some((pattern) => isPlaceOf(place, pattern));
 }
@@ -433,7 +405,7 @@ function expressionViolation(name: string, found: FoundExpression): string {
  * Every `${{ … }}` of a workflow or an action file (`text`, named `name`
  * in the messages) that stands outside the places GitHub hands to no
  * shell and no script (`EXPRESSION_PLACES`, less the inputs that hold
- * code or make a docker:// step's command). The file is read by a YAML
+ * code or make a container's command). The file is read by a YAML
  * parser, so every form of a value counts: a block, a plain or quoted
  * scalar over several lines, a flow mapping, a quoted key, an escape
  * such as `\x24{{`, an alias, a merge key. Every scalar is read as text
@@ -463,7 +435,7 @@ export function workflowExpressionViolations(
       continue;
     }
     for (const found of expressionsIn(value, [], new Set())) {
-      if (found.isKey || !isExpressionPlace(kind, found.place, value)) {
+      if (found.isKey || !isExpressionPlace(kind, found.place)) {
         violations.push(expressionViolation(name, found));
       }
     }

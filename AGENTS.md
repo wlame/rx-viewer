@@ -134,10 +134,12 @@ recipe, and on any `${{` in a workflow (`.yml` or `.yaml`) or a file
 under `.github/actions` that stands outside the places GitHub hands to
 no shell and no script (an `if`, an `env` value other than of a
 variable whose value is code, such as `BASH_ENV` or `NODE_OPTIONS`, an
-action input other than one that holds code, `script`, `command`,
-`cmd`, `run` or `shell`, and other than the `args` and `entrypoint` of
-a `docker://` step: `EXPRESSION_PLACES`, `CODE_ENV_NAMES`,
-`CODE_INPUTS` and `DOCKER_COMMAND_INPUTS` in `releasePath.ts`). Keys
+action input other than one that holds code or makes a container's
+command, `script`, `command`, `cmd`, `run`, `shell`, `entrypoint` or
+`args`, under any `with`, since a container action whose `action.yml`
+names neither takes the last two as its command:
+`EXPRESSION_PLACES`, `CODE_ENV_NAMES` and `CODE_INPUTS` in
+`releasePath.ts`). Keys
 compare in upper case, as the runner names an input's variable
 (`Script` and `ſcript` are `SCRIPT`). It reads those files with a YAML
 parser, so no spelling of a step (a flow mapping, a quoted key, an

@@ -300,15 +300,63 @@ describe('the workflow guard', () => {
     },
   );
 
-  // GitHub hands the args input of an action, not a docker:// image, to
-  // that action as data.
-  it('lets an expression through in the args of an action that is no docker:// image', () => {
-    const workflow = workflowWith(
-      '      - uses: some/release-action@v6\n        with:\n          args: release --tag=${{ github.ref_name }}',
-    );
-
-    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
-  });
+  // A container action whose action.yml names no entrypoint or args takes
+  // these inputs as its container's command, whether it is a local action,
+  // a published one or a composite action's step; the guard cannot see
+  // which action.yml a step reaches.
+  it.each([
+    [
+      'a local action',
+      'workflow',
+      workflowWith(
+        '      - uses: ./.github/actions/sh\n        with:\n          entrypoint: /bin/sh\n          args: -c "echo ${{ github.ref_name }}"',
+      ),
+      'jobs.build.steps[0].with.args',
+    ],
+    [
+      'a published action',
+      'workflow',
+      workflowWith(
+        '      - uses: some/docker-action@v1\n        with:\n          args: -c "echo ${{ github.ref_name }}"',
+      ),
+      'jobs.build.steps[0].with.args',
+    ],
+    [
+      'an action that may read it as data',
+      'workflow',
+      workflowWith(
+        '      - uses: some/release-action@v6\n        with:\n          args: release --tag=${{ github.ref_name }}',
+      ),
+      'jobs.build.steps[0].with.args',
+    ],
+    [
+      'a published action, written in another case',
+      'workflow',
+      workflowWith(
+        '      - uses: some/docker-action@v1\n        with:\n          EntryPoint: ${{ inputs.program }}',
+      ),
+      'jobs.build.steps[0].with.EntryPoint',
+    ],
+    [
+      'a reusable workflow',
+      'workflow',
+      'on: push\njobs:\n  call:\n    uses: ./.github/workflows/x.yml\n    with:\n      args: ${{ github.ref_name }}\n',
+      'jobs.call.with.args',
+    ],
+    [
+      "a composite action's step",
+      'action',
+      'name: c\nruns:\n  using: composite\n  steps:\n    - uses: ./.github/actions/sh\n      with:\n        entryPoint: /bin/sh\n        args: -c "echo ${{ github.ref_name }}"\n',
+      'runs.steps[0].with.args',
+    ],
+  ] as const)(
+    'refuses an expression in the args or entrypoint of %s',
+    (_name, kind, text, place) => {
+      expect(workflowExpressionViolations('w.yml', text, kind)).toEqual([
+        `w.yml: ${place} holds a \${{ … }} expression outside the places GitHub hands it to no shell and no script; pass it through env: and read it as "$NAME"`,
+      ]);
+    },
+  );
 
   // This parser reads only LF and CRLF as line breaks; a reader that also
   // ends a line at one of these would find a run line inside a comment.
