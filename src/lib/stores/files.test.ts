@@ -8,8 +8,10 @@ import { fileZones } from './fileZones';
 import { files } from './files';
 import { health } from './health';
 import { notifications } from './notifications';
+import { DEFAULT_PANE, recallPane, rememberPane } from './paneMemory';
 import { timeCursor } from './timeCursor';
 import { tree } from './tree';
+import { chainKey } from '../utils/tabKey';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -1565,5 +1567,96 @@ describe('a time zone chosen for a file', () => {
 
     expect(openedFile(path).timeJump).toBeNull();
     expect(openedFile(path).anchorLine).toBe(420);
+  });
+});
+
+/**
+ * A chain's handle is usually its active file's path, and the two can be
+ * open at once. Each tab is keyed by its own key, so neither overwrites
+ * the other in any store that belongs to a tab. The chain tab is opened
+ * here through `openFile` with its key, which loads that key from the
+ * stubbed backend as a file would: the keyed stores are what is tested.
+ */
+describe('a file and the log chain at its path', () => {
+  const path = '/l/syslog';
+  const chain = chainKey(path);
+  const match = (lineNumber: number) => ({ lineNumber, patternId: 'p1', pattern: 'error' });
+
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    files.clearMatches();
+    fileZones.replace([]);
+    vi.unstubAllGlobals();
+  });
+
+  async function openBoth() {
+    serveFileOf(500);
+    await Promise.all([
+      files.openFile(path, { isIndexed: false }),
+      files.openFile(chain, { isIndexed: false }),
+    ]);
+  }
+
+  // One request slot per key: the second load would cancel the first if
+  // the two tabs shared one.
+  it('open as two tabs that each load their own window', async () => {
+    await openBoth();
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual([path, chain]);
+    for (const key of [path, chain]) {
+      expect(openedFile(key).loading).toBe(false);
+      expect(openedFile(key).error).toBeNull();
+      expect(lineNumbers(key).slice(0, 3)).toEqual([1, 2, 3]);
+    }
+  });
+
+  it('keep their own active state, anchor line and matches', async () => {
+    await openBoth();
+
+    files.setActiveFile(path);
+    files.setAnchorLine(chain, 40);
+    files.setMatches(path, [match(3)]);
+    files.setMatches(chain, [match(9)]);
+
+    const state = get(files);
+    expect(state.activeFilePath).toBe(path);
+    expect(openedFile(path).anchorLine).toBe(1);
+    expect(openedFile(chain).anchorLine).toBe(40);
+    expect(state.matches.get(path)).toEqual([match(3)]);
+    expect(state.matches.get(chain)).toEqual([match(9)]);
+  });
+
+  it('close apart: closing the chain leaves the file, its matches and its pane', async () => {
+    await openBoth();
+    const filePane = { ...DEFAULT_PANE, filterPanelVisible: true };
+    const chainPane = { ...DEFAULT_PANE, filterDraft: { pattern: 'x', mode: 'hide' as const } };
+    rememberPane(path, filePane);
+    rememberPane(chain, chainPane);
+    files.setMatches(path, [match(3)]);
+    files.setMatches(chain, [match(9)]);
+    expect(recallPane(chain)).toEqual(chainPane);
+
+    files.closeFile(chain);
+
+    const state = get(files);
+    expect(state.openFiles.map((f) => f.path)).toEqual([path]);
+    expect(state.matches.get(path)).toEqual([match(3)]);
+    expect(state.matches.has(chain)).toBe(false);
+    expect(recallPane(path)).toEqual(filePane);
+    expect(recallPane(chain)).toBe(DEFAULT_PANE);
+  });
+
+  it('keep their own time zones', () => {
+    expect(fileZones.set(path, 'UTC', () => true)).toBe(true);
+    expect(fileZones.set(chain, 'Europe/Berlin', () => true)).toBe(true);
+
+    expect(fileZones.zoneOf(path)).toBe('UTC');
+    expect(fileZones.zoneOf(chain)).toBe('Europe/Berlin');
+
+    fileZones.clear(chain);
+    expect(fileZones.zoneOf(path)).toBe('UTC');
+    expect(fileZones.zoneOf(chain)).toBeNull();
   });
 });

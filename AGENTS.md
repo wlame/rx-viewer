@@ -136,6 +136,14 @@ separate comment above, or eslint reads every word as another rule.
   is a `pushState`, every other change a `replaceState`, and `popstate`
   restores the entry. `line` is the file's anchor line, whose rule is in
   `utils/anchorLine.ts`.
+- Every open tab has a tab key (`utils/tabKey.ts`), held in
+  `OpenFile.path`: a file's path, or `chain:<handle>` for a log chain,
+  whose handle is usually its active file's path. Everything that belongs
+  to a tab is keyed by it (the open tabs, their request slots,
+  `paneMemory`, search matches, index follows, task polls and the file
+  zones, `ftz=<zone>@<key>`), so a chain and the file at its handle never
+  share state. Code that reads a file (samples, index, time range) takes
+  the file's path, which is its key.
 - The status bar's equivalent command comes from `stores/commands.ts`,
   which records the backend's `cli_command` of each answer to a user
   action (search, file window, index, analysis). Record a new action's

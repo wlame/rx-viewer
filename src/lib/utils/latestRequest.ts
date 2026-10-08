@@ -1,8 +1,8 @@
 /**
  * Keeps the newest request the winner.
  *
- * The bug this exists to prevent: the stores key their updates on a file
- * path alone, so two overlapping loads for the same file both apply, in
+ * The bug this exists to prevent: the stores key their updates on a tab's
+ * key alone, so two overlapping loads for the same tab both apply, in
  * arrival order rather than in request order. Jump to line 1,000,000 and
  * then to line 5, and if the first response lands second the editor ends
  * on the window nobody asked for. The same shape affects scroll-driven
@@ -72,8 +72,8 @@ export class LatestRequest {
 }
 
 /**
- * A LatestRequest per key, for state that is per open file rather than
- * global — loading one file must not cancel another.
+ * A LatestRequest per key, for state that is per open tab rather than
+ * global — loading one tab must not cancel another.
  */
 export class LatestRequestMap {
   private slots = new Map<string, LatestRequest>();

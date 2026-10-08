@@ -1,5 +1,6 @@
 import { api, ApiError } from '../api';
 import type { IndexTaskResult, TaskStatus } from '../types';
+import type { TabKey } from './tabKey';
 
 /**
  * Following a background index task (`POST /v1/index`) to its end.
@@ -127,23 +128,26 @@ interface Poll {
 }
 
 /**
- * One poll per file path, shared by everyone waiting on that file's task.
+ * One poll per key, shared by everyone waiting on that key's task. The
+ * key is a tab key (`utils/tabKey.ts`): a file's path, or `chain:` and a
+ * chain's handle, so a chain and the file at its handle each have their
+ * own.
  *
  * A second caller for the task already followed joins the running poll
  * instead of starting another loop. Each caller leaves by aborting its
  * own signal; the poll stops when the last caller has left.
  */
 export class TaskPolls {
-  private polls = new Map<string, Poll>();
+  private polls = new Map<TabKey, Poll>();
 
   constructor(
     private readonly fetchStatus: FetchTaskStatus,
     private readonly intervalMs = DEFAULT_INTERVAL_MS,
   ) {}
 
-  /** The task followed for this path, or null when nothing is. */
-  activeTask(path: string): string | null {
-    return this.polls.get(path)?.taskId ?? null;
+  /** The task followed for `key`, or null when nothing is. */
+  activeTask(key: TabKey): string | null {
+    return this.polls.get(key)?.taskId ?? null;
   }
 
   /**
@@ -152,8 +156,8 @@ export class TaskPolls {
    * Rejects with an `AbortError` as soon as this caller's signal aborts,
    * whether or not other callers keep the poll alive.
    */
-  join(path: string, taskId: string, options: JoinOptions): Promise<IndexTaskResult> {
-    const poll = this.pollFor(path, taskId);
+  join(key: TabKey, taskId: string, options: JoinOptions): Promise<IndexTaskResult> {
+    const poll = this.pollFor(key, taskId);
     const { signal, onStatus } = options;
     poll.callers++;
     if (onStatus) poll.listeners.add(onStatus);
@@ -166,7 +170,7 @@ export class TaskPolls {
         signal.removeEventListener('abort', onAbort);
         if (onStatus) poll.listeners.delete(onStatus);
         poll.callers--;
-        if (poll.callers === 0) this.stop(path, poll);
+        if (poll.callers === 0) this.stop(key, poll);
       };
       const onAbort = () => {
         leave();
@@ -191,8 +195,8 @@ export class TaskPolls {
     });
   }
 
-  private pollFor(path: string, taskId: string): Poll {
-    const running = this.polls.get(path);
+  private pollFor(key: TabKey, taskId: string): Poll {
+    const running = this.polls.get(key);
     if (running && running.taskId === taskId) return running;
 
     const controller = new AbortController();
@@ -213,21 +217,21 @@ export class TaskPolls {
     // keeps a poll whose callers have all left from reporting an
     // unhandled rejection.
     poll.result.catch(() => {});
-    poll.result.finally(() => this.forget(path, poll)).catch(() => {});
-    this.polls.set(path, poll);
+    poll.result.finally(() => this.forget(key, poll)).catch(() => {});
+    this.polls.set(key, poll);
     return poll;
   }
 
-  private stop(path: string, poll: Poll): void {
+  private stop(key: TabKey, poll: Poll): void {
     poll.controller.abort();
-    this.forget(path, poll);
+    this.forget(key, poll);
   }
 
-  /** Drop the path's entry, unless a newer poll has already replaced it. */
-  private forget(path: string, poll: Poll): void {
-    if (this.polls.get(path) === poll) this.polls.delete(path);
+  /** Drop the entry of `key`, unless a newer poll has already replaced it. */
+  private forget(key: TabKey, poll: Poll): void {
+    if (this.polls.get(key) === poll) this.polls.delete(key);
   }
 }
 
-/** The polls of the whole app: one per file path. */
+/** The polls of the whole app: one per key. */
 export const taskPolls = new TaskPolls((taskId, signal) => api.getTaskStatus(taskId, { signal }));

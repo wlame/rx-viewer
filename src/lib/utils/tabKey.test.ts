@@ -1,0 +1,40 @@
+import { describe, expect, it } from 'vitest';
+import { chainHandleOf, chainKey, isChainKey } from './tabKey';
+
+describe('chainKey', () => {
+  it('prefixes the handle with chain:', () => {
+    expect(chainKey('/var/log/syslog')).toBe('chain:/var/log/syslog');
+  });
+
+  // The handle equals the active file's path in the usual case, so the
+  // two tabs need different keys.
+  it('never equals the path of the file at the handle', () => {
+    expect(chainKey('/var/log/syslog')).not.toBe('/var/log/syslog');
+  });
+});
+
+describe('isChainKey', () => {
+  it.each([
+    ['chain:/var/log/syslog', true],
+    ['/var/log/syslog', false],
+    ['/var/log/chain:syslog', false],
+    ['', false],
+  ])('reads %j as a chain key: %s', (key, expected) => {
+    expect(isChainKey(key)).toBe(expected);
+  });
+});
+
+describe('chainHandleOf', () => {
+  it.each([
+    '/var/log/syslog',
+    '/srv/my app (1).log',
+    '/srv/a#b&c%d+e@f.log',
+    '/var/log/журнал.log',
+  ])('gives back the handle %s', (handle) => {
+    expect(chainHandleOf(chainKey(handle))).toBe(handle);
+  });
+
+  it('gives null for a file key', () => {
+    expect(chainHandleOf('/var/log/syslog')).toBeNull();
+  });
+});

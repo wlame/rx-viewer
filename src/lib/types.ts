@@ -1,4 +1,5 @@
 import type { components, operations } from './types.generated';
+import type { TabKey } from './utils/tabKey';
 
 /**
  * The wire types are aliases of the generated schemas, so they cannot
@@ -249,7 +250,6 @@ export interface RegexFilter {
   applying: boolean;
 }
 
-/** Represents an open file in the editor */
 /** How far the build of a file's line index has got (`samplesWait.ts`). */
 export interface IndexBuild {
   taskId: string;
@@ -257,8 +257,17 @@ export interface IndexBuild {
   progress: number | null;
 }
 
+/**
+ * An open tab in the editor: a file's, or a log chain's. A tab is found
+ * by its key, which it holds in `path`.
+ */
 export interface OpenFile {
-  path: string;
+  /**
+   * The tab's key (`utils/tabKey.ts`): a file's path, or `chain:` and the
+   * handle for a log chain. Every store that belongs to a tab is keyed by
+   * it. A file tab's lines load from `/v1/samples` with it as the path.
+   */
+  path: TabKey;
   name: string;
   lines: FileLine[];
   totalLines: number | null; // null if unknown (file not indexed)

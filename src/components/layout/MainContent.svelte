@@ -23,6 +23,7 @@
 
   $: canJump = backendHas('samples_timestamps', $health);
   $: canChooseZone = backendHas('file_tz', $health);
+  // Zones are kept by tab key, which a tab holds in `path`.
   $: chosenZone = activeFile ? fileZoneOf($fileZones, activeFile.path) : null;
 
   /** Read the active file in `zone`, or in its own with null; say so when it cannot be kept. */
@@ -161,6 +162,7 @@
         data-tab-strip
         class="flex-1 min-w-0 flex items-center gap-0.5 px-2 py-1 overflow-x-auto scrollbar-hide"
       >
+        <!-- Each tab by its key: a chain and the file at its handle are two tabs. -->
         {#each $files.openFiles as file, index (file.path)}
           <button
             draggable="true"
@@ -231,8 +233,9 @@
       chooseZone={chooseActiveFileZone}
     />
 
-    <!-- The active file's editor, built again for each tab so no state of one
-         tab reaches another; each tab's own state is kept in paneMemory. -->
+    <!-- The active tab's editor, built again for each tab key (`path`, see
+         utils/tabKey.ts) so no state of one tab reaches another; each tab's
+         own state is kept in paneMemory under its key. -->
     <div class="flex-1 min-h-0 overflow-hidden">
       {#if activeFile}
         {#key activeFile.path}

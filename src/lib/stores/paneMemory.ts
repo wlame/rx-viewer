@@ -1,14 +1,15 @@
 import type { OpenFile, RegexFilter } from '../types';
+import type { TabKey } from '../utils/tabKey';
 
 /**
- * What the editor pane keeps for each open file while another file's tab
- * is shown.
+ * What the editor pane keeps for each open tab while another tab is
+ * shown.
  *
  * The pane is built again for every tab, so nothing a user typed or
  * scrolled in one tab reaches another. What belongs to a tab is kept
- * here by path, taken when its pane goes away and read when it comes
- * back. The applied filter itself lives with the file in the files
- * store; this holds the bar around it and the view.
+ * here by its key (`utils/tabKey.ts`), taken when its pane goes away and
+ * read when it comes back. The applied filter itself lives with the tab
+ * in the files store; this holds the bar around it and the view.
  */
 
 /** The pattern and mode in the filter bar, applied or not. */
@@ -44,21 +45,21 @@ export const DEFAULT_PANE: PaneMemory = {
   scroll: null,
 };
 
-const panes = new Map<string, PaneMemory>();
+const panes = new Map<TabKey, PaneMemory>();
 
-/** Keep the pane of a file whose tab is being hidden. */
-export function rememberPane(path: string, pane: PaneMemory): void {
-  panes.set(path, pane);
+/** Keep the pane of the tab `key`, which is being hidden. */
+export function rememberPane(key: TabKey, pane: PaneMemory): void {
+  panes.set(key, pane);
 }
 
-/** The pane a file's tab had when it was last shown, or the default one. */
-export function recallPane(path: string): PaneMemory {
-  return panes.get(path) ?? DEFAULT_PANE;
+/** The pane the tab `key` had when it was last shown, or the default one. */
+export function recallPane(key: TabKey): PaneMemory {
+  return panes.get(key) ?? DEFAULT_PANE;
 }
 
-/** Drop what was kept for a file; its tab was closed. */
-export function forgetPane(path: string): void {
-  panes.delete(path);
+/** Drop what was kept for the tab `key`; it was closed. */
+export function forgetPane(key: TabKey): void {
+  panes.delete(key);
 }
 
 /** How the editor positions a tab's view when the tab is shown. */

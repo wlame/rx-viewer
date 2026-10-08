@@ -11,6 +11,7 @@ import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/s
 import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import { taskPolls } from '../utils/taskPolling';
+import type { TabKey } from '../utils/tabKey';
 import type {
   OpenFile,
   FileMatch,
@@ -34,20 +35,20 @@ import { tree } from './tree';
 export type TimeQuery = number | string;
 
 /**
- * At most one window load per file may write to the store.
+ * At most one window load per tab may write to the store.
  *
- * Every load below updates the file it matches by path, so two
- * overlapping loads for the same file both applied, in arrival order.
+ * Every load below updates the tab it matches by key, so two
+ * overlapping loads for the same tab both applied, in arrival order.
  * Jump to line 1,000,000 and then to line 5 on a slow link and the
- * editor could settle on the first target. Keyed by path so a load in
- * one tab does not cancel another tab's.
+ * editor could settle on the first target. Keyed by the tab key so a
+ * load in one tab does not cancel another tab's, a chain's included.
  */
 const fileLoads = new LatestRequestMap();
 
-/** The time-range request of each open file; a newer one supersedes an older one. */
+/** The time-range request of each open tab, by its key; a newer one supersedes an older one. */
 const timeRangeLoads = new LatestRequestMap();
 
-/** The line index build each open file follows in the background. */
+/** The line index build each open tab follows in the background, by its key. */
 const indexFollows = new IndexBuildFollows(taskPolls);
 
 /** The status of the backend's refusal of a request it cannot read, such as an unknown `file_tz`. */
@@ -127,15 +128,24 @@ export interface OpenFileOptions {
   compressionFormat?: string | null;
 }
 
+/**
+ * The open tabs, the search matches of each and the active one. A tab is
+ * found by its key (`utils/tabKey.ts`), which it holds in `path`: a
+ * file's path, or `chain:` and the handle for a log chain, so a chain and
+ * the file at its handle are two tabs. The functions that read a file's
+ * lines, index or time range take the file's path, which is its key.
+ */
 interface FilesState {
   openFiles: OpenFile[];
-  matches: Map<string, FileMatch[]>; // path -> matches
-  activeFilePath: string | null; // Currently active/focused file
+  /** Each tab's search matches, by its key. */
+  matches: Map<TabKey, FileMatch[]>;
+  /** The key of the active tab. */
+  activeFilePath: TabKey | null;
 }
 
 /**
- * The file the editor shows: the one `activeFilePath` names, or the last
- * open file when it names none that is open.
+ * The tab the editor shows: the one `activeFilePath` names, or the last
+ * open tab when it names none that is open.
  */
 export function activeOpenFile(state: Pick<FilesState, 'openFiles' | 'activeFilePath'>) {
   return state.openFiles.find((f) => f.path === state.activeFilePath) ?? state.openFiles.at(-1);
@@ -254,9 +264,9 @@ function createFilesStore() {
     await readAgainInItsZone(path);
   }
 
-  /** Whether `path` is open. */
-  function isOpen(path: string): boolean {
-    return get({ subscribe }).openFiles.some((f) => f.path === path);
+  /** Whether the tab `key` is open. */
+  function isOpen(key: TabKey): boolean {
+    return get({ subscribe }).openFiles.some((f) => f.path === key);
   }
 
   /**
@@ -469,11 +479,11 @@ function createFilesStore() {
     }));
   }
 
-  /** Set some fields of the open file `path`; a file that is not open is left alone. */
-  function setFileFields(path: string, fields: Partial<OpenFile>) {
+  /** Set some fields of the open tab `key`; a tab that is not open is left alone. */
+  function setFileFields(key: TabKey, fields: Partial<OpenFile>) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, ...fields } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, ...fields } : f)),
     }));
   }
 
@@ -901,44 +911,40 @@ function createFilesStore() {
     }));
   }
 
-  /** Mark a file loading, or done loading; loading also clears its error. */
-  function setLoading(path: string, loading: boolean) {
+  /** Mark a tab loading, or done loading; loading also clears its error. */
+  function setLoading(key: TabKey, loading: boolean) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? (loading ? { ...f, loading, error: null } : { ...f, loading }) : f,
+        f.path === key ? (loading ? { ...f, loading, error: null } : { ...f, loading }) : f,
       ),
     }));
   }
 
-  /**
-   * Close a file
-   */
-  function closeFile(path: string) {
+  /** Close a tab, and cancel and forget everything kept for its key. */
+  function closeFile(key: TabKey) {
     // Cancel anything still loading for this file and drop its slot.
-    fileLoads.forget(path);
-    timeRangeLoads.forget(path);
-    indexFollows.stop(path);
-    forgetPane(path);
+    fileLoads.forget(key);
+    timeRangeLoads.forget(key);
+    indexFollows.stop(key);
+    forgetPane(key);
 
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.filter((f) => f.path !== path),
+      openFiles: s.openFiles.filter((f) => f.path !== key),
       matches: (() => {
         const newMatches = new Map(s.matches);
-        newMatches.delete(path);
+        newMatches.delete(key);
         return newMatches;
       })(),
     }));
   }
 
-  /**
-   * Set matches for a file (for highlighting)
-   */
-  function setMatches(path: string, matches: FileMatch[]) {
+  /** Set the search matches the tab `key` highlights. */
+  function setMatches(key: TabKey, matches: FileMatch[]) {
     update((s) => {
       const newMatches = new Map(s.matches);
-      newMatches.set(path, matches);
+      newMatches.set(key, matches);
       return { ...s, matches: newMatches };
     });
   }
@@ -954,10 +960,10 @@ function createFilesStore() {
   /**
    * Clear scroll position after scrolling is done
    */
-  function clearScrollPosition(path: string) {
+  function clearScrollPosition(key: TabKey) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, scrollToLine: undefined } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, scrollToLine: undefined } : f)),
     }));
   }
 
@@ -974,10 +980,10 @@ function createFilesStore() {
   }
 
   /** Turn syntax highlighting of a file on or off. */
-  function setSyntaxHighlighting(path: string, on: boolean) {
+  function setSyntaxHighlighting(key: TabKey, on: boolean) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, syntaxHighlighting: on } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, syntaxHighlighting: on } : f)),
     }));
   }
 
@@ -985,11 +991,11 @@ function createFilesStore() {
    * Set the line the URL names for a file; the editor reports it after a
    * scroll. A different line is a move by line, which ends the time jump.
    */
-  function setAnchorLine(path: string, line: number) {
+  function setAnchorLine(key: TabKey, line: number) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
-        if (f.path !== path || line === f.anchorLine) return f;
+        if (f.path !== key || line === f.anchorLine) return f;
         return { ...f, anchorLine: line, timeJump: null };
       }),
     }));
@@ -998,11 +1004,11 @@ function createFilesStore() {
   /**
    * Toggle syntax highlighting for a specific file
    */
-  function toggleSyntaxHighlighting(path: string) {
+  function toggleSyntaxHighlighting(key: TabKey) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, syntaxHighlighting: !f.syntaxHighlighting } : f,
+        f.path === key ? { ...f, syntaxHighlighting: !f.syntaxHighlighting } : f,
       ),
     }));
   }
@@ -1010,11 +1016,11 @@ function createFilesStore() {
   /**
    * Toggle regex filter for a specific file
    */
-  function toggleRegexFilter(path: string) {
+  function toggleRegexFilter(key: TabKey) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
-        if (f.path !== path) return f;
+        if (f.path !== key) return f;
 
         if (f.regexFilter === null) {
           // Enable with default settings
@@ -1047,11 +1053,11 @@ function createFilesStore() {
    * Apply the filter bar's pattern and mode to a file. A file without a
    * filter gets one, enabled; one with a filter keeps its enabled state.
    */
-  function updateRegexFilter(path: string, pattern: string, mode: 'hide' | 'show' | 'highlight') {
+  function updateRegexFilter(key: TabKey, pattern: string, mode: 'hide' | 'show' | 'highlight') {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
-        if (f.path !== path) return f;
+        if (f.path !== key) return f;
         const current = f.regexFilter ?? { enabled: true, applying: false };
         return {
           ...f,
@@ -1068,11 +1074,11 @@ function createFilesStore() {
   }
 
   /** Apply a filter to a file, enabled, or remove its filter when given null. */
-  function setRegexFilter(path: string, filter: FilterState | null) {
+  function setRegexFilter(key: TabKey, filter: FilterState | null) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
-        if (f.path !== path) return f;
+        if (f.path !== key) return f;
         if (!filter) return { ...f, regexFilter: null };
         return {
           ...f,
@@ -1091,21 +1097,21 @@ function createFilesStore() {
   /**
    * Clear regex filter for a specific file
    */
-  function clearRegexFilter(path: string) {
+  function clearRegexFilter(key: TabKey) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, regexFilter: null } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, regexFilter: null } : f)),
     }));
   }
 
   /**
    * Toggle invisible characters display for a specific file
    */
-  function toggleInvisibleChars(path: string) {
+  function toggleInvisibleChars(key: TabKey) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, showInvisibleChars: !f.showInvisibleChars } : f,
+        f.path === key ? { ...f, showInvisibleChars: !f.showInvisibleChars } : f,
       ),
     }));
   }
@@ -1113,43 +1119,41 @@ function createFilesStore() {
   /**
    * Toggle word wrap for a specific file
    */
-  function toggleWordWrap(path: string) {
+  function toggleWordWrap(key: TabKey) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, wordWrap: !f.wordWrap } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, wordWrap: !f.wordWrap } : f)),
     }));
   }
 
-  /**
-   * Set the active file path (used when switching tabs manually)
-   */
-  function setActiveFile(path: string) {
+  /** Make the tab `key` the active one (a click on its tab, say). */
+  function setActiveFile(key: TabKey) {
     update((s) => ({
       ...s,
-      activeFilePath: path,
+      activeFilePath: key,
     }));
   }
 
   /**
    * Set highlighted line range for a file (e.g., from anomaly click)
    */
-  function setHighlightedLines(path: string, lines: { start: number; end: number } | null) {
+  function setHighlightedLines(key: TabKey, lines: { start: number; end: number } | null) {
     update((s) => ({
       ...s,
-      openFiles: s.openFiles.map((f) => (f.path === path ? { ...f, highlightedLines: lines } : f)),
+      openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, highlightedLines: lines } : f)),
     }));
   }
 
   /**
    * Set the selected anomaly category for highlighting
-   * @param path - File path
+   * @param key - The tab's key
    * @param category - Category name to highlight, or null to clear
    */
-  function setSelectedAnomalyCategory(path: string, category: string | null) {
+  function setSelectedAnomalyCategory(key: TabKey, category: string | null) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) =>
-        f.path === path ? { ...f, selectedAnomalyCategory: category, highlightedLines: null } : f,
+        f.path === key ? { ...f, selectedAnomalyCategory: category, highlightedLines: null } : f,
       ),
     }));
   }
@@ -1158,13 +1162,13 @@ function createFilesStore() {
    * Toggle an anomaly category for highlighting (radio button behavior)
    * If the category is already selected, it will be deselected
    */
-  function toggleAnomalyCategory(path: string, category: string) {
+  function toggleAnomalyCategory(key: TabKey, category: string) {
     const state = get({ subscribe });
-    const file = state.openFiles.find((f) => f.path === path);
+    const file = state.openFiles.find((f) => f.path === key);
     if (!file) return;
 
     const newCategory = file.selectedAnomalyCategory === category ? null : category;
-    setSelectedAnomalyCategory(path, newCategory);
+    setSelectedAnomalyCategory(key, newCategory);
   }
 
   return {

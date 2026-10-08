@@ -1,22 +1,26 @@
 /**
- * The time zones a user chose for files: each file's timestamps are then
- * read as wall clock in its zone, whatever zone its lines write (the
- * backend's `file_tz`).
+ * The time zones a user chose for files and log chains: each one's
+ * timestamps are then read as wall clock in its zone, whatever zone its
+ * lines write (the backend's `file_tz`).
  *
  * A zone is `UTC`, an IANA name this browser knows, or a fixed offset
  * `±HH:MM` up to 18 hours, the values rx-go accepts. The choices are
- * kept per file path, oldest first, for at most `MAX_FILE_ZONES` files,
+ * kept per tab key (`utils/tabKey.ts`: a file's path, or `chain:` and a
+ * chain's handle), oldest first, for at most `MAX_FILE_ZONES` of them,
  * including files that are not open, so a file opened again reads its
- * times in the zone chosen before. The URL holds them as repeated
- * `ftz=<zone>@<path>`.
+ * times in the zone chosen before. A chain and the file at its handle
+ * keep a zone each. The URL holds them as repeated `ftz=<zone>@<key>`.
  *
  * Everything here is pure: the store (`stores/fileZones.ts`) and the
  * URL's `ftz` (`urlState.ts`) are built on it.
  */
 
-/** One file's chosen zone. */
+import type { TabKey } from './tabKey';
+
+/** The zone chosen for one file or chain. */
 export interface FileZone {
-  path: string;
+  /** The tab key of the file or chain: a file's path, or `chain:` and the handle. */
+  path: TabKey;
   zone: string;
 }
 
@@ -53,7 +57,7 @@ const MAX_OFFSET_HOURS = 18;
 /** A fixed offset as rx-go reads one: a sign and two digits in each field. */
 const FIXED_OFFSET = /^[+-](\d{2}):(\d{2})$/;
 
-/** What separates the zone from the path in an `ftz` value; a zone never holds one. */
+/** What separates the zone from the key in an `ftz` value; a zone never holds one. */
 const PARAM_SEPARATOR = '@';
 
 /** Whether `value` is a fixed offset `±HH:MM` of at most 18 hours. */
@@ -127,40 +131,40 @@ export function matchingZones(
   };
 }
 
-/** The zone chosen for `path`, or null when none is. */
-export function fileZoneOf(zones: readonly FileZone[], path: string): string | null {
-  return zones.find((z) => z.path === path)?.zone ?? null;
+/** The zone chosen for the tab key `key`, or null when none is. */
+export function fileZoneOf(zones: readonly FileZone[], key: TabKey): string | null {
+  return zones.find((z) => z.path === key)?.zone ?? null;
 }
 
 /**
- * The zones with `path` read in `zone`: a file they hold keeps its place,
- * a new one goes last. Past the limit the oldest file that is not open
- * makes room; when every file they hold is open, the new one is refused
- * (null).
+ * The zones with the tab key `key` read in `zone`: a key they hold keeps
+ * its place, a new one goes last. Past the limit the oldest key whose tab
+ * is not open makes room; when every tab they hold is open, the new one
+ * is refused (null).
  */
 export function withFileZone(
   zones: readonly FileZone[],
-  path: string,
+  key: TabKey,
   zone: string,
-  isOpen: (path: string) => boolean,
+  isOpen: (key: TabKey) => boolean,
 ): FileZone[] | null {
-  if (zones.some((z) => z.path === path)) {
-    return zones.map((z) => (z.path === path ? { path, zone } : z));
+  if (zones.some((z) => z.path === key)) {
+    return zones.map((z) => (z.path === key ? { path: key, zone } : z));
   }
-  if (zones.length < MAX_FILE_ZONES) return [...zones, { path, zone }];
+  if (zones.length < MAX_FILE_ZONES) return [...zones, { path: key, zone }];
   const evicted = zones.findIndex((z) => !isOpen(z.path));
   if (evicted < 0) return null;
-  return [...zones.slice(0, evicted), ...zones.slice(evicted + 1), { path, zone }];
+  return [...zones.slice(0, evicted), ...zones.slice(evicted + 1), { path: key, zone }];
 }
 
-/** The zones without the one chosen for `path`. */
-export function withoutFileZone(zones: readonly FileZone[], path: string): FileZone[] {
-  return zones.filter((z) => z.path !== path);
+/** The zones without the one chosen for the tab key `key`. */
+export function withoutFileZone(zones: readonly FileZone[], key: TabKey): FileZone[] {
+  return zones.filter((z) => z.path !== key);
 }
 
 /**
- * Zones from any list: a valid zone and a path each, the first entry of a
- * path that is named twice, and the first `MAX_FILE_ZONES` of them.
+ * Zones from any list: a valid zone and a key each, the first entry of a
+ * key that is named twice, and the first `MAX_FILE_ZONES` of them.
  */
 export function normalizeFileZones(entries: readonly FileZone[]): FileZone[] {
   const kept: FileZone[] = [];
@@ -174,9 +178,9 @@ export function normalizeFileZones(entries: readonly FileZone[]): FileZone[] {
 }
 
 /**
- * The file zone an `ftz` value names, split on its first `@` (a path may
- * hold one, a zone never does), or null when it names no valid zone and
- * path.
+ * The file zone an `ftz` value names, split on its first `@` (a path or
+ * a handle may hold one, a zone never does), or null when it names no
+ * valid zone and key.
  */
 export function parseFileZoneParam(value: string): FileZone | null {
   const at = value.indexOf(PARAM_SEPARATOR);

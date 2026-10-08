@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IndexBuild, IndexTaskResult, TaskStatus } from './types';
 import { IndexBuildFollows, type FollowCallbacks } from './indexBuildFollows';
+import { chainKey } from './utils/tabKey';
 
 /** A poll the test ends by hand, and what each caller asked of it. */
 function heldPolls() {
@@ -139,5 +140,32 @@ describe('IndexBuildFollows', () => {
     expect(joins[0].signal.aborted).toBe(true);
     expect(joins[1].signal.aborted).toBe(false);
     expect(follows.followedTask('/logs/b.log')).toBe('t2');
+  });
+
+  // A chain's handle is usually its active file's path: the chain's
+  // index task and the file's own build are followed side by side.
+  it('follows the build of a file and the task of the chain at its path apart', async () => {
+    const { polls, joins } = heldPolls();
+    const follows = new IndexBuildFollows(polls);
+    const file = callbacks();
+    const chain = callbacks();
+
+    follows.follow('/l/syslog', 't1', file.handlers);
+    follows.follow(chainKey('/l/syslog'), 't2', chain.handlers);
+
+    expect(follows.followedTask('/l/syslog')).toBe('t1');
+    expect(follows.followedTask(chainKey('/l/syslog'))).toBe('t2');
+    expect(joins.map((j) => [j.path, j.signal.aborted])).toEqual([
+      ['/l/syslog', false],
+      ['chain:/l/syslog', false],
+    ]);
+
+    follows.stop(chainKey('/l/syslog'));
+    joins[0].resolve(INDEX);
+    await settle();
+
+    expect(file.built).toEqual([INDEX]);
+    expect(chain.built).toEqual([]);
+    expect(chain.failed).toEqual([]);
   });
 });
