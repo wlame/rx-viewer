@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   SHORTCUTS,
@@ -161,6 +163,16 @@ describe('belongsToInputMethod', () => {
 });
 
 describe('the shortcut list', () => {
+  // The README's table is written by hand; the app's list is built from this table.
+  it('has rows in the README table for every place a shortcut works', () => {
+    const readme = readFileSync(resolve(__dirname, '../../../README.md'), 'utf-8').split('\n');
+    const missing = shortcutsByScope()
+      .map((group) => group.title)
+      .filter((title) => !readme.some((line) => line.startsWith(`| ${title} `)));
+
+    expect(missing).toEqual([]);
+  });
+
   it('lists every row of the table once, grouped by where it works', () => {
     const listed = shortcutsByScope().flatMap((group) => group.shortcuts);
 
