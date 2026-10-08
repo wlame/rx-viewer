@@ -156,7 +156,142 @@ describe('switching chain mode off and on', () => {
   });
 });
 
+describe('switching chain mode after a rotation the tabs have not seen', () => {
+  /** Files whose lines keep their text and times under any name: A, B, and C the active file. */
+  const A: FakePart = {
+    name: 'app.log.2.gz',
+    lines: 3000,
+    compression: 'gzip',
+    text: 'A',
+    startSecond: 1,
+    size: 60_000,
+    modifiedAt: '2026-10-01T00:50:00.000000Z',
+  };
+  const B: FakePart = {
+    name: 'app.log.1',
+    lines: 1500,
+    text: 'B',
+    startSecond: 3001,
+    size: 90_000,
+    modifiedAt: '2026-10-01T01:15:00.000000Z',
+  };
+  const C: FakePart = {
+    name: 'app.log',
+    lines: 2000,
+    isActive: true,
+    text: 'C',
+    startSecond: 4450,
+    size: 120_000,
+    modifiedAt: '2026-10-01T01:47:00.000000Z',
+  };
+  /** The rotation: A deleted, B compressed into app.log.2.gz, C renamed app.log.1, a new active file. */
+  const ROTATED: FakePart[] = [
+    { ...B, name: 'app.log.2.gz', compression: 'gzip', size: 30_000 },
+    { ...C, name: 'app.log.1', isActive: false },
+    {
+      name: 'app.log',
+      lines: 10,
+      isActive: true,
+      text: 'D',
+      startSecond: 6500,
+      size: 600,
+      modifiedAt: '2026-10-01T02:00:00.000000Z',
+    },
+  ];
+
+  function messages(): string[] {
+    return get(notifications).map((n) => n.message);
+  }
+
+  it('turns a chain tab into the file that holds its line now, at that line', async () => {
+    const chain = await serve({ parts: [A, B, C] });
+    chainMode.set(true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = lineInView(KEY);
+    expect(before.text).toContain('B local=500');
+    chain.rotateTo(ROTATED, 'ready');
+
+    await switchChainMode(false);
+    await settled('/l/app.log.2.gz');
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.2.gz']);
+    expect(openTab('/l/app.log.2.gz').anchorLine).toBe(500);
+    expect(lineInView('/l/app.log.2.gz')).toEqual(before);
+  });
+
+  it("says so when the part's file holds other text by the time its file tab reads it", async () => {
+    const chain = await serve({ parts: [A, B, C] });
+    chainMode.set(true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (new URL(url, 'http://localhost').pathname === '/v1/samples') chain.rotateTo(ROTATED);
+        return chain.fetch(url, init);
+      }),
+    );
+
+    await switchChainMode(false);
+    await settled('/l/app.log.1');
+
+    expect(lineInView('/l/app.log.1').text).toContain('C local=500');
+    expect(messages()).toContainEqual(
+      'Line 500 of app.log.1 holds other text than app.log showed there: the file changed on disk',
+    );
+  });
+
+  it("turns a file tab into the chain's tab at the line it showed after its file was renamed, without its marks", async () => {
+    const chain = await serve({ parts: [A, B, C] });
+    await files.openFile('/l/app.log.1', { scrollToLine: 500 });
+    await settled('/l/app.log.1');
+    files.setMatches('/l/app.log.1', [{ lineNumber: 500, patternId: 'p1', pattern: 'B' }]);
+    const before = lineInView('/l/app.log.1');
+    expect(before.text).toContain('B local=500');
+    chain.rotateTo(ROTATED, 'ready');
+
+    await switchChainMode(true);
+    await settled(KEY);
+
+    expect(lineInView(KEY)).toEqual(before);
+    expect(openTab(KEY).chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+    expect(get(files).matches.get(KEY) ?? []).toEqual([]);
+    expect(messages()).toContainEqual(expect.stringContaining('search again'));
+  });
+
+  it("says so when a renamed file's line is in the chain no more", async () => {
+    const chain = await serve({ parts: [A, B, C] });
+    await files.openFile('/l/app.log.2.gz', { scrollToLine: 2900 });
+    await settled('/l/app.log.2.gz');
+    // A is deleted; app.log.2.gz is now B, whose 1,500 lines end before 2900.
+    chain.rotateTo(ROTATED, 'ready');
+
+    await switchChainMode(true);
+    await settled(KEY);
+
+    expect(lineInView(KEY).text).not.toContain('A local=2900');
+    expect(messages()).toContainEqual(
+      expect.stringContaining(
+        'Cannot find the line app.log.2.gz showed at line 2900 in app.log, whose files changed since',
+      ),
+    );
+  });
+});
+
 describe('switching chain mode on with file tabs of a chain open', () => {
+  it("carries the marks of the file tab whose line the chain's tab shows in the same place", async () => {
+    await serve();
+    await files.openFile('/l/app.log.1', { scrollToLine: 20 });
+    await settled('/l/app.log.1');
+    files.setMatches('/l/app.log.1', [{ lineNumber: 20, patternId: 'p1', pattern: 'x' }]);
+
+    await switchChainMode(true);
+    await settled(KEY);
+
+    expect(get(files).matches.get(KEY)).toEqual([
+      { lineNumber: 20, part: 'app.log.1', patternId: 'p1', pattern: 'x' },
+    ]);
+  });
+
   it("makes two parts' tabs one chain tab at the active tab's line, in the first one's place", async () => {
     const chain = await serve();
     await files.openFile('/l/app.log.3.gz', { scrollToLine: 10 });

@@ -101,6 +101,17 @@ export interface ChainTabDeps {
   dropMatches(key: TabKey): boolean;
 }
 
+/**
+ * A line another tab showed, which a chain's tab is to show: `what` names
+ * it for a notice ("the line app.log.1 showed at line 500"), with its
+ * text and time, or null for either when that tab did not know it.
+ */
+export interface LineToFind {
+  what: string;
+  text: string | null;
+  timeMs: number | null;
+}
+
 export interface OpenChainOptions {
   position?: ChainPosition;
   /** Highlighting as a link gives it, in place of the size-based default. */
@@ -1244,6 +1255,52 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
+   * Bring the tab `key` up to its chain's files before another tab takes
+   * its line (chain mode turning off): the chain is described with the
+   * tab's fingerprint, and a change is taken in (`refresh`), so the
+   * anchor names the file that holds the line now. Resolves the text of
+   * the anchor line: the line the tab holds, else the line it still looks
+   * for since a change; null when it knows neither.
+   */
+  async function settle(key: TabKey): Promise<string | null> {
+    await refresh(key);
+    return heldAnchorText(key) ?? lostLines.get(key)?.text ?? null;
+  }
+
+  /**
+   * Check that the tab `key` shows at its anchor the line another tab
+   * showed there: a file tab of one of the chain's parts, before chain
+   * mode turned on, which knew no fingerprint to send. Other text there
+   * means the files changed since that tab read them (a rotation renamed
+   * them): the other file's line leaves the screen, and the line is looked
+   * for by its time and text; a notice says when it is not found. Resolves
+   * whether the tab showed the line where the other tab had it, which it
+   * cannot tell (false) when either text is unknown.
+   */
+  async function confirmLine(key: TabKey, line: LineToFind): Promise<boolean> {
+    const shown = heldAnchorText(key);
+    if (shown === null || line.text === null) return false;
+    if (shown === line.text) return true;
+    const tab = deps.getTab(key);
+    const anchor = tab?.chain?.anchor ?? null;
+    const what = `${line.what} in ${tab?.name}, whose files changed since`;
+    if (line.timeMs === null) {
+      const where = anchor
+        ? `the view shows line ${anchor.line} of ${anchor.part}, which holds other text`
+        : 'the view shows another line';
+      notifications.info(lineNotFoundNotice(what, where), NOTICE_MS);
+      return false;
+    }
+    dropLines(key);
+    await showByTimeAndText(key, line.timeMs, line.text);
+    const after = deps.getTab(key);
+    if (after && after.lines.length > 0 && heldAnchorText(key) !== line.text) {
+      notifications.info(lineNotFoundNotice(what, SHOWS_TIME_LINE), NOTICE_MS);
+    }
+    return false;
+  }
+
+  /**
    * Show the tab's anchor line again, by its part and its line in it; the
    * start without one. A tab that has not found its line since its files
    * changed looks for it by its time and text (`findAnchorAgain`), since
@@ -1768,6 +1825,8 @@ export function createChainTabs(deps: ChainTabDeps) {
     jumpToEnd,
     jumpToTime,
     reload,
+    settle,
+    confirmLine,
     forget,
   };
 }

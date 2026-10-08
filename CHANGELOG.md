@@ -317,6 +317,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which name parts and lines of the files as they were, and a notice
   says to search again: a mark no longer lands on another file's line
   that took the old name.
+- Switching chain mode after a rotation the tabs have not seen shows no
+  other file's line in silence. Turning the mode off, each log chain's
+  tab first describes its chain with the files it holds; when they
+  changed, the tab finds its line again in the renamed file before it
+  becomes that file's tab, and a file tab that then reads other text at
+  the line says so (and drops the marks it carried). Turning the mode
+  on, the chain's tab checks it shows the file tab's text at its line,
+  and otherwise looks for the line by its time and text, with a notice
+  when it is not found; only the marks of the file tab whose line it
+  opens at are carried, and only when that line is where the file tab
+  had it.
 
 ## [0.6.0] - 2026-10-06
 

@@ -22,7 +22,12 @@ import type {
   SamplesResponse,
   TimeRangeResponse,
 } from '../types';
-import { createChainTabs, type ChainPosition, type OpenChainOptions } from './chainTabs';
+import {
+  createChainTabs,
+  type ChainPosition,
+  type LineToFind,
+  type OpenChainOptions,
+} from './chainTabs';
 import { commandLog } from './commands';
 import { fileZones, requestZoneOf } from './fileZones';
 import { backendHas } from './health';
@@ -1051,6 +1056,24 @@ function createFilesStore() {
   }
 
   /**
+   * Bring a chain's tab up to its chain's files before chain mode turns
+   * it into a file tab; resolves its anchor line's text, or null when it
+   * knows none (`stores/chainTabs.ts`).
+   */
+  function settleChain(key: TabKey): Promise<string | null> {
+    return chains.settle(key);
+  }
+
+  /**
+   * Whether a chain's tab shows the line a file tab of one of its parts
+   * showed, where that tab had it; otherwise it looks for the line by its
+   * time and text, and says when it is not found (`stores/chainTabs.ts`).
+   */
+  function confirmChainLine(key: TabKey, line: LineToFind): Promise<boolean> {
+    return chains.confirmLine(key, line);
+  }
+
+  /**
    * Toggle syntax highlighting for a specific file
    */
   function toggleSyntaxHighlighting(key: TabKey) {
@@ -1226,6 +1249,8 @@ function createFilesStore() {
     openChain,
     refreshChain,
     goToChainLine,
+    settleChain,
+    confirmChainLine,
     applyIndex,
     closeFile,
     loadMore,

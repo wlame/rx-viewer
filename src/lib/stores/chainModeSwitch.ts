@@ -13,6 +13,13 @@
  * invisible characters and search marks, and the active tab stays
  * active.
  *
+ * Neither way shows another file's line in silence after a rotation.
+ * Off: each chain's tab describes its chain with its fingerprint first
+ * and finds its line again in the renamed file; a file tab that then
+ * reads other text at the line says so. On: the chain's tab checks it
+ * shows the lead file tab's text at its line, and else looks for the line
+ * by its time and text (`stores/chainTabs.ts`).
+ *
  * The switch in the files panel and Back and Forward (`viewState.ts`)
  * both switch through here. While tabs turn over, the view's URL
  * rewrites its entry: a switch is no step Back undoes.
@@ -20,7 +27,7 @@
 import { get } from 'svelte/store';
 import { api } from '../api';
 import { contractGate } from '../contractGate';
-import type { ChainEntry, ChainPart, FileMatch, OpenFile } from '../types';
+import type { ChainEntry, ChainPart, FileLine, FileMatch, OpenFile } from '../types';
 import {
   chainHolding,
   chainMatchesOfFile,
@@ -34,7 +41,7 @@ import {
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { chainMode } from './chainMode';
-import type { ChainPosition } from './chainTabs';
+import type { ChainPosition, LineToFind } from './chainTabs';
 import { fileZones } from './fileZones';
 import { files } from './files';
 import { backendHas } from './health';
@@ -65,7 +72,7 @@ export async function switchChainMode(on: boolean): Promise<void> {
   const generation = ++switchGeneration;
   chainMode.set(on);
   if (on) await turnPartsIntoChains(generation);
-  else await turnChainsIntoFiles();
+  else await turnChainsIntoFiles(generation);
 }
 
 /**
@@ -167,22 +174,33 @@ function partOf(tab: OpenFile, name: string): ChainPart | undefined {
 /**
  * Turn each chain's tab into the file tab of the part that holds its
  * anchor line, at that line, and reveal the active one's part in the
- * files panel.
+ * files panel. Each tab first describes its chain with its fingerprint:
+ * after a rotation it has not seen, its line is in a renamed file, which
+ * it finds again before it turns over.
  */
-async function turnChainsIntoFiles(): Promise<void> {
+async function turnChainsIntoFiles(generation: number): Promise<void> {
+  const keys = get(files)
+    .openFiles.filter((f) => isChainKey(f.path))
+    .map((f) => f.path);
+  if (keys.length === 0) return;
+  const texts = await Promise.all(keys.map((key) => files.settleChain(key)));
+  if (generation !== switchGeneration) return;
+  const textOf = new Map(keys.map((key, i) => [key, texts[i]]));
+
+  // The tabs as they are now: a chain that is no chain any more already became its part's file tab.
   const before = get(files);
   const chainTabs = before.openFiles.filter((f) => isChainKey(f.path));
-  if (chainTabs.length === 0) return;
   const loads: Promise<unknown>[] = [];
   let active = before.activeFilePath;
   let revealed: string | null = null;
 
   turnTabs(() => {
     for (const tab of chainTabs) {
-      const path = turnChainIntoFile(tab, tab.path === before.activeFilePath, loads);
-      if (tab.path === before.activeFilePath) active = path;
+      const isActive = tab.path === before.activeFilePath;
+      const path = turnChainIntoFile(tab, isActive, loads, textOf.get(tab.path) ?? null);
+      if (isActive) active = path;
       revealed ??= path;
-      if (tab.path === before.activeFilePath && path !== null) revealed = path;
+      if (isActive && path !== null) revealed = path;
     }
     if (active !== null) files.setActiveFile(active);
   });
@@ -195,12 +213,14 @@ async function turnChainsIntoFiles(): Promise<void> {
  * Turn one chain's tab into its part's file tab and return the file's
  * path; null when the tab knows no part yet, and closes. A part already
  * open as a file keeps its tab, moved to the line when the chain's tab
- * was the active one.
+ * was the active one. `text` is the anchor line's text in the chain's
+ * tab, which the file tab is checked against once it reads the line.
  */
 function turnChainIntoFile(
   tab: OpenFile,
   isActive: boolean,
   loads: Promise<unknown>[],
+  text: string | null,
 ): string | null {
   const target = fileTargetOfChainTab(tab);
   if (target === null) {
@@ -211,9 +231,10 @@ function turnChainIntoFile(
   const { path, line } = target;
   const name = nameOf(path);
   const marks = fileMatchesOfPart(get(files).matches.get(tab.path) ?? [], name);
+  const check = () => checkFileLine({ path, line, text, chainName: tab.name, marks });
   if (placeOf(path) >= 0) {
     files.closeFile(tab.path);
-    if (isActive) loads.push(files.jumpToLine(path, line));
+    if (isActive) loads.push(files.jumpToLine(path, line).then(check));
     return path;
   }
   carryZone(tab.path, path);
@@ -221,20 +242,51 @@ function turnChainIntoFile(
   const place = placeOf(tab.path);
   // openFile puts the tab in the store before its first await.
   loads.push(
-    files.openFile(path, {
-      scrollToLine: line,
-      syntaxHighlighting: chosenHighlighting(tab),
-      fileSize: part?.size ?? null,
-      isIndexed: part?.is_indexed,
-      lineCount: part?.line_count ?? undefined,
-      compressionFormat: part?.compression_format ?? null,
-    }),
+    files
+      .openFile(path, {
+        scrollToLine: line,
+        syntaxHighlighting: chosenHighlighting(tab),
+        fileSize: part?.size ?? null,
+        isIndexed: part?.is_indexed,
+        lineCount: part?.line_count ?? undefined,
+        compressionFormat: part?.compression_format ?? null,
+      })
+      .then(check),
   );
   moveTo(path, place);
   carryViewOptions(tab, path);
   if (marks.length > 0) files.setMatches(path, marks);
   files.closeFile(tab.path);
   return path;
+}
+
+/** A file tab a chain's tab turned into, with what the chain's tab showed at its line. */
+interface TurnedFile {
+  path: string;
+  line: number;
+  /** The text the chain's tab showed at the line, or null when it held none. */
+  text: string | null;
+  chainName: string;
+  /** The search marks carried into the file tab. */
+  marks: FileMatch[];
+}
+
+/**
+ * Say so when a file tab a chain's tab turned into shows other text at
+ * its line than the chain's tab showed: the file changed on disk while
+ * the mode switched. The marks carried with it are dropped then.
+ */
+function checkFileLine({ path, line, text, chainName, marks }: TurnedFile): void {
+  const tab = get(files).openFiles.find((f) => f.path === path);
+  if (!tab || text === null) return;
+  const held = tab.lines[line - tab.startLine];
+  if (held?.lineNumber !== line || held.content === text) return;
+  const dropsMarks = marks.length > 0 && get(files).matches.get(path) === marks;
+  if (dropsMarks) files.setMatches(path, []);
+  notifications.info(
+    `Line ${line} of ${nameOf(path)} holds other text than ${chainName} showed there: the file changed on disk${dropsMarks ? '; search again' : ''}`,
+    NOTICE_MS,
+  );
 }
 
 /**
@@ -286,15 +338,20 @@ async function turnPartsIntoChains(generation: number): Promise<void> {
   await Promise.all(loads);
 }
 
-/** The time of the line the tab is anchored on, or null when it has none or the tab does not hold it. */
-function anchorTimeOf(tab: OpenFile): number | null {
+/** The line the tab is anchored on, or null when the tab does not hold it. */
+function anchorLineOf(tab: OpenFile): FileLine | null {
   const line = tab.lines[tab.anchorLine - tab.startLine];
-  return line?.lineNumber === tab.anchorLine ? (line.timestampMs ?? null) : null;
+  return line?.lineNumber === tab.anchorLine ? line : null;
 }
 
 /**
  * Turn the file tabs of one chain's parts into the chain's tab, in the
  * place of the first of them, at the line of the lead one in its part.
+ * A file tab sends no fingerprint, so the chain's tab checks it shows the
+ * lead's line there (`files.confirmChainLine`): after a rotation it looks
+ * for it by its time and text. The lead's search marks are carried only
+ * when the line is where the lead had it; the other tabs' marks, whose
+ * lines are not checked, are not carried.
  */
 function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void {
   const state = get(files);
@@ -304,28 +361,65 @@ function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void 
   const lead = members.find((tab) => tab.path === merge.lead);
   if (lead === undefined) return;
   const key = chainKey(merge.handle);
+  const shown = anchorLineOf(lead);
   const position: ChainPosition = {
     kind: 'local',
     part: merge.part,
     line: lead.anchorLine,
-    timeMs: anchorTimeOf(lead),
+    timeMs: shown?.timestampMs ?? null,
   };
-  const marks: FileMatch[] = members.flatMap((tab) =>
-    chainMatchesOfFile(state.matches.get(tab.path) ?? [], nameOf(tab.path)),
+  const leadLine: LineToFind = {
+    what: `the line ${merge.part} showed at line ${lead.anchorLine}`,
+    text: shown?.content ?? null,
+    timeMs: position.timeMs ?? null,
+  };
+  const marks = chainMatchesOfFile(state.matches.get(lead.path) ?? [], merge.part);
+  const othersMarked = members.some(
+    (tab) => tab !== lead && (state.matches.get(tab.path)?.length ?? 0) > 0,
   );
   const place = Math.min(...members.map((tab) => placeOf(tab.path)));
+  const name = nameOf(merge.handle);
 
+  let opened: Promise<unknown>;
   if (placeOf(key) < 0) {
     carryZone(lead.path, key);
     // openChain puts the tab in the store before its first await.
-    loads.push(
-      files.openChain(merge.handle, { position, syntaxHighlighting: chosenHighlighting(lead) }),
-    );
+    opened = files.openChain(merge.handle, {
+      position,
+      syntaxHighlighting: chosenHighlighting(lead),
+    });
     moveTo(key, place);
     carryViewOptions(lead, key);
   } else {
-    loads.push(files.goToChainLine(key, position));
+    opened = files.goToChainLine(key, position);
   }
+  loads.push(opened.then(() => keepMarksOfShownLine(key, leadLine, marks, name)));
   if (marks.length > 0) files.setMatches(key, marks);
+  if (othersMarked) {
+    notifications.info(
+      `Only the search marks of ${merge.part} are carried into ${name}; search again for the others`,
+      NOTICE_MS,
+    );
+  }
   for (const tab of members) files.closeFile(tab.path);
+}
+
+/**
+ * Drop the marks carried into the chain's tab `key` unless it shows the
+ * line they came with where that file tab had it: otherwise they name
+ * lines of a file that took the old name.
+ */
+async function keepMarksOfShownLine(
+  key: TabKey,
+  line: LineToFind,
+  marks: FileMatch[],
+  name: string,
+): Promise<void> {
+  const isInPlace = await files.confirmChainLine(key, line);
+  if (isInPlace || marks.length === 0 || get(files).matches.get(key) !== marks) return;
+  files.setMatches(key, []);
+  notifications.info(
+    `The search marks carried into ${name} are dropped: its files changed since the search; search again`,
+    NOTICE_MS,
+  );
 }
