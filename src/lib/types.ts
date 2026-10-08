@@ -125,10 +125,16 @@ export type TaskConflictError = Schemas['TaskConflictError'];
 
 /**
  * `GET /v1/tasks/{id}`. `result` is null until the task completes, then
- * the result of its operation: an `IndexTaskResult` or a
- * `CompressTaskResult`.
+ * the result of its operation: an `IndexTaskResult`, a
+ * `CompressTaskResult` or a `ChainIndexTaskResult`.
  */
 export type TaskStatus = Schemas['TaskStatusResponse'];
+
+/**
+ * The result of a completed log chain index task (`chain_index`): the
+ * parts whose line index it built, in the chain's order.
+ */
+export type ChainIndexTaskResult = Schemas['ChainIndexTaskResult'];
 
 /** `POST /v1/index`: the task that builds the index. */
 export type IndexTaskResponse = Schemas['TaskResponse'];
@@ -149,6 +155,68 @@ export type SeverityLevel = Schemas['SeverityScaleLevel'];
 
 /** `GET /v1/detectors`. Both backends ship different sets; render whatever comes. */
 export type DetectorsResponse = Schemas['DetectorsResponse'];
+
+// Log chain types (/v1/logs/*). rx-go serves them when `/health` lists
+// `log_chains`; ask `backendHas('log_chains')` before calling a route.
+
+/**
+ * One log chain of a `GET /v1/logs/chains` listing, found from its files'
+ * names alone. `path` is the chain's handle. A chain of more than 10,000
+ * parts has `too_many_parts` and empty `parts` and `missing`;
+ * `missing_count` says how many numbered parts are missing in all, of
+ * which `missing` names at most 100; `unreadable` names the parts that
+ * cannot be opened.
+ */
+export type ChainEntry = Schemas['ChainEntry'];
+
+/** `GET /v1/logs/chains`: the chains of one directory, sorted by name. */
+export type ChainsResponse = Schemas['ChainsResponse'];
+
+/** Where a chain is: `pending` until its frozen parts are indexed, then `ready` or `invalid`. */
+export type ChainState = Schemas['ChainResponse']['state'];
+
+/** A check a chain failed, with the parts it names. */
+export type ChainReason = Schemas['ChainReason'];
+
+/** A time gap between two parts of a ready chain: no lines from `from_ms` to `to_ms`. */
+export type ChainGap = Schemas['ChainGap'];
+
+/**
+ * One part of a described chain, in the chain's order. `global_start` is
+ * null until the chain is ready; `day_first` and `example` show the part's
+ * times in its own layout.
+ */
+export type ChainPart = Schemas['ChainPart'];
+
+/**
+ * `GET /v1/logs/chain`, also the body of a 409 from a chain route: the
+ * chain's parts in time order, its state and reasons, its fingerprint,
+ * and the index task a pending chain waits for. A chain of more than
+ * 10,000 parts has `parts: []`.
+ */
+export type ChainResponse = Schemas['ChainResponse'];
+
+/**
+ * The lines of one part that a chain samples window touches. A window
+ * that crosses part edges gives one piece per part.
+ * `first_global_line` is -1 before the chain is ready.
+ */
+export type ChainPiece = Schemas['ChainPiece'];
+
+/** `GET /v1/logs/samples`: each key's pieces, its target line, and the chain's parts. */
+export type ChainSamplesResponse = Schemas['ChainSamplesResponse'];
+
+/** One chain a chain search found, by its id (`c1`, `c2`, …). */
+export type ChainRef = Schemas['ChainRef'];
+
+/**
+ * A match of a chain search: a trace match plus its chain id (null for a
+ * file searched on its own) and its line in the chain (-1 when unknown).
+ */
+export type ChainMatch = Schemas['ChainMatch'];
+
+/** `GET /v1/logs/trace`: a trace answer plus the chains it found. */
+export type ChainTraceResponse = Schemas['ChainTraceResponse'];
 
 // Frontend-specific types
 

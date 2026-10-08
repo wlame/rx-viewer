@@ -88,6 +88,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/logs/chain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Describe one log chain
+         * @description The description of one log chain: its parts in time order with their line counts, first and highest timestamps and global starts, the checks that make it valid (every part with lines has timestamps, neighboring parts overlap by at most RX_CHAIN_OVERLAP_SECONDS, the active file comes last, every part can be read, at most 10,000 parts), its state (pending until every frozen part has a line index, ready, or invalid with the reasons), the time gaps and missing parts, and a fingerprint of its files. From the parts' line indexes and the head and tail of the active file only. A pending chain starts its index task in the background (or joins the running one), named in index_build. 409 with the current description when fingerprint differs or a part changed while it was read; 404 when the handle names fewer than two parts.
+         */
+        get: operations["log_chain"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/chains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the log chains of a directory
+         * @description The log chains of one directory: the files of each rotated log (syslog, syslog.1, syslog.2.gz, …), found from their names alone, with each chain's parts in the provisional order (by the number or date in the names, oldest first), the numbers missing between them, their total size, compression formats, and whether every part but the active file has a line index. A file of one generation in several encodings is one part. Directories, hidden entries, .tmp files and files that are not text are no parts. Errors as GET /v1/tree for the same path.
+         */
+        get: operations["log_chains"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Index every part of one log chain (background task)
+         * @description Starts the index task of one log chain (operation chain_index), or joins the one running for it: it builds and stores the line index of every part without a current one, the active file too (with force=true, of every part), whatever a part's size, at most RX_MAX_INDEX_BUILDS at a time. Poll GET /v1/tasks/{task_id}: its progress is the share of parts done. 409 with the current description, and no task, when fingerprint differs or a part changed while it was read; 404 when the handle names fewer than two parts.
+         */
+        post: operations["log_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get lines of a log chain by global line, by part and line, or by time
+         * @description Lines of one log chain, as GET /v1/samples gives them for one file: by the chain's global line numbers (lines), by a part and its own numbers (part and lines), or by time (timestamps). Each key's lines come as pieces, one per part its window touches, with the part's name, its first local and global line, the lines and their line_timestamps, part_start and part_end, and the rx samples command for exactly that piece. Context crosses part edges once the chain is ready; before that only part and lines are answered, reading that part alone, and a global or time request waits up to RX_SAMPLES_WAIT_SECONDS for the chain's index task (202 with the task under Prefer: respond-async). RX_SAMPLES_MAX_LINES and RX_SAMPLES_MAX_BYTES bound the whole answer. 409 with the current description when fingerprint differs or a part changed while it was read; 422 for an invalid chain; 404 when the handle names fewer than two parts.
+         */
+        get: operations["log_samples"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search log chains, directories and files for regex patterns
+         * @description GET /v1/trace for rotated logs: path repeats, and each is a directory (its files are grouped into log chains), a chain's handle, or a file (a part's own path is a file). The parts of each chain are searched in the chain's order (by time when it is ready, by name before), so the file ids, the order of the matches and the cut to max_results follow it. The answer is the trace answer plus chains, the chains found by id (c1, c2, …), and each match of a part gives its chain and chain_line, its global line in the chain (-1 before the chain is ready, in an invalid chain, and where the trace has no line number). Files keep their real paths and their own line numbers; context never crosses a part's edge. Another encoding of a part is skipped (duplicate_part), as is a part that cannot be read. No index build starts. 409 when a part of a chain was renamed or replaced while the request described it.
+         */
+        get: operations["log_trace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/samples": {
         parameters: {
             query?: never;
@@ -217,6 +317,330 @@ export interface components {
             detectors: string[] | null;
             /** @description Stable category identifier, kebab-case. Used as the category field of an anomaly. */
             name: string;
+        };
+        ChainEntry: {
+            /** @description The distinct compression formats of the parts, sorted: gzip, bz2, xz, zstd (seekable zstd included). A plain part adds none. */
+            compression_formats: string[];
+            /** @description Whether the active file (the one named like the chain) exists and is a part. */
+            has_active: boolean;
+            /** @description Whether every part but the active file has a current line index built from the file the listing found (the same inode and device), as is_indexed of /v1/tree tells for one file. An empty part (0 bytes) needs none: it holds no line. False for a chain of more than 10,000 parts, whose indexes are not looked at. */
+            is_indexed: boolean;
+            /** @description The names an absent part would have, for each number missing between the lowest expected number (0 when a .0 part exists, else 1) and the highest present one, lowest first, without a compression suffix; at most 100 of them (missing_count gives how many are missing). Named only when no more numbers are missing than parts with a number are present. Empty for a chain whose parts are all dated. A four-digit number from 1970 to 2100 where a rotation number goes (report.2023) is a year, a date, and is never missing. Empty for a chain of more than 10,000 parts. */
+            missing: string[];
+            /**
+             * Format: int64
+             * @description How many numbered parts are missing, whether missing names them all or stops at 100; 0 when missing names none.
+             */
+            missing_count: number;
+            /** @description The chain's name: the name of its active file (the one without a number or date), such as syslog or app.log. */
+            name: string;
+            /** @description The names of the chain's files in the directory, in the provisional order, oldest first: by the number or date in each name in its rotation scheme's direction, then by modification time; the active file last. One file in several encodings is listed once, as the encoding rx reads. Empty for a chain of more than 10,000 parts (too_many_parts). */
+            parts: string[];
+            /** @description The chain's handle: its directory joined with its name, which is the active file's path whether that file exists or not. The other /v1/logs routes take it as path. */
+            path: string;
+            /**
+             * Format: int64
+             * @description The sum of the sizes in bytes of the files listed in parts, as stored (compressed for a compressed part).
+             */
+            size: number;
+            /** @description Whether the chain has more than 10,000 parts. Such a chain is not read as one text: parts and missing are empty, missing_count is 0, is_indexed is false, and GET /v1/logs/chain answers it invalid with the reason too_many_parts. */
+            too_many_parts: boolean;
+            /** @description The names of the parts whose text check could not open the file (its permissions, an I/O error), in the order of parts. They are parts all the same: GET /v1/logs/chain answers the chain invalid with the reason unreadable for each until they can be read. Empty when every part can. */
+            unreadable: string[];
+        };
+        ChainGap: {
+            /** @description The part before the gap. */
+            after: string;
+            /** @description The part after the gap. */
+            before: string;
+            /**
+             * Format: int64
+             * @description Where the gap starts: the highest timestamp of the part before it, as a UTC instant in ms.
+             */
+            from_ms: number;
+            /**
+             * Format: int64
+             * @description Where the gap ends: the first timestamp of the part after it, as a UTC instant in ms.
+             */
+            to_ms: number;
+        };
+        ChainIndexTaskResult: {
+            /** @description The names of the parts whose line index a build completed for this task, in the chain's order: a build the task started, or one it joined because a samples lookup or POST /v1/index had started it for the same file. Not listed: a part whose index was current and that the task left as it was (without force), and one a compression held while the task ran. */
+            built: string[];
+            /** @description The rx command that indexes the chain in the foreground: rx logs index. */
+            cli_command: string;
+            /** @description The chain's handle. */
+            path: string;
+        };
+        ChainMatch: {
+            /** Format: int64 */
+            absolute_line_number: number;
+            /** @description The id of the chain (a key of chains) whose part the match is in; null for a file searched on its own. */
+            chain: string | null;
+            /**
+             * Format: int64
+             * @description The match's global line in its chain: the part's global_start plus absolute_line_number minus 1, the line rx logs samples gives for that number. -1 when it is not known: for a file searched on its own, before the chain is ready (pending), in an invalid chain, and where absolute_line_number is -1.
+             */
+            chain_line: number;
+            file: string;
+            line_text: string | null;
+            /** @description True when line_text holds only the first RX_MAX_LINE_TEXT_BYTES bytes of a longer line. */
+            line_text_truncated: boolean;
+            /** Format: int64 */
+            offset: number;
+            pattern: string;
+            /** Format: int64 */
+            relative_line_number: number | null;
+            submatches: components["schemas"]["Submatch"][] | null;
+            /** @description True when submatches may leave some of the line's submatches out: the line had more than RX_MAX_SUBMATCHES_PER_LINE, or line_text is cut and the list covers only the text it holds. */
+            submatches_truncated: boolean;
+        };
+        ChainPart: {
+            /** @description How the part is compressed, by its bytes: gzip, bz2, xz or zstd (seekable zstd included); null for a plain file. */
+            compression_format: string | null;
+            /** @description For the slash format, whether the day comes before the month, as GET /v1/time-range gives it; null for every other format, and when not known. */
+            day_first: boolean | null;
+            /** @description The names of the part's other encodings (the same generation compressed another way), which rx does not read. */
+            duplicates: string[];
+            /** @description The part's first timestamp as its line writes it, as GET /v1/time-range gives it (printable ASCII, any other byte written as \xHH, at most 64 bytes), from which a client shows times in the part's own layout; null when not known or when the part has none. */
+            example: string | null;
+            /**
+             * Format: int64
+             * @description The part's first timestamp (of the first line, in file order, that has one), as a UTC instant in ms; null when not known or when the part has none.
+             */
+            first_ms: number | null;
+            /**
+             * Format: int64
+             * @description The global line number of the part's first line: 1 plus the lines of the parts before it, so line L of the part is global line global_start + L - 1. An empty part's is the next part's. Null unless the chain is ready.
+             */
+            global_start: number | null;
+            /** @description Whether this is the active file, the one named like the chain, which may grow. */
+            is_active: boolean;
+            /** @description Whether a current line index of the part is stored. */
+            is_indexed: boolean;
+            /** @description The number or date in the part's name as the name writes it (3, 20261001-1790812801, 2026-10-01.3); null for the active file. */
+            key: string | null;
+            /**
+             * Format: int64
+             * @description The part's last timestamp (of the last line, in file order, that has one), as a UTC instant in ms; null when not known or when the part has none.
+             */
+            last_ms: number | null;
+            /**
+             * Format: int64
+             * @description The part's lines, as rx samples numbers them (a last line without a newline is a line); null when not known: a frozen part without a current index, or the active file without one, unless rx logs show read it.
+             */
+            line_count: number | null;
+            /** @description Whether max_ms is an upper bound of the part's highest timestamp rather than the timestamp: under file_tz, in a part whose lines write several zone offsets, where the line with the latest wall clock is not known from the index. */
+            max_is_bound: boolean;
+            /**
+             * Format: int64
+             * @description The part's highest timestamp, as a UTC instant in ms, from its line index (stored, or read by rx logs show); null without one (the active file usually) and for a part without timestamps. An upper bound when max_is_bound is true.
+             */
+            max_ms: number | null;
+            /**
+             * Format: date-time
+             * @description The part's modification time, RFC 3339 in UTC with six fractional digits, from the listing.
+             */
+            modified_at: string;
+            /** @description The part's file name in the chain's directory. */
+            name: string;
+            /** @description The part's path: the chain's directory joined with name. The single-file routes take it. */
+            path: string;
+            /**
+             * Format: int64
+             * @description The part's size in bytes as stored, from the listing.
+             */
+            size: number;
+            /** @description The part's timestamp format, as GET /v1/samples gives it; null when not known or when the part has none. */
+            time_format: components["schemas"]["SamplesTimeFormat"];
+        };
+        ChainPiece: {
+            /** @description The rx samples command that gives exactly the piece's lines from the part: rx samples PART --lines=A-B. */
+            cli_command: string;
+            /**
+             * Format: int64
+             * @description The global number of the piece's first line: the part's global_start plus first_local_line minus 1; -1 before the chain is ready.
+             */
+            first_global_line: number;
+            /**
+             * Format: int64
+             * @description The part's own number of the piece's first line, as rx samples numbers the part.
+             */
+            first_local_line: number;
+            /** @description The effective timestamp of each line of lines, in order, as GET /v1/samples gives line_timestamps: a UTC instant in ms, or null for a line without one. In a ready chain the look back for a line without a timestamp of its own continues into the parts before this one, so a piece answers as the chain's parts read as one file do. Null when the part has no timestamp format. */
+            line_timestamps: (number | null)[] | null;
+            /** @description The piece's lines, in order, without their line breaks. */
+            lines: string[];
+            /** @description The name of the part the lines come from, as in parts. */
+            part: string;
+            /** @description Whether the piece ends at the part's last line: its line count when known, or else the end of the part's text, which the read reached before the window's end. Before the chain is ready, a window that reaches past it stops there. */
+            part_end: boolean;
+            /** @description Whether the piece begins at the part's first line. Before the chain is ready, a window that reaches before it stops there. */
+            part_start: boolean;
+        };
+        ChainReason: {
+            /**
+             * @description The check that failed. no_timestamps: a part has lines and no timestamp rx recognizes. overlap: a part's highest timestamp is after the next part's first by more than RX_CHAIN_OVERLAP_SECONDS. active_not_last: the active file starts before a frozen part. unreadable: a part cannot be read. too_many_parts: the chain has more than 10,000 parts.
+             * @enum {string}
+             */
+            code: "no_timestamps" | "overlap" | "active_not_last" | "unreadable" | "too_many_parts";
+            /** @description The reason in words. */
+            message: string;
+            /**
+             * Format: int64
+             * @description For overlap, how far in ms the first part's highest timestamp is after the second's first timestamp; null for the other codes.
+             */
+            overlap_ms: number | null;
+            /** @description The names of the parts the check names, in the chain's order: the part for no_timestamps and unreadable, the two neighbors for overlap, the active file and the parts after it for active_not_last; empty for too_many_parts. */
+            parts: string[];
+        };
+        ChainRef: {
+            /** @description The chain's fingerprint, as GET /v1/logs/chain gives it. */
+            fingerprint: string;
+            /** @description The chain's name: the name of its active file. */
+            name: string;
+            /** @description The file ids (keys of files) of the chain's parts searched, in the chain's order: by time once the chain is ready (or invalid), in the provisional order of their names before. A part that cannot be read is not searched and has no id. Empty for a chain of more than 10,000 parts, whose files are searched as files of their own. */
+            parts: string[];
+            /** @description The chain's handle: its directory joined with its name. GET /v1/logs/chain takes it. */
+            path: string;
+            /** @description Why the chain is invalid, as GET /v1/logs/chain gives them (too_many_parts for a chain of more than 10,000 parts); empty unless state is invalid. */
+            reasons: components["schemas"]["ChainReason"][];
+            /**
+             * @description The chain's state, as GET /v1/logs/chain gives it. Only a ready chain gives its matches a chain_line.
+             * @enum {string}
+             */
+            state: "pending" | "ready" | "invalid";
+        };
+        ChainResponse: {
+            /** @description The rx command that gives this answer. */
+            cli_command: string;
+            /** @description 16 hex digits that change when the chain's files change: a frozen part renamed, compressed, deleted, added or written to, or the active file replaced. The active file growing does not change it. Send it back as fingerprint to learn, by a 409, that the files changed. */
+            fingerprint: string;
+            /**
+             * Format: int64
+             * @description The chain's first timestamp: the first of its first part with lines, as a UTC instant in ms. Null unless the chain is ready.
+             */
+            first_ms: number | null;
+            /**
+             * Format: int64
+             * @description The lines of every part but the active file. Null unless the chain is ready.
+             */
+            frozen_line_count: number | null;
+            /** @description The stretches of time no part covers, in order, in a ready chain of four parts with lines or more: where the time from a part's highest timestamp to the next part's first is more than 1.5 times the median distance between the first timestamps of neighboring parts. Empty otherwise. */
+            gaps: components["schemas"]["ChainGap"][];
+            /** @description The chain's index task (operation chain_index), to follow at GET /v1/tasks/{task_id}: for a pending chain the task that builds the line indexes it waits for, which this request started or joined (not started again while the last task failed for the same files); otherwise the last index task of the chain, running or ended, while the server keeps it (RX_TASK_TTL_MINUTES after its end). Null when there is none. It says how the chain is being made ready; the description is the same with an index task and without. */
+            index_build: components["schemas"]["SamplesIndexBuild"];
+            /**
+             * Format: int64
+             * @description The chain's last timestamp: the last of its last part with lines, as a UTC instant in ms. Null unless the chain is ready, and when that part's last timestamp is not known (an active file whose last timestamped line is more than 16 MiB from its end).
+             */
+            last_ms: number | null;
+            /**
+             * Format: int64
+             * @description The chain's lines, the active file's included, when its count is known (from its current line index, or read by rx logs show). Null unless the chain is ready.
+             */
+            line_count: number | null;
+            /** @description The names absent numbered parts would have, as GET /v1/logs/chains gives them: at most 100, lowest first. */
+            missing: string[];
+            /**
+             * Format: int64
+             * @description How many numbered parts are missing, as GET /v1/logs/chains counts them.
+             */
+            missing_count: number;
+            /** @description The chain's name: the name of its active file. */
+            name: string;
+            /** @description The chain's parts in its order: by first timestamp once the chain is ready (an empty part keeps its place among the others), by the number or date in their names before (as GET /v1/logs/chains lists them). One file in several encodings is one part, the encoding rx reads. Empty for a chain of more than 10,000 parts, which is invalid with the reason too_many_parts. */
+            parts: components["schemas"]["ChainPart"][];
+            /** @description The chain's handle: its directory joined with its name, which is the active file's path whether that file exists or not. */
+            path: string;
+            /** @description Why the chain is invalid, one entry per failed check; empty unless state is invalid. */
+            reasons: components["schemas"]["ChainReason"][];
+            /**
+             * @description pending: some frozen part has no current line index, or the active file's first timestamp is not known yet; each part can be read on its own, and global line numbers and times wait. ready: every part is known and every check passed; the chain reads as one text. invalid: a check failed, and reasons says which.
+             * @enum {string}
+             */
+            state: "pending" | "ready" | "invalid";
+        };
+        ChainSamplesResponse: {
+            /**
+             * Format: int64
+             * @description Lines of context after each single line or time asked for.
+             */
+            after_context: number;
+            /**
+             * Format: int64
+             * @description Lines of context before each single line or time asked for.
+             */
+            before_context: number;
+            /** @description The rx command that gives this answer: rx logs samples. */
+            cli_command: string;
+            /** @description The chain's fingerprint, as GET /v1/logs/chain gives it. Send it back as fingerprint to learn, by a 409, that the files changed. */
+            fingerprint: string;
+            /** @description The background index build this answer started or joined, to follow at GET /v1/tasks/{task_id}: for a pending chain, its index task (operation chain_index), as GET /v1/logs/chain starts it; for a ready chain, the build of a part whose piece came from the head of its text (the active file, as GET /v1/samples starts one). Null when there is none. It says how the answer was produced; the lines are the same without it. */
+            index_build: components["schemas"]["SamplesIndexBuild"];
+            /** @description Each line or range of a lines request, as asked, mapped to the global line it names: the line itself (a line counted back from the end, -N, is keyed by the line it names), or a range's first line; -1 when the chain has no such line, and before the chain is ready. Empty for a timestamps request. */
+            lines: {
+                [key: string]: number;
+            };
+            /** @description The chain's name: the name of its active file. */
+            name: string;
+            /** @description The chain's parts in its order, as GET /v1/logs/chain gives them; each piece names one of them. */
+            parts: components["schemas"]["ChainPart"][];
+            /** @description The chain's handle: its directory joined with its name. */
+            path: string;
+            /** @description Each key of lines or timestamps mapped to its lines, as pieces in the chain's order, one per part its window touches: the line with its context for a single line or time, or a range's lines. Null when the chain has no line of it. */
+            samples: {
+                [key: string]: components["schemas"]["ChainPiece"][] | null;
+            };
+            /**
+             * @description The chain's state, as GET /v1/logs/chain describes it: ready, or pending for an answer addressed to one part (part and lines), which reads that part alone.
+             * @enum {string}
+             */
+            state: "pending" | "ready" | "invalid";
+            /** @description Each time query of a timestamps request mapped to the global line it found: the first line whose own timestamp is at or after the time, or a range's first line; -1 when there is none. Empty for a lines request. */
+            timestamps: {
+                [key: string]: number;
+            };
+        };
+        ChainTraceResponse: {
+            /** Format: int64 */
+            after_context: number | null;
+            /** Format: int64 */
+            before_context: number | null;
+            /** @description The log chains found, by id (c1, c2, … in the order they were found): a path that is a chain's handle, or the chains among the files of a directory searched. Empty when there is none. */
+            chains: {
+                [key: string]: components["schemas"]["ChainRef"];
+            };
+            cli_command: string | null;
+            context_lines: {
+                [key: string]: components["schemas"]["ContextLine"][] | null;
+            };
+            file_chunks: {
+                [key: string]: number;
+            };
+            files: {
+                [key: string]: string;
+            };
+            matches: components["schemas"]["ChainMatch"][];
+            /** Format: int64 */
+            max_results: number | null;
+            path: string[];
+            patterns: {
+                [key: string]: string;
+            };
+            request_id: string;
+            scanned_files: string[];
+            /** @description Why each path of skipped_files was passed over or not searched in full, one entry per path in the same order. Besides a trace's reasons: duplicate_part for another encoding of a part that is searched, and a part's read error for a part of a chain that cannot be read. */
+            skip_reasons: components["schemas"]["SkippedFile"][];
+            skipped_files: string[];
+            /** Format: double */
+            time: number;
+        };
+        ChainsResponse: {
+            /** @description The directory's log chains, sorted by name, case-insensitive. Empty when it has none. */
+            chains: components["schemas"]["ChainEntry"][];
+            /** @description The listed directory, as an absolute path. */
+            path: string;
         };
         CompressRequest: {
             /**
@@ -611,8 +1035,8 @@ export interface components {
              * @description Share of the task's input read so far, from 0 to 1. Null for a task that does not report it: a compress task, an index task that reused a stored index, or one that has not started reading.
              */
             progress: number | null;
-            /** @description The task's result once it completes: IndexTaskResult for an index task, CompressTaskResult for a compress task. Null until then. */
-            result: components["schemas"]["IndexTaskResult"] | components["schemas"]["CompressTaskResult"] | null;
+            /** @description The task's result once it completes: IndexTaskResult for an index task, CompressTaskResult for a compress task, ChainIndexTaskResult for a chain_index task. Null until then. */
+            result: components["schemas"]["IndexTaskResult"] | components["schemas"]["CompressTaskResult"] | components["schemas"]["ChainIndexTaskResult"] | null;
             started_at: string | null;
             status: string;
             task_id: string;
@@ -1041,6 +1465,544 @@ export interface operations {
             };
             /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    log_chain: {
+        parameters: {
+            query: {
+                /** @description The chain's handle: its directory joined with its name, as GET /v1/logs/chains gives it in path. */
+                path: string;
+                /** @description Read every part's timestamps as the wall clock each line writes, in this zone: UTC, an IANA zone name or ±HH:MM (as RX_LOG_TZ takes it), as GET /v1/time-range reads one file. Empty or absent: each part is read as its timestamps say. Another value is refused with 400. */
+                file_tz?: string;
+                /** @description The fingerprint of a description the client holds. When the chain's files changed since (the fingerprint differs), the answer is 409 with the current description. */
+                fingerprint?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chain's description, whatever its state: pending, ready or invalid (with the reasons). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The chain's files changed: the fingerprint the request sent differs from the current one, or a part was renamed or replaced while the request read it. The body is the current description. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainResponse"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    log_chains: {
+        parameters: {
+            query: {
+                /** @description The directory whose log chains to list. */
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainsResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    log_index: {
+        parameters: {
+            query: {
+                /** @description The chain's handle: its directory joined with its name, as GET /v1/logs/chains gives it in path. */
+                path: string;
+                /** @description Build the index of every part again, current ones too. A request that joins the chain's running task does not change what that task builds. */
+                force?: boolean;
+                /** @description The fingerprint of a description the client holds. When the chain's files changed since (the fingerprint differs), the answer is 409 with the current description, and no task starts. */
+                fingerprint?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chain's index task: started, or the one already running for the chain, joined. Follow it at GET /v1/tasks/{task_id}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The chain's files changed: the fingerprint the request sent differs from the current one, or a part was renamed or replaced while the request read it. The body is the current description; no task started. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainResponse"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    log_samples: {
+        parameters: {
+            query: {
+                /** @description The chain's handle: its directory joined with its name, as GET /v1/logs/chains gives it in path. */
+                path: string;
+                /** @description Comma-separated 1-based line numbers or ranges: the chain's global numbers, or with part the part's own numbers. -N counts back from the end (of the chain, or of the part). */
+                lines?: string;
+                /** @description The bare name of a part, as GET /v1/logs/chain lists it: lines then number that part as GET /v1/samples numbers it on its own. Only with lines. Before the chain is ready, this is the only way to read it: the part is read alone. */
+                part?: string;
+                /** @description A time or time range (T, T1..T2, ..T2, T1..), as GET /v1/samples takes it; repeat the parameter for several, at most 1000. Each answers the first line, in the chain's order, whose own timestamp is at or after the time, with context, or a range's lines without context. A time of day without a date takes its date from the chain's first and last timestamps, which must fall on one day. */
+                timestamps?: string[] | null;
+                /** @description Context lines before AND after each single line or time (-1 = default 3) */
+                context?: number;
+                /** @description Context lines before each single line or time (-1 = default 3) */
+                before_context?: number;
+                /** @description Context lines after each single line or time (-1 = default 3) */
+                after_context?: number;
+                /** @description Read every part's timestamps as the wall clock each line writes, in this zone: UTC, an IANA zone name or ±HH:MM, as GET /v1/samples reads one file. Another value is refused with 400. */
+                file_tz?: string;
+                /** @description The fingerprint of a description the client holds. When the chain's files changed since (the fingerprint differs), the answer is 409 with the current description. */
+                fingerprint?: string;
+            };
+            header?: {
+                /** @description RFC 7240 preferences. respond-async lets the server answer 202 with the task it waits for (the chain's index task, or a part's index build) once RX_SAMPLES_WAIT_SECONDS has passed; without it the request waits for the task and answers 200. */
+                Prefer?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lines asked for, each key's as pieces, one per part its window touches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainSamplesResponse"];
+                };
+            };
+            /** @description Sent only to a request with `Prefer: respond-async`: the answer waits for a task that did not end within the server's wait (RX_SAMPLES_WAIT_SECONDS): the chain's index task (operation chain_index) for a request by global line or by time on a pending chain, or the line index build of the part a piece lies in. Poll GET /v1/tasks/{task_id} until it ends, then send the same request again. */
+            202: {
+                headers: {
+                    /** @description respond-async: the server applied the preference the request sent (RFC 7240). */
+                    "Preference-Applied"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The chain's files changed: the fingerprint the request sent differs from the current one, or a part was renamed or replaced while the request read it. The body is the current description. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainResponse"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Any other error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    log_trace: {
+        parameters: {
+            query: {
+                /** @description File or directory path(s) to search */
+                path: string[] | null;
+                /** @description Regex pattern(s) to search for */
+                regexp: string[] | null;
+                /** @description Maximum results to return. 0 = unlimited. */
+                max_results?: number;
+                /** @description Custom UUID v7 request ID */
+                request_id?: string;
+                /** @description Webhook URL called with GET once per file after its scan (event file_scanned, payload as query parameters). Overrides RX_HOOK_ON_FILE_URL for this request. */
+                hook_on_file?: string;
+                /** @description Webhook URL called with GET once per match (event match_found, payload as query parameters). Requires max_results. Overrides RX_HOOK_ON_MATCH_URL for this request. */
+                hook_on_match?: string;
+                /** @description Webhook URL called with GET once when the trace completes (event trace_complete, payload as query parameters). Overrides RX_HOOK_ON_COMPLETE_URL for this request. */
+                hook_on_complete?: string;
+                /** @description Match case-insensitively (ripgrep -i) */
+                ignore_case?: boolean;
+                /** @description Match only whole words (ripgrep -w) */
+                word_regexp?: boolean;
+                /** @description Match only whole lines (ripgrep -x) */
+                line_regexp?: boolean;
+                /** @description Treat every pattern as literal text (ripgrep -F) */
+                fixed_strings?: boolean;
+                /** @description Use the PCRE2 engine, for look-around and backreferences (ripgrep -P) */
+                pcre2?: boolean;
+                /** @description Context lines before and after each match (rx trace --context). Fills context_lines, before_context and after_context of the answer. */
+                context?: number;
+                /** @description Context lines before each match (rx trace --before); wins over context, 0 included. -1 = the context value. */
+                before_context?: number;
+                /** @description Context lines after each match (rx trace --after); wins over context, 0 included. -1 = the context value. */
+                after_context?: number;
+                /** @description Neither read nor write the trace cache (rx trace --no-cache) */
+                no_cache?: boolean;
+                /** @description Read and write no line index; a match a capped scan left unnumbered is numbered by counting lines from the start of the file (rx trace --no-index) */
+                no_index?: boolean;
+                /** @description Search only the files directly inside a directory path, not its subdirectories (rx trace --no-recursive) */
+                no_recursive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChainTraceResponse"];
+                };
+            };
+            /** @description The request cannot be served as asked: a value rx cannot use (an uncompilable pattern, a malformed line or offset list, a file below the index threshold, an output file that exists), or a body that is not valid JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The server requires an API token and the request did not carry it */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Refused: the path is outside every configured --search-root (SandboxError body), or it is hidden or cannot be read (ApiError body) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxError"] | components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The file, directory, index or task does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A part of a log chain was renamed or replaced between the listing that found it and the read that described it (a rotation ran meanwhile); send the request again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The request does not match the schema: a required parameter or field is missing, or a value has the wrong type or is out of range */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description rx failed while serving the request */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description ripgrep is not available on this system */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
