@@ -19,8 +19,8 @@
     // Fetch detector metadata on app load (non-blocking)
     detectors.fetchDetectors();
 
-    // The link rebuilds the view, in the chain mode chosen last when it
-    // does not name the mode. The URL follows the view only once that is
+    // The link rebuilds the view, in the chain mode the view was last in
+    // when it does not name the mode. The URL follows the view only once that is
     // done, so a half-restored view never overwrites the link.
     let stopViewSync: (() => void) | null = null;
     let isDestroyed = false;

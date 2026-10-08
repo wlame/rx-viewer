@@ -400,7 +400,7 @@ export interface AppSettings {
   sidebarWidth: number;
   monacoTheme: MonacoTheme;
   /**
-   * The chain mode last chosen with the files panel's switch, which a
+   * The chain mode the view was last in, however it was set, which a
    * link that does not name the mode (`chains=`) opens in.
    */
   chainMode: boolean;

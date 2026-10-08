@@ -3,8 +3,8 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
-import { health, settings } from '$lib/stores';
-import { chainMode, chooseChainMode } from '$lib/stores/chainMode';
+import { health } from '$lib/stores';
+import { chainMode } from '$lib/stores/chainMode';
 import { LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
 import FileTree from './FileTree.svelte';
 
@@ -25,7 +25,7 @@ async function mount(features: string[]) {
 afterEach(() => {
   mounted?.$destroy();
   mounted = null;
-  chooseChainMode(false);
+  chainMode.set(false);
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
@@ -46,19 +46,17 @@ describe('the chain mode switch of the files panel', () => {
     expect(input?.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('turns chain mode on and off, and remembers the choice', async () => {
+  it('turns chain mode on and off', async () => {
     const { toggle } = await mount(['log_chains']);
 
     toggle()?.click();
     await tick();
     expect(get(chainMode)).toBe(true);
-    expect(get(settings).chainMode).toBe(true);
     expect(toggle()?.checked).toBe(true);
 
     toggle()?.click();
     await tick();
     expect(get(chainMode)).toBe(false);
-    expect(get(settings).chainMode).toBe(false);
   });
 
   it('shows the mode a link set', async () => {

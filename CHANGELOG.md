@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panel's header, shown when the backend serves log chains, shows the
   files of each rotated log (`app.log`, `app.log.1`, `app.log.2.gz`, …)
   as one row. The link holds the mode as `chains=1`; a link that does not
-  name it opens in the mode last chosen with the switch. A chain's row
+  name it opens in the mode the viewer was last in. A chain's row
   shows its name, `chain · N` (its parts), its size, `idx` once every
   part but the active file is indexed, how many parts are missing (the
   tooltip names them), parts that cannot be read, a chain of more than

@@ -1064,14 +1064,48 @@ describe('the chain parts flag in the URL', () => {
 
     expect(window.location.search).toBe('?chains=1&chain_parts=1');
   });
+});
 
-  // Only the switch is a choice; a link that turns the mode on is not.
-  it('remembers no mode a link turns on', async () => {
+describe('the chain mode remembered for a link that does not name it', () => {
+  let stopSync: () => void = () => {};
+
+  beforeEach(() => {
+    serveBackend();
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    chainMode.set(false);
     settings.update((current) => ({ ...current, chainMode: false }));
+    vi.unstubAllGlobals();
+  });
 
-    await loadView({ ...DEFAULT_VIEW, chains: true });
+  it('is the mode the view is in, whatever set it, once the URL follows the view', async () => {
+    stubWindow('?chains=1');
+    await loadView(readViewState());
+    stopSync = startViewSync();
+    expect(get(settings).chainMode).toBe(true);
 
-    expect(get(chainMode)).toBe(true);
+    // Back to an entry written while the mode was off.
+    await restoreView(DEFAULT_VIEW);
     expect(get(settings).chainMode).toBe(false);
+
+    chainMode.set(true);
+    expect(get(settings).chainMode).toBe(true);
+  });
+
+  // The address the view writes leaves an off mode out: a reload of it
+  // must open off, not in a mode chosen earlier.
+  it('opens a reload of the address it wrote in the same mode', async () => {
+    settings.update((current) => ({ ...current, chainMode: true }));
+    stubWindow('?chains=0');
+
+    await loadView(linkView(window.location.search, get(settings).chainMode));
+    stopSync = startViewSync();
+
+    expect(window.location.search).toBe('');
+    expect(linkView(window.location.search, get(settings).chainMode).chains).toBe(false);
   });
 });

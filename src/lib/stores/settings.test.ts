@@ -40,17 +40,6 @@ describe('settings', () => {
     expect(get(settings).chainMode).toBe(true);
   });
 
-  it('keeps the chain mode chosen for the page when storage refuses to save it', async () => {
-    blockStorage();
-    const { chainMode, chooseChainMode } = await import('./chainMode');
-    const { settings } = await import('./settings');
-
-    chooseChainMode(true);
-
-    expect(get(chainMode)).toBe(true);
-    expect(get(settings).chainMode).toBe(true);
-  });
-
   it('keeps a change for the page when storage refuses to save it', async () => {
     blockStorage();
     const { settings } = await import('./settings');
