@@ -39,3 +39,12 @@ export function chainHandleOf(key: TabKey): string | null {
 export function fileKeys(keys: readonly TabKey[]): string[] {
   return keys.filter((key) => !isChainKey(key));
 }
+
+/**
+ * The paths a chain search (`/v1/logs/trace`) of the open tabs names: a
+ * chain's tab by its handle, which the search reads as the chain, and a
+ * file's tab by its path, each path once, in tab order.
+ */
+export function chainSearchPaths(keys: readonly TabKey[]): string[] {
+  return [...new Set(keys.map((key) => chainHandleOf(key) ?? key))];
+}

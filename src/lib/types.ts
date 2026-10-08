@@ -219,6 +219,16 @@ export type ChainMatch = Schemas['ChainMatch'];
 /** `GET /v1/logs/trace`: a trace answer plus the chains it found. */
 export type ChainTraceResponse = Schemas['ChainTraceResponse'];
 
+/**
+ * The answer of a search by either route: `/v1/trace`, or
+ * `/v1/logs/trace` in chain mode, whose answer has every field of a
+ * trace answer plus `chains` (`utils/chainSearch.ts` tells them apart).
+ */
+export type SearchResponse = TraceResponse | ChainTraceResponse;
+
+/** A match of either route's answer: a chain search's also names its chain and chain line. */
+export type SearchMatch = TraceMatch & Partial<Pick<ChainMatch, 'chain' | 'chain_line'>>;
+
 // Frontend-specific types
 
 export interface TreeNode extends TreeEntry {
@@ -388,11 +398,18 @@ export interface OpenFile {
   chain?: ChainTab;
 }
 
-/** Match info for highlighting in file viewer */
+/**
+ * A search match a tab marks. In a file's tab `lineNumber` is the file's
+ * line. In a log chain's tab the match names its `part` and `lineNumber`
+ * is the line in that part, so the mark follows the line whether the tab
+ * numbers its lines globally or, while the chain is pending, by part.
+ */
 export interface FileMatch {
   lineNumber: number;
   patternId: string;
   pattern: string;
+  /** In a log chain's tab: the name of the part the match is in. */
+  part?: string;
 }
 
 export interface AppSettings {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { searchedFileCount } from './traceSummary';
+import { chainCount, searchedFileCount, skippedFiles } from './traceSummary';
+import { chainRef, chainSearchAnswer } from '../testing/chainSearchAnswer';
 import type { TraceResponse } from '../types';
 
 function makeResponse(overrides: Partial<TraceResponse> = {}): TraceResponse {
@@ -43,5 +44,75 @@ describe('searchedFileCount', () => {
 
   it('counts nothing when no file was searched', () => {
     expect(searchedFileCount(makeResponse({ files: {} }))).toBe(0);
+  });
+});
+
+describe('skippedFiles', () => {
+  it('lists each skipped path with its reason, in the order of the answer', () => {
+    const response = makeResponse({
+      skipped_files: ['/var/log/wtmp', '/var/log/app.log.2'],
+      skip_reasons: [
+        { path: '/var/log/wtmp', reason: 'binary file' },
+        {
+          path: '/var/log/app.log.2',
+          reason:
+            'duplicate_part: the same part of its log chain as app.log.2.gz, which is searched',
+        },
+      ],
+    });
+
+    expect(skippedFiles(response)).toEqual({
+      shown: [
+        { path: '/var/log/wtmp', reason: 'binary file' },
+        {
+          path: '/var/log/app.log.2',
+          reason:
+            'duplicate_part: the same part of its log chain as app.log.2.gz, which is searched',
+        },
+      ],
+      more: 0,
+    });
+  });
+
+  it('gives a path no reason when the answer gives it none', () => {
+    const response = makeResponse({ skipped_files: ['/var/log/wtmp'], skip_reasons: [] });
+
+    expect(skippedFiles(response).shown).toEqual([{ path: '/var/log/wtmp', reason: null }]);
+  });
+
+  // A directory walk can skip thousands of files; the list shows a few
+  // and says how many more there are.
+  it('shows at most the limit and counts the rest', () => {
+    const paths = Array.from({ length: 5 }, (_, i) => `/var/log/bin${i}`);
+    const response = makeResponse({
+      skipped_files: paths,
+      skip_reasons: paths.map((path) => ({ path, reason: 'binary file' })),
+    });
+
+    const { shown, more } = skippedFiles(response, 2);
+
+    expect(shown.map((entry) => entry.path)).toEqual(['/var/log/bin0', '/var/log/bin1']);
+    expect(more).toBe(3);
+  });
+
+  it('lists nothing when nothing was skipped', () => {
+    expect(skippedFiles(makeResponse())).toEqual({ shown: [], more: 0 });
+  });
+});
+
+describe('chainCount', () => {
+  it('counts the chains a chain search found', () => {
+    const response = chainSearchAnswer({
+      chains: {
+        c1: chainRef('/var/log/app.log', ['f1'], 'ready'),
+        c2: chainRef('/var/log/svc.log', ['f2'], 'pending'),
+      },
+    });
+
+    expect(chainCount(response)).toBe(2);
+  });
+
+  it('counts no chain in a trace answer', () => {
+    expect(chainCount(makeResponse())).toBe(0);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chainHandleOf, chainKey, fileKeys, isChainKey } from './tabKey';
+import { chainHandleOf, chainKey, chainSearchPaths, fileKeys, isChainKey } from './tabKey';
 
 describe('chainKey', () => {
   it('prefixes the handle with chain:', () => {
@@ -45,5 +45,21 @@ describe('fileKeys', () => {
       '/l/a.log',
       '/l/syslog',
     ]);
+  });
+});
+
+describe('chainSearchPaths', () => {
+  it('names each chain tab by its handle and each file tab by its path, in tab order', () => {
+    expect(chainSearchPaths(['/l/a.log', chainKey('/l/syslog'), '/l/b.log'])).toEqual([
+      '/l/a.log',
+      '/l/syslog',
+      '/l/b.log',
+    ]);
+  });
+
+  // The tab of the file at a chain's handle names the same path as the
+  // chain's tab: the search reads it once, as that chain.
+  it('names a path two tabs share once', () => {
+    expect(chainSearchPaths([chainKey('/l/syslog'), '/l/syslog'])).toEqual(['/l/syslog']);
   });
 });
