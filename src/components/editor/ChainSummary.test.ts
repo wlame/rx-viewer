@@ -49,6 +49,7 @@ function chainTab(description: Partial<ChainResponse>, fields: Partial<ChainTab>
       frozen_line_count: null,
       line_count: null,
       index_build: null,
+      index_build_refused: null,
       cli_command: 'rx logs show /l/app.log',
       ...description,
     },

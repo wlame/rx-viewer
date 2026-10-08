@@ -196,6 +196,7 @@ export class FakeChain {
       frozen_line_count: ready ? frozen : null,
       line_count: ready ? this.totalLines : null,
       index_build: this.state === 'pending' ? this.indexTask() : null,
+      index_build_refused: null,
       cli_command: `rx logs show ${this.handle}`,
     };
   }

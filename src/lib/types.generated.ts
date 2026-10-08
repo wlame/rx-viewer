@@ -530,6 +530,8 @@ export interface components {
             gaps: components["schemas"]["ChainGap"][];
             /** @description The chain's index task (operation chain_index), to follow at GET /v1/tasks/{task_id}: for a pending chain the task that builds the line indexes it waits for, which this request started or joined (not started again while the last task failed for the same files); otherwise the last index task of the chain, running or ended, while the server keeps it (RX_TASK_TTL_MINUTES after its end). Null when there is none. It says how the chain is being made ready; the description is the same with an index task and without. */
             index_build: components["schemas"]["SamplesIndexBuild"];
+            /** @description Why a pending chain has no index task (index_build is null), in words: as many log chain index tasks as the server runs at once (128) are running or waiting, so none could start for this chain. A request after one of them has ended starts it. Null otherwise: a task runs or was started or joined, the chain waits for no part, or its last task failed for the same files (index_build names that task). */
+            index_build_refused: string | null;
             /**
              * Format: int64
              * @description The chain's last timestamp: the last of its last part with lines, as a UTC instant in ms. Null unless the chain is ready, and when that part's last timestamp is not known (an active file whose last timestamped line is more than 16 MiB from its end).
@@ -1750,6 +1752,8 @@ export interface operations {
             /** @description No index task runs for the chain, and none can start now: as many log chain index tasks as the server runs at once are running or waiting. No task started; ask again once one of them has ended. At most 128 run or wait at once: half the line-index build queue, as many as the part builds of all chains may take. */
             503: {
                 headers: {
+                    /** @description 5: the seconds to wait before asking again (RFC 9110). A place frees when any chain index task ends. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1884,6 +1888,8 @@ export interface operations {
             /** @description A request by global line or by time on a pending chain whose index task does not run and cannot start now: as many log chain index tasks as the server runs at once are running or waiting. Ask again once one of them has ended. At most 128 run or wait at once: half the line-index build queue, as many as the part builds of all chains may take. */
             503: {
                 headers: {
+                    /** @description 5: the seconds to wait before asking again (RFC 9110). A place frees when any chain index task ends. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
