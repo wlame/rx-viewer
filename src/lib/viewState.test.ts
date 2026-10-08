@@ -871,6 +871,16 @@ describe('chain mode in the URL', () => {
     expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
   });
 
+  it('opens nothing for a link whose file is a chain key, and writes the default view', async () => {
+    stubWindow('?file=chain%3A%2Fx');
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(files).openFiles).toEqual([]);
+    expect(window.location.search).toBe('');
+  });
+
   it('does not open the file of a link that names a chain too', async () => {
     stubWindow('?file=%2Flogs%2Fsmall.log&chain=%2Flogs%2Fapp.log');
 

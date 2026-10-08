@@ -25,6 +25,7 @@ import {
   type FileZone,
 } from './fileZones';
 import { SEARCH_TOGGLES } from './searchToggles';
+import { isChainKey } from './tabKey';
 import { normalizeStash } from './timeStash';
 
 /** The sidebar's two tabs. */
@@ -166,12 +167,31 @@ function isBareName(name: string): boolean {
 }
 
 /**
- * The chain handle a link names: a value whose last element is a bare
- * name (the chain's name), or null.
+ * Whether `value` is written as an absolute path, the way rx lists every
+ * file and chain handle.
+ */
+function isAbsolutePath(value: string): boolean {
+  return value.startsWith('/');
+}
+
+/**
+ * The file a link names: an absolute path that is not a chain's tab key,
+ * or null. A file's tab key is its path, so a chain key here would open a
+ * file tab under the chain's key.
+ */
+function parseFile(params: URLSearchParams): string | null {
+  const file = nonEmpty(params.get('file'));
+  if (file === null || isChainKey(file) || !isAbsolutePath(file)) return null;
+  return file;
+}
+
+/**
+ * The chain handle a link names: an absolute path whose last element is
+ * a bare name (the chain's name), or null.
  */
 function parseChain(params: URLSearchParams): string | null {
   const handle = nonEmpty(params.get('chain'));
-  if (handle === null) return null;
+  if (handle === null || !isAbsolutePath(handle)) return null;
   return isBareName(handle.slice(handle.lastIndexOf('/') + 1)) ? handle : null;
 }
 
@@ -286,7 +306,7 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
   file: {
     names: ['file'],
     // A link that names a chain as well opens the chain.
-    parse: (params) => (parseChain(params) === null ? nonEmpty(params.get('file')) : null),
+    parse: (params) => (parseChain(params) === null ? parseFile(params) : null),
     serialize: (file) => (file === null ? [] : [['file', file]]),
     // Opening a file or switching to another is a step; closing the last
     // one is not, or Back would reopen a file that failed to open.

@@ -549,6 +549,24 @@ describe('a log chain in the URL', () => {
     expect(parsed.file).toBe('/a.log');
   });
 
+  // A file's key is its absolute path; a chain's starts with `chain:`. A
+  // file named by a chain's key would open a file tab under that key.
+  it.each([
+    ['a chain key', 'chain:/l/syslog'],
+    ['a relative path', 'logs/a.log'],
+    ['a bare name', 'a.log'],
+  ])('reads a file that is %s as none', (_name, file) => {
+    expect(parseViewState(new URLSearchParams({ file }).toString()).file).toBeNull();
+  });
+
+  it('reads a handle that is not an absolute path as none', () => {
+    const params = new URLSearchParams({ chain: 'var/log/app.log', part: 'app.log.1' });
+    const parsed = parseViewState(params.toString());
+
+    expect(parsed.chain).toBeNull();
+    expect(parsed.part).toBeNull();
+  });
+
   it('reads a part without a chain as none', () => {
     expect(parseViewState('?part=app.log.1&file=%2Fa.log').part).toBeNull();
   });
