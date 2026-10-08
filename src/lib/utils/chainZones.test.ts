@@ -280,6 +280,33 @@ describe('chainZonesMemo', () => {
     expect(forLines).toEqual(first);
   });
 
+  // A description's missing parts are placed once; another description
+  // of the same lines is placed by its own missing parts.
+  it('builds the zones of another description with other missing parts from that description', () => {
+    const zonesOf = chainZonesMemo();
+    const numbered = [
+      part('agent.log.3', { key: '3' }),
+      part('agent.log.1', { key: '1' }),
+      part('agent.log', { is_active: true }),
+    ];
+    const page = held(1, ['agent.log.3', 1], ['agent.log.1', 1], ['agent.log', 1]);
+    const before = chain({ name: 'agent.log', parts: numbered });
+    const after = chain({
+      name: 'agent.log',
+      parts: numbered,
+      missing: ['agent.log.2'],
+      missing_count: 1,
+    });
+
+    zonesOf(page, before);
+    const zones = zonesOf(page, after);
+
+    expect(zones).toEqual(chainViewZones(page, after));
+    expect(zones.filter((zone) => zone.kind === 'missing').map((zone) => zone.text)).toEqual([
+      'missing: agent.log.2',
+    ]);
+  });
+
   it('gives one empty list while there is no description', () => {
     const zonesOf = chainZonesMemo();
     expect(zonesOf(lines, null)).toBe(NO_ZONES);
