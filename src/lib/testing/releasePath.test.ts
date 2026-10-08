@@ -141,6 +141,26 @@ describe('the workflow guard', () => {
       'a run script merged in from an anchored mapping',
       '      - uses: some/action@v1\n        with: &inputs\n          run: echo ${{ github.ref_name }}\n      - <<: *inputs\n        name: merged',
     ],
+    [
+      'the args of a docker:// step whose entrypoint is a shell',
+      '      - uses: docker://alpine:3\n        with:\n          entrypoint: /bin/sh\n          args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'the entrypoint of a docker:// step',
+      '      - uses: DOCKER://alpine:3\n        with:\n          entrypoint: ${{ inputs.program }}',
+    ],
+    [
+      'the args of a step whose uses is merged in, so it may be a docker:// step',
+      '      - <<: { uses: "docker://alpine:3" }\n        with:\n          args: -c "echo ${{ github.ref_name }}"',
+    ],
+    [
+      'a command input, which actions such as retry steps run in a shell',
+      '      - uses: some/retry@v3\n        with:\n          command: echo ${{ github.ref_name }}',
+    ],
+    [
+      'a run input of an action',
+      '      - uses: some/action@v1\n        with:\n          run: echo ${{ github.ref_name }}',
+    ],
   ])('refuses %s', (_name, steps) => {
     const violations = workflowExpressionViolations('w.yml', workflowWith(steps), 'workflow');
 
@@ -184,6 +204,43 @@ describe('the workflow guard', () => {
     ].join('\n');
 
     expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
+  });
+
+  // GitHub hands the args input of an action, not a docker:// image, to
+  // that action as data.
+  it('lets an expression through in the args of an action that is no docker:// image', () => {
+    const workflow = workflowWith(
+      '      - uses: some/release-action@v6\n        with:\n          args: release --tag=${{ github.ref_name }}',
+    );
+
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
+  });
+
+  // This parser reads only LF and CRLF as line breaks; a reader that also
+  // ends a line at one of these would find a run line inside a comment.
+  it.each([
+    ['a lone CR', '\r'],
+    ['NEL (U+0085)', '\u0085'],
+    ['LS (U+2028)', '\u2028'],
+    ['PS (U+2029)', '\u2029'],
+  ])('refuses a file that holds %s, such as in a comment before a run line', (_name, lineBreak) => {
+    const workflow = workflowWith(
+      `      - name: x # note${lineBreak}        run: echo \${{ github.ref_name }}`,
+    );
+
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([
+      'w.yml: cannot read the YAML: line 6 holds a lone CR, U+0085, U+2028 or U+2029, which some YAML readers end a line at',
+    ]);
+  });
+
+  it('reads a file whose lines end in CRLF', () => {
+    const workflow = workflowWith(
+      '      - run: echo "$TAG"\n        env:\n          TAG: ${{ github.ref_name }}',
+    );
+
+    expect(
+      workflowExpressionViolations('w.yml', workflow.replaceAll('\n', '\r\n'), 'workflow'),
+    ).toEqual([]);
   });
 
   it('refuses an expression in a key', () => {

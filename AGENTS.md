@@ -133,9 +133,13 @@ through `env:`. A tag name may hold a quote, `;` or `$(`.
 recipe, and on any `${{` in a workflow (`.yml` or `.yaml`) or a file
 under `.github/actions` that stands outside the places GitHub hands to
 no shell and no script (an `if`, an `env` value, an action input other
-than `script`: `EXPRESSION_PLACES` in `releasePath.ts`). It reads those
-files with a YAML parser, so no spelling of a step (a flow mapping, a
-quoted key, an alias, a merge key, an escape) gets past it. It also
+than one that holds code, `script`, `command` or `run`, and other than
+the `args` and `entrypoint` of a `docker://` step: `EXPRESSION_PLACES`,
+`CODE_INPUTS` and `DOCKER_COMMAND_INPUTS` in `releasePath.ts`). It reads
+those files with a YAML parser, so no spelling of a step (a flow
+mapping, a quoted key, an alias, a merge key, an escape) gets past it,
+and refuses a file with a line break another YAML reader may read
+otherwise (a lone CR, U+0085, U+2028, U+2029). It also
 checks that `release.yml` refuses a tag that is not exactly `vX.Y.Z`
 before anything runs.
 

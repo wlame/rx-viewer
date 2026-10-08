@@ -227,8 +227,31 @@ const EXPRESSION_PLACES: Record<WorkflowFileKind, readonly string[]> = {
   ],
 };
 
-/** Action inputs that hold code the action runs (actions/github-script runs `script`), refused under any `with`. */
-const SCRIPT_INPUTS: ReadonlySet<string> = new Set(['script']);
+/**
+ * Action inputs that hold code the action runs, refused under any `with`:
+ * actions/github-script runs `script`, and actions that retry or wrap a
+ * command run `command` or `run` in a shell.
+ */
+const CODE_INPUTS: ReadonlySet<string> = new Set(['script', 'command', 'run']);
+
+/**
+ * The inputs of a `docker://` step that make its container's command:
+ * `entrypoint` the program and `args` its arguments (`-c "…"` for a
+ * shell). Refused under the `with` of a step that is not known to use an
+ * action rather than a docker:// image.
+ */
+const DOCKER_COMMAND_INPUTS: ReadonlySet<string> = new Set(['args', 'entrypoint']);
+
+/** A step's `uses` that runs a container image, whose `with` makes its command. */
+const DOCKER_IMAGE = /^docker:\/\//i;
+
+/**
+ * A character some YAML readers end a line at and this parser does not:
+ * a CR not followed by LF, NEL, LS or PS. A reader that ends a line there
+ * would find a key, such as `run:`, inside what this parser reads as a
+ * comment.
+ */
+const ODD_LINE_BREAK = /\r(?!\n)|[\u0085\u2028\u2029]/;
 
 /** The most aliases a file may resolve; more is refused (an alias can repeat a large value many times). */
 const MAX_ALIASES = 100;
@@ -249,11 +272,47 @@ function isPlaceOf(place: Place, pattern: string): boolean {
   );
 }
 
-/** Whether GitHub hands the value at `place` of a `kind` file to no shell and no script. */
-function isExpressionPlace(kind: WorkflowFileKind, place: Place): boolean {
+/** The value at `place` in a document read into plain values, or undefined when there is none. */
+function valueAt(document: unknown, place: Place): unknown {
+  let value = document;
+  for (const at of place) {
+    if (typeof value !== 'object' || value === null) return undefined;
+    value = (value as Record<string | number, unknown>)[at];
+  }
+  return value;
+}
+
+/** Whether a step (or a job) uses an action or a workflow, named by a string, and no docker:// image. */
+function usesNoImage(step: unknown): boolean {
+  const uses = valueAt(step, ['uses']);
+  return typeof uses === 'string' && !DOCKER_IMAGE.test(uses);
+}
+
+/**
+ * Whether GitHub hands the value at `place` of a `kind` file (`document`)
+ * to no shell and no script: a listed place, but no input that holds code
+ * (`CODE_INPUTS`) and no input that makes a docker:// step's command.
+ */
+function isExpressionPlace(kind: WorkflowFileKind, place: Place, document: unknown): boolean {
   const name = place.at(-1);
-  if (place.at(-2) === 'with' && typeof name === 'string' && SCRIPT_INPUTS.has(name)) return false;
+  if (place.at(-2) === 'with' && typeof name === 'string') {
+    if (CODE_INPUTS.has(name)) return false;
+    const step = valueAt(document, place.slice(0, -2));
+    if (DOCKER_COMMAND_INPUTS.has(name) && !usesNoImage(step)) return false;
+  }
   return EXPRESSION_PLACES[kind].some((pattern) => isPlaceOf(place, pattern));
+}
+
+/**
+ * Why `text` cannot be read the same way by every YAML reader: the first
+ * line that holds a line break this parser does not end a line at; null
+ * when none does.
+ */
+function oddLineBreakIn(text: string): string | null {
+  const found = ODD_LINE_BREAK.exec(text);
+  if (found === null) return null;
+  const line = text.slice(0, found.index).split('\n').length;
+  return `line ${line} holds a lone CR, U+0085, U+2028 or U+2029, which some YAML readers end a line at`;
 }
 
 /** A place as a person reads it: `jobs.build.steps[0].run`. */
@@ -316,18 +375,22 @@ function expressionViolation(name: string, found: FoundExpression): string {
 /**
  * Every `${{ … }}` of a workflow or an action file (`text`, named `name`
  * in the messages) that stands outside the places GitHub hands to no
- * shell and no script (`EXPRESSION_PLACES`). The file is read by a YAML
+ * shell and no script (`EXPRESSION_PLACES`, less the inputs that hold
+ * code or make a docker:// step's command). The file is read by a YAML
  * parser, so every form of a value counts: a block, a plain or quoted
  * scalar over several lines, a flow mapping, a quoted key, an escape
  * such as `\x24{{`, an alias, a merge key. Every scalar is read as text
  * (the failsafe schema). A file the parser cannot read, reads with a
- * warning, or that holds an explicit tag, is refused.
+ * warning, holds an explicit tag, or holds a line break other YAML
+ * readers may read otherwise (`ODD_LINE_BREAK`), is refused.
  */
 export function workflowExpressionViolations(
   name: string,
   text: string,
   kind: WorkflowFileKind,
 ): string[] {
+  const oddLineBreak = oddLineBreakIn(text);
+  if (oddLineBreak !== null) return [`${name}: cannot read the YAML: ${oddLineBreak}`];
   const violations: string[] = [];
   for (const document of parseAllDocuments(text, { schema: 'failsafe' })) {
     const problem = document.errors[0]?.message ?? document.warnings[0]?.message ?? tagIn(document);
@@ -343,7 +406,7 @@ export function workflowExpressionViolations(
       continue;
     }
     for (const found of expressionsIn(value, [], new Set())) {
-      if (found.isKey || !isExpressionPlace(kind, found.place)) {
+      if (found.isKey || !isExpressionPlace(kind, found.place, value)) {
         violations.push(expressionViolation(name, found));
       }
     }
