@@ -168,6 +168,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scroll), so the editor no longer removes and adds every one of them
   each time. It places the missing parts with one pass over the parts
   for each missing name.
+- A log chain's tab takes a line number from the backend only when it is
+  a whole number, as the editor writes it into its gutter as markup. For
+  an answer that numbers a part's lines with anything else, the tab shows
+  an error and no line from it, where it used to stay loading.
 
 ## [0.6.0] - 2026-10-06
 

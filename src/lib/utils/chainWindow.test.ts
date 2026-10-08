@@ -104,6 +104,33 @@ describe('flattenPieces', () => {
     expect(lines[0].timestampMs).toBeNull();
     expect(lines[1].timestampMs).toBeNull();
   });
+
+  // The editor writes a line's number into its gutter as markup.
+  const notWholeNumbers: [string, unknown][] = [
+    ['markup', '<b>x</b>'],
+    ['a fraction', 1.5],
+    ['past the safe integers', 2 ** 60],
+  ];
+  const numberings = [
+    { kind: 'global' },
+    { kind: 'local', bases: new Map([['a.1', LOCAL_NUMBERING_BASE]]) },
+  ] as const;
+
+  it.each(notWholeNumbers)('refuses a piece whose first local line is %s', (_, value) => {
+    const bad = { ...piece('a.1', 1, 2, 1), first_local_line: value as number };
+    for (const numbering of numberings) {
+      expect(() => flattenPieces([piece('a.1', 3, 1, 3), bad], numbering)).toThrow(
+        'The samples answer numbers the lines of a.1 with a first_local_line that is not a whole number',
+      );
+    }
+  });
+
+  it.each(notWholeNumbers)('refuses a piece whose first global line is %s', (_, value) => {
+    const bad = { ...piece('a.1', 1, 2, 1), first_global_line: value as number };
+    for (const numbering of numberings) {
+      expect(() => flattenPieces([bad], numbering)).toThrow('first_global_line');
+    }
+  });
 });
 
 describe('learnCounts', () => {

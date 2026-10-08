@@ -75,6 +75,8 @@ export class FakeChain {
    * status request, in order, before the task waits for `finishTask`.
    */
   progress: number[] = [];
+  /** A change to every piece the chain answers with, as a faulty backend would make. */
+  rewritePiece: ((piece: ChainPiece) => ChainPiece) | null = null;
   private changes = 0;
   /** The query of every `/v1/logs/samples` request, in order. */
   readonly samplesRequests: URLSearchParams[] = [];
@@ -222,7 +224,7 @@ export class FakeChain {
       lines.push(FakeChain.lineText(n, part.name, local));
       times.push(T0_MS + n * 1000);
     }
-    return {
+    const piece: ChainPiece = {
       part: part.name,
       first_local_line: from,
       first_global_line: withGlobal ? start + from - 1 : -1,
@@ -232,6 +234,7 @@ export class FakeChain {
       part_end: to === part.lines,
       cli_command: `rx samples ${this.dir}/${part.name} --lines=${from}-${to}`,
     };
+    return this.rewritePiece ? this.rewritePiece(piece) : piece;
   }
 
   private samplesBody(

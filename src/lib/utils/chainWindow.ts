@@ -38,11 +38,34 @@ function positionOf(piece: ChainPiece, index: number, numbering: PieceNumbering)
   return base + piece.first_local_line + index;
 }
 
-/** The lines of `pieces`, in order, each with its part, its line in it and its timestamp. */
+/** The fields of a piece that number its lines. */
+const LINE_NUMBER_FIELDS = ['first_local_line', 'first_global_line'] as const;
+
+/**
+ * Refuse a piece whose first local or global line is not a safe integer.
+ * The editor writes a line's number into its gutter as markup, so only
+ * digits (and the `-` of a global line that is not computed) may reach it.
+ */
+function checkLineNumbers(piece: ChainPiece): void {
+  for (const field of LINE_NUMBER_FIELDS) {
+    if (!Number.isSafeInteger(piece[field])) {
+      throw new Error(
+        `The samples answer numbers the lines of ${piece.part} with a ${field} that is not a whole number`,
+      );
+    }
+  }
+}
+
+/**
+ * The lines of `pieces`, in order, each with its part, its line in it and
+ * its timestamp. Throws, and gives no line, when a piece's first local or
+ * global line is not a safe integer.
+ */
 export function flattenPieces(
   pieces: readonly ChainPiece[],
   numbering: PieceNumbering,
 ): FileLine[] {
+  pieces.forEach(checkLineNumbers);
   return pieces.flatMap((piece) =>
     piece.lines.map((content, i) => ({
       lineNumber: positionOf(piece, i, numbering),

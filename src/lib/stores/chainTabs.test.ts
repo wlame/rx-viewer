@@ -222,6 +222,17 @@ describe('a ready chain tab', () => {
     expect(tab().loading).toBe(false);
   });
 
+  // The editor writes a line's number into its gutter as markup.
+  it('opens with an error and no line when an answer numbers a piece with markup', async () => {
+    chain.rewritePiece = (p) => ({ ...p, first_local_line: '<b>x</b>' as unknown as number });
+
+    await files.openChain(HANDLE);
+
+    expect(tab().error).toContain('not a whole number');
+    expect(tab().lines).toEqual([]);
+    expect(tab().loading).toBe(false);
+  });
+
   it('shows the reasons of a chain that became invalid, and no lines', async () => {
     await files.openChain(HANDLE);
     chain.state = 'invalid';
@@ -330,6 +341,18 @@ describe('a pending chain tab', () => {
     await vi.waitFor(() => expect(tab().chain?.indexProblem).toContain('cannot be followed'));
     expect(tab().chain?.indexTask).toBeNull();
     expect(tab().chain?.numbering).toBe('local');
+  });
+
+  it('shows an error and adds no line when a page numbers a piece with a fraction', async () => {
+    await files.openChain(HANDLE);
+    const held = tab().lines;
+    chain.rewritePiece = (p) => ({ ...p, first_local_line: 1.5 });
+
+    await files.loadMore(KEY, 'after');
+
+    expect(tab().lines).toBe(held);
+    expect(tab().error).toContain('not a whole number');
+    expect(tab().loading).toBe(false);
   });
 
   it('goes to a line of a part before the chain is ready', async () => {

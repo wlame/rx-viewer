@@ -607,7 +607,13 @@ export function createChainTabs(deps: ChainTabDeps) {
       return;
     }
     if (answer === SUPERSEDED) return;
-    await applyAnswer(key, target, request, answer, record);
+    try {
+      await applyAnswer(key, target, request, answer, record);
+    } catch (error) {
+      // An answer the tab cannot show, such as a piece that numbers its
+      // lines with no whole number: the tab says why and shows no line.
+      if (!isAbortError(error)) showError(key, error);
+    }
   }
 
   /** What a window's answer does to the tab: its lines, a changed chain, or an invalid one. */
@@ -891,8 +897,14 @@ export function createChainTabs(deps: ChainTabDeps) {
       await refresh(key);
       return;
     }
-    if (isGlobal) addGlobalPage(key, direction, samples);
-    else addLocalPage(key, direction, edge.part ?? '', request, samples);
+    try {
+      if (isGlobal) addGlobalPage(key, direction, samples);
+      else addLocalPage(key, direction, edge.part ?? '', request, samples);
+    } catch (error) {
+      // A page the tab cannot show, as in `show`: the held lines stay as they are.
+      showError(key, error);
+      return;
+    }
     follow(key, samples.index_build);
   }
 
