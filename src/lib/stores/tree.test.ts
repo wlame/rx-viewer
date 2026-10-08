@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { tree } from './tree';
+import { FakeChain } from '../testing/fakeChain';
+import { CHAIN_NAMES, LOG_DIR, LOG_ROOT, LogDirBackend, serveLogDir } from '../testing/fakeLogDir';
+import { isChainRow, shownChildren } from '../utils/chainTree';
+import { chainMode } from './chainMode';
+import { health } from './health';
+import { MAX_DESCRIBED_CHAINS, tree } from './tree';
 
 /** A tree entry for a directory or a file under `path`. */
 function entry(path: string, type: 'directory' | 'file') {
@@ -85,5 +90,176 @@ describe('the tree when the Files tab is shown again', () => {
     }
     // Only the roots open: their folders stay closed until clicked.
     expect(tree.nodeAt('/logs/app')?.expanded).toBe(false);
+  });
+});
+
+/** The request of `pathname` for the directory `dir`, as the backend records it. */
+function listed(pathname: string, dir: string): string {
+  return `${pathname}?path=${encodeURIComponent(dir)}`;
+}
+
+/** The names of the chains a directory shows in chain mode. */
+function chainNamesShown(dir: string): string[] {
+  const node = tree.nodeAt(dir);
+  if (!node) throw new Error(`${dir} is not in the tree`);
+  return shownChildren(node, { chainModeOn: true, showParts: false })
+    .filter(isChainRow)
+    .map((row) => row.chain.name);
+}
+
+describe('the tree in chain mode', () => {
+  let backend: LogDirBackend;
+
+  /** Serve the log directory, set the mode, and load the roots. */
+  async function start(
+    mode: boolean,
+    options: ConstructorParameters<typeof LogDirBackend>[0] = {},
+  ) {
+    backend = new LogDirBackend(options);
+    serveLogDir(backend);
+    await health.check();
+    chainMode.set(mode);
+    await tree.loadRoots();
+  }
+
+  afterEach(() => {
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for a directory and its chains at the same time, and shows the chains', async () => {
+    await start(true);
+    backend.hold('/v1/tree');
+    backend.hold('/v1/logs/chains');
+
+    const loading = tree.toggleExpanded(LOG_DIR);
+    await vi.waitFor(() => {
+      expect(backend.requests).toContain(listed('/v1/tree', LOG_DIR));
+      expect(backend.requests).toContain(listed('/v1/logs/chains', LOG_DIR));
+    });
+    backend.release();
+    await loading;
+
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
+    expect(tree.nodeAt(LOG_DIR)?.children).toHaveLength(70);
+  });
+
+  it('asks for no chains with the mode off', async () => {
+    await start(false);
+
+    await tree.toggleExpanded(LOG_DIR);
+
+    expect(backend.requestsTo('/v1/logs/chains')).toEqual([]);
+    expect(tree.nodeAt(LOG_DIR)?.chains).toBeUndefined();
+  });
+
+  it('lists the chains of every loaded folder when the mode turns on, and collapses none', async () => {
+    await start(false);
+    await tree.toggleExpanded(LOG_DIR);
+    await tree.toggleExpanded(`${LOG_DIR}/pkgcache`);
+
+    chainMode.set(true);
+    await vi.waitFor(() => expect(tree.nodeAt(LOG_DIR)?.chains).toBeDefined());
+
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
+    expect([...backend.requestsTo('/v1/logs/chains')].sort()).toEqual(
+      [LOG_ROOT, LOG_DIR, `${LOG_DIR}/pkgcache`]
+        .map((dir) => listed('/v1/logs/chains', dir))
+        .sort(),
+    );
+    expect(tree.nodeAt(LOG_DIR)?.expanded).toBe(true);
+    expect(tree.nodeAt(`${LOG_DIR}/pkgcache`)?.expanded).toBe(true);
+  });
+
+  it('keeps the folders and the listed chains through the mode turning off and on', async () => {
+    await start(true);
+    await tree.toggleExpanded(LOG_DIR);
+    await tree.toggleExpanded(`${LOG_DIR}/pkgcache`);
+    const asked = backend.requestsTo('/v1/logs/chains').length;
+
+    chainMode.set(false);
+    chainMode.set(true);
+    await Promise.resolve();
+
+    expect(tree.nodeAt(`${LOG_DIR}/pkgcache`)?.expanded).toBe(true);
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
+    expect(backend.requestsTo('/v1/logs/chains')).toHaveLength(asked);
+  });
+
+  it('lists the chains of a folder whose load began before the mode turned on', async () => {
+    await start(false);
+    backend.hold('/v1/tree');
+    const loading = tree.toggleExpanded(LOG_DIR);
+    await vi.waitFor(() => expect(backend.requests).toContain(listed('/v1/tree', LOG_DIR)));
+
+    chainMode.set(true);
+    backend.release();
+    await loading;
+
+    await vi.waitFor(() => expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES));
+  });
+
+  // A refused listing must not hide the tree, nor any file of the folder.
+  it('shows every file of a folder whose chains cannot be listed, and no error', async () => {
+    await start(true, { chainsStatus: 403 });
+
+    await tree.toggleExpanded(LOG_DIR);
+
+    expect(tree.nodeAt(LOG_DIR)?.chains).toBeUndefined();
+    expect(tree.nodeAt(LOG_DIR)?.children).toHaveLength(70);
+    expect(get(tree).error).toBeNull();
+    expect(get(tree).roots).toHaveLength(1);
+  });
+
+  it('lists the chains of a folder again on request', async () => {
+    await start(true);
+    await tree.toggleExpanded(LOG_DIR);
+    const asked = () =>
+      backend.requests.filter((r) => r === listed('/v1/logs/chains', LOG_DIR)).length;
+    const before = asked();
+
+    await tree.refreshChains(LOG_DIR);
+
+    expect(asked()).toBe(before + 1);
+    expect(chainNamesShown(LOG_DIR)).toEqual(CHAIN_NAMES);
+  });
+
+  it('keeps the state and reasons a description gives, and its idx', async () => {
+    await start(true);
+    await tree.toggleExpanded(LOG_DIR);
+    const handle = `${LOG_DIR}/pkg.log`;
+    const reasons = [{ code: 'overlap', message: 'they overlap', overlap_ms: 5, parts: [] }];
+    const described = new FakeChain({
+      dir: LOG_DIR,
+      name: 'pkg.log',
+      parts: [
+        { name: 'pkg.log.1', lines: 10 },
+        { name: 'pkg.log', lines: 5, isActive: true },
+      ],
+      state: 'ready',
+    }).description();
+
+    tree.noteChainDescription({ ...described, state: 'invalid', reasons: reasons as never });
+
+    expect(get(tree).describedChains.get(handle)).toEqual({ state: 'invalid', reasons });
+    const entry = tree.nodeAt(LOG_DIR)?.chains?.find((c) => c.path === handle);
+    expect(entry?.is_indexed).toBe(true);
+  });
+
+  it('keeps what the latest descriptions said, up to its limit', async () => {
+    await start(true);
+    const describe = (n: number) =>
+      new FakeChain({
+        dir: '/many',
+        name: `c${n}.log`,
+        parts: [{ name: `c${n}.log`, lines: 1, isActive: true }],
+      }).description();
+
+    for (let n = 0; n <= MAX_DESCRIBED_CHAINS; n++) tree.noteChainDescription(describe(n));
+
+    const described = get(tree).describedChains;
+    expect(described.size).toBe(MAX_DESCRIBED_CHAINS);
+    expect(described.has('/many/c0.log')).toBe(false);
+    expect(described.has(`/many/c${MAX_DESCRIBED_CHAINS}.log`)).toBe(true);
   });
 });

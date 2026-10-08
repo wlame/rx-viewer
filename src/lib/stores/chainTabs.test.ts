@@ -11,6 +11,7 @@ import { commandLog } from './commands';
 import { files } from './files';
 import { health } from './health';
 import { notifications } from './notifications';
+import { tree } from './tree';
 
 /** global 1-3000 in a gzip part, 3001-4500 in a plain one, 4501-6500 in the active file. */
 const PARTS: FakePart[] = [
@@ -375,6 +376,17 @@ describe('opening a chain tab', () => {
     expect(tab().lines).toEqual([]);
     expect(tab().loading).toBe(false);
     expect(chain.samplesRequests).toEqual([]);
+  });
+
+  it('tells the files panel what the description said of the chain', async () => {
+    const reasons = [
+      { code: 'overlap' as const, parts: ['app.log.1', 'app.log'], message: 'x', overlap_ms: 5 },
+    ];
+    await serve({ state: 'invalid', reasons });
+
+    await files.openChain(HANDLE);
+
+    expect(get(tree).describedChains.get(HANDLE)).toEqual({ state: 'invalid', reasons });
   });
 
   it('refuses a chain key given as a file to open', async () => {

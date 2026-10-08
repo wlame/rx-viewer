@@ -54,6 +54,7 @@ import { commandLog } from './commands';
 import { requestZoneOf } from './fileZones';
 import { health } from './health';
 import { notifications } from './notifications';
+import { tree } from './tree';
 
 /** Where a chain's tab goes: its start or end, a global line, a part's line, or a time. */
 export type ChainPosition =
@@ -308,9 +309,11 @@ export function createChainTabs(deps: ChainTabDeps) {
   /**
    * Keep a description in the tab: its state, the counts it gives, `idx`,
    * the chain's size and line count, and the index task a pending chain
-   * waits for, which the tab follows.
+   * waits for, which the tab follows. The files panel learns the state,
+   * the reasons and `idx` for the chain's row.
    */
   function applyDescription(key: TabKey, chain: ChainResponse, isChanged: boolean): void {
+    tree.noteChainDescription(chain);
     const size = chain.parts.reduce((sum, part) => sum + part.size, 0);
     const isHighlightGiven = highlightGiven.has(key);
     deps.patchTab(key, (tab) => {
@@ -1020,6 +1023,7 @@ export function createChainTabs(deps: ChainTabDeps) {
 
   return {
     openChain,
+    refresh,
     moveTo,
     loadMore,
     jumpToPosition,

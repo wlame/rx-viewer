@@ -5,7 +5,9 @@ import { commandLog } from './stores/commands';
 import {
   AnalysisUnavailableError,
   analyzeFile,
+  chainMenuItems,
   conflictTaskId,
+  indexChain,
   indexFile,
   treeMenuItems,
 } from './indexTasks';
@@ -22,6 +24,8 @@ type Handler = (body: Record<string, unknown> | undefined) => Answer;
 
 interface Call {
   route: string;
+  /** The request's query, without the `?`. */
+  query: string;
   body: Record<string, unknown> | undefined;
 }
 
@@ -35,9 +39,10 @@ function stubBackend(routes: Record<string, Handler | Answer[]>) {
   const served = new Map<string, number>();
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
-    const route = `${method} ${new URL(url, 'http://localhost').pathname}`;
+    const parsed = new URL(url, 'http://localhost');
+    const route = `${method} ${parsed.pathname}`;
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    calls.push({ route, body });
+    calls.push({ route, query: parsed.search.slice(1), body });
 
     const routeAnswers = routes[route];
     let answer: Answer = [404, { detail: 'Not Found' }];
@@ -475,6 +480,162 @@ describe('treeMenuItems', () => {
   ])('offers an index item on a compressed file indexed=%s', (isIndexed, label) => {
     const items = treeMenuItems({ ...file, is_compressed: true, is_indexed: isIndexed });
     expect(items.map((i) => i.label)).toEqual(['Analyze', label]);
+  });
+});
+
+describe('chainMenuItems', () => {
+  const chain = { is_indexed: false, too_many_parts: false };
+
+  it.each([
+    [false, 'Index'],
+    [true, 'Re-index'],
+  ])('offers an index item on a chain indexed=%s', (isIndexed, label) => {
+    expect(chainMenuItems({ ...chain, is_indexed: isIndexed }).map((i) => i.label)).toEqual([
+      label,
+    ]);
+  });
+
+  // The backend reads no chain of more than 10,000 parts.
+  it('offers nothing on a chain of too many parts', () => {
+    expect(chainMenuItems({ ...chain, too_many_parts: true })).toEqual([]);
+  });
+});
+
+describe('indexChain', () => {
+  const HANDLE = `${ROOT}/app.log`;
+  const COMMAND = `rx logs index ${HANDLE}`;
+  const chainResult = { path: HANDLE, built: ['app.log.1', 'app.log'], cli_command: COMMAND };
+  /** A chain's description, as a 409 carries it. */
+  const description = { path: HANDLE, fingerprint: '00000000000000a1', parts: [] };
+
+  /** Spies on what shows a built chain: its row, its parts' rows and its open tab. */
+  function spyOnTree() {
+    return {
+      refreshChains: vi.spyOn(tree, 'refreshChains').mockResolvedValue(undefined),
+      markIndexed: vi.spyOn(tree, 'markIndexed'),
+      refreshChain: vi.spyOn(files, 'refreshChain').mockResolvedValue(undefined),
+    };
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("starts the chain's index task, follows it to its end and records its command", async () => {
+    const backend = stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [running('c1'), completed('c1', chainResult)],
+    });
+    spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: false });
+    await settle();
+
+    await expect(outcome).resolves.toEqual({ kind: 'completed' });
+    const post = backend.calls.find((c) => c.route === 'POST /v1/logs/index');
+    expect(new URLSearchParams(post?.query).get('path')).toBe(HANDLE);
+    expect(new URLSearchParams(post?.query).has('force')).toBe(false);
+    expect(get(commandLog)[0]).toMatchObject({ command: COMMAND, action: 'index' });
+  });
+
+  it('forces a rebuild of every part on re-index', async () => {
+    const backend = stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [completed('c1', chainResult)],
+    });
+    spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: true });
+    await settle();
+    await outcome;
+
+    const post = backend.calls.find((c) => c.route === 'POST /v1/logs/index');
+    expect(new URLSearchParams(post?.query).get('force')).toBe('true');
+  });
+
+  it('lists the chains of its folder again, marks the parts it built and describes its tab', async () => {
+    stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [completed('c1', chainResult)],
+    });
+    const spies = spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: false });
+    await settle();
+    await outcome;
+
+    expect(spies.refreshChains).toHaveBeenCalledWith(ROOT);
+    expect(spies.refreshChain).toHaveBeenCalledWith(HANDLE);
+    expect(spies.markIndexed.mock.calls).toEqual([
+      [`${ROOT}/app.log.1`, null],
+      [`${ROOT}/app.log`, null],
+    ]);
+  });
+
+  it("rejects with the task's error when it fails", async () => {
+    stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [
+        [200, { task_id: 'c1', status: 'failed', error: 'app.log.1: no space' }],
+      ],
+    });
+    spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: false });
+    const settled = expect(outcome).rejects.toThrow('app.log.1: no space');
+    await settle();
+    await settled;
+  });
+
+  // The backend keeps a finished task for a while only; once it is
+  // gone the listing says what the task left.
+  it('reads a task gone after it was seen as ended, and lists the chains again', async () => {
+    stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [running('c1'), [404, { detail: 'Task not found' }]],
+    });
+    const spies = spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: false });
+    await settle();
+
+    await expect(outcome).resolves.toEqual({ kind: 'ended' });
+    expect(spies.refreshChains).toHaveBeenCalledWith(ROOT);
+  });
+
+  it('follows one task when asked twice while it runs', async () => {
+    const backend = stubBackend({
+      'POST /v1/logs/index': [started('c1')],
+      'GET /v1/tasks/c1': [running('c1'), completed('c1', chainResult)],
+    });
+    spyOnTree();
+
+    const first = indexChain(HANDLE, { reindex: false });
+    const second = indexChain(HANDLE, { reindex: false });
+    await settle();
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(backend.routes().filter((r) => r === 'POST /v1/logs/index')).toHaveLength(1);
+  });
+
+  // A part replaced while the backend read the chain answers 409.
+  it('asks once more when the files changed under the request', async () => {
+    const backend = stubBackend({
+      'POST /v1/logs/index': [[409, description], started('c1')],
+      'GET /v1/tasks/c1': [completed('c1', chainResult)],
+    });
+    spyOnTree();
+
+    const outcome = indexChain(HANDLE, { reindex: false });
+    await settle();
+
+    await expect(outcome).resolves.toEqual({ kind: 'completed' });
+    expect(backend.routes().filter((r) => r === 'POST /v1/logs/index')).toHaveLength(2);
+  });
+
+  it('gives up when the files changed under the request twice', async () => {
+    stubBackend({ 'POST /v1/logs/index': [[409, description]] });
+    spyOnTree();
+
+    await expect(indexChain(HANDLE, { reindex: false })).rejects.toThrow('keep changing');
   });
 });
 

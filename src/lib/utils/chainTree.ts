@@ -37,6 +37,11 @@ export function isNodeRow(row: TreeRow): row is TreeNode {
   return !isChainRow(row);
 }
 
+/** The directory of a chain from its handle (the directory joined with the chain's name). */
+export function chainDirectoryOf(handle: string): string {
+  return handle.slice(0, handle.lastIndexOf('/')) || '/';
+}
+
 /** The key of a row among its siblings: a node's path, a chain's tab key. */
 export function rowKey(row: TreeRow): string {
   return isChainRow(row) ? row.key : row.path;

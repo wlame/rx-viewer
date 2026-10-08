@@ -12,7 +12,7 @@ import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import { taskPolls } from '../utils/taskPolling';
-import { isChainKey, type TabKey } from '../utils/tabKey';
+import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { anchorAt } from '../utils/chainWindow';
 import type {
   OpenFile,
@@ -1031,6 +1031,14 @@ function createFilesStore() {
     return chains.openChain(handle, options);
   }
 
+  /**
+   * Describe the chain `handle` again in its open tab, as after its index
+   * task ended; nothing when no tab of it is open.
+   */
+  function refreshChain(handle: string): Promise<void> {
+    return chains.refresh(chainKey(handle));
+  }
+
   /** Move a chain's tab to a position: a global line, a part's line, its start or end. */
   function goToChainLine(key: TabKey, position: ChainPosition): Promise<void> {
     return chains.moveTo(key, position);
@@ -1210,6 +1218,7 @@ function createFilesStore() {
     subscribe,
     openFile,
     openChain,
+    refreshChain,
     goToChainLine,
     applyIndex,
     closeFile,

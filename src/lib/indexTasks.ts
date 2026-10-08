@@ -1,8 +1,11 @@
 import { api, ApiError } from './api';
 import { files, tree } from './stores';
 import { commandLog, type CommandAction } from './stores/commands';
-import { taskPolls } from './utils/taskPolling';
+import { chainDirectoryOf } from './utils/chainTree';
+import { taskPolls, watchTask } from './utils/taskPolling';
 import type {
+  ChainEntry,
+  ChainIndexTaskResult,
   IndexResponse,
   IndexTaskResult,
   TaskConflictError,
@@ -12,11 +15,13 @@ import type {
 
 /**
  * The tree's Analyze, Index and Re-index actions, from the request to
- * the refreshed tree badge and open file.
+ * the refreshed tree badge and open file, and Index and Re-index of a
+ * log chain's row.
  *
- * Every task is followed through `taskPolls`, so an action on a file
- * whose task is already followed joins that poll instead of starting
- * another one.
+ * Every task of a file is followed through `taskPolls`, so an action on
+ * a file whose task is already followed joins that poll instead of
+ * starting another one. A chain's index task is followed through
+ * `watchTask`, once per chain.
  */
 
 export type TreeMenuAction = 'analyze' | 'index' | 'reindex';
@@ -47,6 +52,18 @@ export function treeMenuItems(
   if (entry.type !== 'file' || entry.is_text === false) return [];
   if (!entry.is_compressed) return [ANALYZE_ITEM];
   return [ANALYZE_ITEM, INDEX_ITEM[entry.is_indexed ? 'true' : 'false']];
+}
+
+/**
+ * The context-menu items of a log chain's row: Index, or Re-index once
+ * every part it needs is indexed. A chain of more than 10,000 parts has
+ * none: the backend reads no part of it.
+ */
+export function chainMenuItems(
+  chain: Pick<ChainEntry, 'is_indexed' | 'too_many_parts'>,
+): TreeMenuItem[] {
+  if (chain.too_many_parts) return [];
+  return [INDEX_ITEM[chain.is_indexed ? 'true' : 'false']];
 }
 
 const HTTP_BAD_REQUEST = 400;
@@ -236,4 +253,78 @@ export async function indexFile(path: string, options: IndexOptions): Promise<In
   };
   const { result } = await runIndexTask(path, request, NEVER_ABORTED);
   return publishIndex(path, result, 'index');
+}
+
+/**
+ * How a chain's index task ended: `completed`, or `ended` when the
+ * backend no longer knew the task (it keeps a finished task for a while
+ * only), so only the listing says what it left.
+ */
+export type ChainIndexOutcome = { kind: 'completed' } | { kind: 'ended' };
+
+/** The index run of each chain, by handle: a second request while one runs joins it. */
+const chainIndexRuns = new Map<string, Promise<ChainIndexOutcome>>();
+
+/** Requests that met the chain's files changing (a 409) sent again before giving up. */
+const CHANGED_FILES_RETRIES = 1;
+
+function nameOf(handle: string): string {
+  return handle.slice(handle.lastIndexOf('/') + 1);
+}
+
+/**
+ * Start or join the chain's index task, and return its ID. The backend
+ * answers 409 when a part was replaced while it read the chain; the
+ * request is sent once more, then refused.
+ */
+async function startChainIndex(handle: string, force: boolean): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    const answer = await api.logIndex(handle, { force });
+    if (answer.kind === 'task') return answer.task.task_id;
+    if (attempt >= CHANGED_FILES_RETRIES) {
+      throw new Error(`The files of ${nameOf(handle)} keep changing on disk; index it again later`);
+    }
+  }
+}
+
+function isChainIndexResult(result: TaskStatus['result']): result is ChainIndexTaskResult {
+  return result !== null && 'built' in result;
+}
+
+/**
+ * Build the chain's indexes and follow the task to its end; then show
+ * what it built: the parts' tree badges, the chain's row (its directory's
+ * chains listed again), its open tab (described again) and the command.
+ */
+async function runChainIndex(handle: string, force: boolean): Promise<ChainIndexOutcome> {
+  const taskId = await startChainIndex(handle, force);
+  const end = await watchTask(taskId, {
+    fetchStatus: (id, signal) => api.getTaskStatus(id, { signal }),
+    signal: NEVER_ABORTED,
+  });
+  if (end.kind === 'failed') {
+    throw new Error(end.task.error || `The index task of ${nameOf(handle)} failed`);
+  }
+  const dir = chainDirectoryOf(handle);
+  if (end.kind === 'completed' && isChainIndexResult(end.task.result)) {
+    const result = end.task.result;
+    for (const name of result.built) tree.markIndexed(`${dir}/${name}`, null);
+    commandLog.record(result.cli_command, 'index');
+  }
+  await Promise.all([tree.refreshChains(dir), files.refreshChain(handle)]);
+  return { kind: end.kind === 'completed' ? 'completed' : 'ended' };
+}
+
+/**
+ * Build the line index of every part of the log chain `handle` (every
+ * part again on re-index), and resolve when the chain's index task has
+ * ended. Rejects with the task's error when it fails. A request while
+ * the chain's index runs joins that run.
+ */
+export function indexChain(handle: string, options: IndexOptions): Promise<ChainIndexOutcome> {
+  const running = chainIndexRuns.get(handle);
+  if (running) return running;
+  const run = runChainIndex(handle, options.reindex).finally(() => chainIndexRuns.delete(handle));
+  chainIndexRuns.set(handle, run);
+  return run;
 }

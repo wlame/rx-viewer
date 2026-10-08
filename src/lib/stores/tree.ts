@@ -1,13 +1,28 @@
 import { writable, get } from 'svelte/store';
 import { api } from '../api';
+import { contractGate } from '../contractGate';
+import { isChainIndexed } from '../utils/chainParts';
+import { chainDirectoryOf, type DescribedChain } from '../utils/chainTree';
 import { LatestRequest, LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
-import type { TreeNode, TreeEntry } from '../types';
+import type { ChainEntry, ChainResponse, TreeNode, TreeEntry } from '../types';
+import { chainModeOn } from './chainMode';
+
+/** Chains whose last description the tree keeps; the oldest is dropped first. */
+export const MAX_DESCRIBED_CHAINS = 256;
 
 interface TreeState {
   roots: TreeNode[];
   loading: boolean;
   error: string | null;
+  /** The selected row: a file's or folder's path, or a chain's tab key (`chain:<handle>`). */
   selectedPath: string | null;
+  /**
+   * What the last description of each chain said (its state and reasons),
+   * by handle, from a chain's tab; at most `MAX_DESCRIBED_CHAINS`. A
+   * listing does not describe a chain, so this is how the files panel
+   * learns that one is invalid.
+   */
+  describedChains: ReadonlyMap<string, DescribedChain>;
 }
 
 function entryToNode(entry: TreeEntry, level: number): TreeNode {
@@ -26,6 +41,7 @@ function createTreeStore() {
     loading: false,
     error: null,
     selectedPath: null,
+    describedChains: new Map(),
   });
 
   function findNode(nodes: TreeNode[], path: string): TreeNode | null {
@@ -99,6 +115,30 @@ function createTreeStore() {
     await loadRoots();
   }
 
+  /**
+   * The chains of a directory, or undefined when they cannot be listed:
+   * the directory then shows every file, and the tree shows no error.
+   */
+  async function chainListing(
+    path: string,
+    signal: AbortSignal,
+  ): Promise<readonly ChainEntry[] | undefined> {
+    try {
+      return (await api.logChains(path, { signal })).chains;
+    } catch (e) {
+      if (isAbortError(e)) throw e;
+      console.warn('The log chains of a directory could not be listed:', path, e);
+      return undefined;
+    }
+  }
+
+  /**
+   * Load a directory's entries and expand it. With chain mode on, its
+   * chains are asked for at the same time, and the directory shows them
+   * once both answers are in; a chain listing that fails leaves every
+   * file shown. When the mode turned on while the load ran, the chains
+   * are asked for afterwards.
+   */
   async function loadDirectory(path: string) {
     const state = get({ subscribe });
     const node = findNode(state.roots, path);
@@ -110,19 +150,32 @@ function createTreeStore() {
     }));
 
     try {
-      const response = await directoryLoads.run(path, (signal) => api.getTree(path, { signal }));
+      const response = await directoryLoads.run(path, async (signal) => {
+        // The mode needs the backend's features, which the first /health
+        // answer gives; the first requests wait for it anyway.
+        await contractGate.pass(signal);
+        const withChains = get(chainModeOn);
+        const [listing, chains] = await Promise.all([
+          api.getTree(path, { signal }),
+          withChains ? chainListing(path, signal) : undefined,
+        ]);
+        return { listing, chains, withChains };
+      });
       if (response === SUPERSEDED) return;
 
-      const children = (response.entries ?? []).map((e) => entryToNode(e, node.level + 1));
+      const { listing, chains, withChains } = response;
+      const children = (listing.entries ?? []).map((e) => entryToNode(e, node.level + 1));
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({
           ...n,
           loading: false,
           children,
+          chains,
           expanded: true,
         })),
       }));
+      if (!withChains) await ensureChains(path);
     } catch (e) {
       if (isAbortError(e)) return;
       update((s) => ({
@@ -131,6 +184,57 @@ function createTreeStore() {
         error: e instanceof Error ? e.message : 'Failed to load directory',
       }));
     }
+  }
+
+  /** The directories whose chains are being listed. */
+  const chainLoads = new LatestRequestMap();
+  const listingChains = new Set<string>();
+
+  /**
+   * List a loaded directory's chains, whatever it holds already, and keep
+   * them. A directory the tree has not loaded is left alone.
+   */
+  async function refreshChains(path: string): Promise<void> {
+    const node = findNode(get({ subscribe }).roots, path);
+    if (!node || node.type !== 'directory') return;
+    listingChains.add(path);
+    try {
+      const chains = await chainLoads.run(path, (signal) => chainListing(path, signal));
+      if (chains === SUPERSEDED || chains === undefined) return;
+      update((s) => ({
+        ...s,
+        roots: updateNode(s.roots, path, (n) => ({ ...n, chains })),
+      }));
+    } catch (e) {
+      if (!isAbortError(e)) throw e;
+    } finally {
+      listingChains.delete(path);
+    }
+  }
+
+  /**
+   * List a loaded directory's chains while chain mode is on, unless they
+   * are listed or being listed.
+   */
+  async function ensureChains(path: string): Promise<void> {
+    if (!get(chainModeOn) || listingChains.has(path)) return;
+    if (findNode(get({ subscribe }).roots, path)?.chains !== undefined) return;
+    await refreshChains(path);
+  }
+
+  /** Every directory whose entries are loaded: expanded, or holding entries. */
+  function loadedDirectories(nodes: TreeNode[]): string[] {
+    return nodes.flatMap((node) => {
+      if (node.type !== 'directory') return [];
+      const isLoaded = node.expanded || node.children.length > 0;
+      return [...(isLoaded ? [node.path] : []), ...loadedDirectories(node.children)];
+    });
+  }
+
+  /** List the chains of every loaded directory that has none listed, all at once. */
+  async function listChainsOfLoadedDirectories(): Promise<void> {
+    const paths = loadedDirectories(get({ subscribe }).roots);
+    await Promise.all(paths.map(ensureChains));
   }
 
   async function toggleExpanded(path: string) {
@@ -145,11 +249,12 @@ function createTreeStore() {
         roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: false })),
       }));
     } else if (node.children.length > 0) {
-      // Already loaded, just expand
+      // Already loaded, just expand; chains a failed listing left out are asked again.
       update((s) => ({
         ...s,
         roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: true })),
       }));
+      await ensureChains(path);
     } else {
       // Load and expand
       await loadDirectory(path);
@@ -170,6 +275,34 @@ function createTreeStore() {
         line_count: lineCount ?? n.line_count,
       })),
     }));
+  }
+
+  /**
+   * Keep what a chain's description said, for its row: its state and
+   * reasons (an invalid chain is marked), and whether every part it
+   * needs is indexed (`idx`), which a listing of its directory gave
+   * before.
+   */
+  function noteChainDescription(chain: ChainResponse) {
+    const handle = chain.path;
+    const isIndexed = isChainIndexed(chain.parts);
+    update((s) => {
+      const described = new Map(s.describedChains);
+      described.delete(handle);
+      described.set(handle, { state: chain.state, reasons: chain.reasons });
+      for (const oldest of described.keys()) {
+        if (described.size <= MAX_DESCRIBED_CHAINS) break;
+        described.delete(oldest);
+      }
+      return {
+        ...s,
+        describedChains: described,
+        roots: updateNode(s.roots, chainDirectoryOf(handle), (n) => ({
+          ...n,
+          chains: n.chains?.map((c) => (c.path === handle ? { ...c, is_indexed: isIndexed } : c)),
+        })),
+      };
+    });
   }
 
   /**
@@ -232,7 +365,18 @@ function createTreeStore() {
     selectPath,
     markIndexed,
     expandToPath,
+    listChainsOfLoadedDirectories,
+    refreshChains,
+    noteChainDescription,
   };
 }
 
 export const tree = createTreeStore();
+
+// Turning chain mode on (or the backend's features arriving with it on)
+// lists the chains of the directories already loaded. Their rows are
+// worked out from the entries and the chains as they are shown, so
+// turning it off and on again collapses nothing and asks for nothing.
+chainModeOn.subscribe((on) => {
+  if (on) void tree.listChainsOfLoadedDirectories();
+});
