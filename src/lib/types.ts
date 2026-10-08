@@ -238,6 +238,52 @@ export interface FileLine {
    * a line without one. Absent when the answer carried no timestamps.
    */
   timestampMs?: number | null;
+  /** In a log chain's tab: the name of the part the line comes from. */
+  part?: string;
+  /** In a log chain's tab: the line's number in its part, as `rx samples PART` numbers it. */
+  localLine?: number;
+}
+
+/**
+ * The line a chain's tab is anchored on, as its URL names it: the part
+ * that holds it, its number in that part, and its effective timestamp
+ * (null for a line without one), which finds it again when the part is
+ * gone.
+ */
+export interface ChainAnchor {
+  part: string;
+  line: number;
+  timeMs: number | null;
+}
+
+/**
+ * How a chain's tab numbers the lines it holds. `global`: by the chain's
+ * global line numbers, once the chain is ready. `local`: before that, a
+ * part's line L sits at `bases.get(part) + L`, positions that keep the
+ * held lines in order and one apart across a part edge; the gutter shows
+ * L.
+ */
+export type ChainNumbering = 'global' | 'local';
+
+/** What a log chain's tab holds besides its lines. */
+export interface ChainTab {
+  /** The chain's handle: its directory joined with its name. */
+  handle: string;
+  /** The chain's description, or null until the first one arrives. */
+  description: ChainResponse | null;
+  numbering: ChainNumbering;
+  /** In local numbering, the position before each part's first line, by part name. */
+  bases: ReadonlyMap<string, number>;
+  /** Line counts of parts the tab has learned: from the description, or the end of a part read. */
+  counts: ReadonlyMap<string, number>;
+  /** The anchor line as the URL names it, or null while none is known. */
+  anchor: ChainAnchor | null;
+  /** The chain's index task the tab follows, with its progress, or null. */
+  indexTask: IndexBuild | null;
+  /** Why the index task cannot be followed or failed, in words, or null. */
+  indexProblem: string | null;
+  /** The backend's reasons for refusing to read an invalid chain (a 422), or null. */
+  invalidDetail: string | null;
 }
 
 /** Regex filter configuration for content transformation */
@@ -331,6 +377,8 @@ export interface OpenFile {
    * clears it. The URL's `time` comes from it.
    */
   timeJump: number | null;
+  /** A log chain's tab: what it holds besides its lines. Absent in a file's tab. */
+  chain?: ChainTab;
 }
 
 /** Match info for highlighting in file viewer */

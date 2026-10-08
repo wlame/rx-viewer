@@ -13,7 +13,7 @@ export interface SampleWindow {
 }
 
 /** The lines a key of the answer covers when the file is long enough to fill it. */
-interface KeySpan {
+export interface KeySpan {
   first: number;
   last: number;
 }
@@ -42,7 +42,11 @@ const KEY_SPANS: {
   },
 ];
 
-function spanOf(key: string, before: number, after: number): KeySpan {
+/**
+ * The lines a samples key asks for: a range `a-b`, or a line `N` with
+ * its context, clamped at line 1. Throws for any other key.
+ */
+export function keySpan(key: string, before: number, after: number): KeySpan {
   for (const { pattern, span } of KEY_SPANS) {
     const match = pattern.exec(key);
     if (match) return span(match, before, after);
@@ -71,7 +75,7 @@ function readKey(
   after: number,
   timestamps: readonly (number | null)[] | null | undefined,
 ): SampleWindow {
-  const { first, last } = spanOf(key, before, after);
+  const { first, last } = keySpan(key, before, after);
   const served = content ?? [];
   const lines: FileLine[] = served.map((text, i) =>
     timestamps
