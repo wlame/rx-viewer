@@ -302,6 +302,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `just release-remote` only `major`, `minor` or `patch`. A test fails
   when a recipe pastes anything but a variable set to a fixed string, or
   a workflow pastes an expression into a `run:` script.
+- A log chain's tab whose files change twice before it shows its line
+  again (a rotation that renames the files, then compresses one) looks
+  for that line from the name the first change gave its file, so it no
+  longer reads the file that took the old name; the line's time and text
+  carry over to the second change. A line of another file never stays on
+  screen while the tab looks for its line: when the renamed file's line
+  reads otherwise, the tab drops it before it asks by time, and a backend
+  that stays busy leaves the tab with no line and the reason. When the
+  tab cannot find the line's text again, a notice says so and what the
+  view shows instead: the first line at or after the line's time, or the
+  chain's start.
 
 ## [0.6.0] - 2026-10-06
 

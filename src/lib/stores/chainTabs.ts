@@ -258,15 +258,29 @@ function resolvePosition(position: ChainPosition, chain: ChainResponse): ChainPo
   return timeMs === null ? { kind: 'start' } : { kind: 'time', ms: timeMs };
 }
 
-/** What a tab knew of its anchor line before its chain's files changed, and where it is now. */
-interface ChainChange {
-  /** The anchor before the change. */
-  anchor: ChainAnchor | null;
-  /** The anchor's part under its name after the change; null when that file is gone. */
-  moved: ChainAnchor | null;
-  /** The anchor line's text, or null when the tab did not hold it. */
+/**
+ * The line a tab showed before its chain's files changed, which it looks
+ * for until it shows lines again: its time, and its text, or null for
+ * either when the tab did not know it. A rotation never changes either.
+ */
+interface LostLine {
+  timeMs: number | null;
   text: string | null;
 }
+
+/** The line a tab looks for after a change of its chain's files, and where its file is now. */
+interface ChainChange extends LostLine {
+  /** The anchor in the file that held it, under that file's name now; null when that file is gone. */
+  moved: ChainAnchor | null;
+}
+
+/** The notice of a line a tab cannot show again: `what` names the line, `where` what the view shows. */
+function lineNotFoundNotice(what: string, where: string): string {
+  return `Cannot find ${what}; ${where}`;
+}
+
+/** What a view shows after it looked for a line by its time. */
+const SHOWS_TIME_LINE = 'the view shows the first line at or after its time';
 
 export function createChainTabs(deps: ChainTabDeps) {
   /** The description request of each chain tab; a newer one supersedes an older one. */
@@ -287,6 +301,14 @@ export function createChainTabs(deps: ChainTabDeps) {
   const reloadGenerations = new Map<TabKey, number>();
   /** The reading again in a new zone each tab is doing, if any. */
   const runningReloads = new Map<TabKey, Promise<void>>();
+  /**
+   * The line each tab looks for since its chain's files changed, until it
+   * shows lines again: a change that comes first keeps looking for the
+   * same line, though the tab shows none of it or another one.
+   */
+  const lostLines = new Map<TabKey, LostLine>();
+  /** How many times the files of each tab's chain changed, so a search for its line knows a newer one took over. */
+  const changeCounts = new Map<TabKey, number>();
 
   function chainOf(key: TabKey): ChainTab | undefined {
     return deps.getTab(key)?.chain;
@@ -1003,8 +1025,9 @@ export function createChainTabs(deps: ChainTabDeps) {
   /**
    * Take in a change of the chain's files: count it towards the stop,
    * compare the parts the tab held with the chain's parts now and say how
-   * they changed, keep the new description and drop the lines. Null when
-   * the files changed too often and the tab stopped.
+   * they changed, keep the new description, drop the lines, and name the
+   * anchor's file as it is called now, so a later change maps it from
+   * that name. Null when the files changed too often and the tab stopped.
    */
   function noteChange(key: TabKey, chain: ChainResponse): ChainChange | null {
     const times = changesInWindow(changeTimes.get(key) ?? [], Date.now());
@@ -1020,12 +1043,38 @@ export function createChainTabs(deps: ChainTabDeps) {
     const tab = deps.getTab(key);
     const before = tab?.chain?.description ?? null;
     const anchor = tab?.chain?.anchor ?? null;
+    // A line still looked for since an earlier change is the one to find:
+    // the tab shows none of it now, or the line of another file.
+    const lost = lostLines.get(key) ?? {
+      timeMs: anchor?.timeMs ?? null,
+      text: tab && anchor ? anchorTextOf(tab, anchor) : null,
+    };
+    lostLines.set(key, lost);
+    changeCounts.set(key, (changeCounts.get(key) ?? 0) + 1);
     const changes = before === null ? null : compareParts(before.parts, chain.parts);
+    const moved = anchor && movedAnchor(anchor, changes);
     notifications.info(changeNotice(chain.name, changes), NOTICE_MS);
-    const text = tab && anchor ? anchorTextOf(tab, anchor) : null;
     applyDescription(key, chain, true);
+    deps.patchTab(key, (t) => ({
+      lines: [],
+      startLine: 1,
+      endLine: 0,
+      chain: t.chain && { ...t.chain, anchor: moved },
+    }));
+    return { moved, ...lost };
+  }
+
+  /** The text of the line the tab `key` is anchored on, or null when it holds no such line. */
+  function heldAnchorText(key: TabKey): string | null {
+    const tab = deps.getTab(key);
+    if (!tab) return null;
+    const line = tab.lines[tab.anchorLine - tab.startLine];
+    return line?.lineNumber === tab.anchorLine ? line.content : null;
+  }
+
+  /** Drop the lines of the tab `key`, which are not the line it looks for. */
+  function dropLines(key: TabKey): void {
     deps.patchTab(key, () => ({ lines: [], startLine: 1, endLine: 0 }));
-    return { anchor, moved: anchor && movedAnchor(anchor, changes), text };
   }
 
   /** The text of the held line the tab is anchored on, when it is the anchor's line. */
@@ -1055,30 +1104,58 @@ export function createChainTabs(deps: ChainTabDeps) {
    * line with the anchor's text there, else to the time's line. Before
    * the chain is ready (a numbered rotation renames every part, and each
    * is indexed again), the file that held the anchor is read under its
-   * new name at the same line; a line there with other text falls back to
-   * the time. Without a time or that file, the chain's start.
+   * new name at the same line; a line there with other text (the rename
+   * map paired another file) leaves the screen, and the time is read.
+   * Without a time or that file, the chain's start. A notice says when
+   * the view shows no line with the anchor's text. A newer change of the
+   * files takes the search over.
    */
   async function findAnchorAgain(
     key: TabKey,
     chain: ChainResponse,
-    { anchor, moved, text }: ChainChange,
+    { moved, timeMs, text }: ChainChange,
   ): Promise<void> {
-    const time = anchor?.timeMs ?? null;
-    if (chain.state === 'ready' && time !== null) {
-      await showByTimeAndText(key, time, text);
+    const change = changeCounts.get(key);
+    const isOvertaken = () => changeCounts.get(key) !== change;
+    if (chain.state === 'ready' && timeMs !== null) {
+      await showByTimeAndText(key, timeMs, text);
+      if (!isOvertaken()) endLineSearch(key, text, SHOWS_TIME_LINE);
       return;
     }
     if (moved !== null) {
-      await show(key, { kind: 'local', part: moved.part, line: moved.line, timeMs: time }, false);
-      const tab = deps.getTab(key);
-      const shown = tab?.lines[tab.anchorLine - tab.startLine]?.content;
-      if (text === null || time === null || shown === text) return;
+      await show(key, { kind: 'local', part: moved.part, line: moved.line, timeMs }, false);
+      if (isOvertaken()) return;
+      const shown = heldAnchorText(key);
+      if (shown === null || text === null || shown === text || timeMs === null) {
+        const where = `the view shows line ${moved.line} of ${moved.part}, which holds other text now`;
+        endLineSearch(key, text, where);
+        return;
+      }
+      dropLines(key);
     }
-    if (time !== null) {
-      await showByTimeAndText(key, time, text);
+    if (timeMs !== null) {
+      await showByTimeAndText(key, timeMs, text);
+      if (!isOvertaken()) endLineSearch(key, text, SHOWS_TIME_LINE);
       return;
     }
-    if (moved === null) await show(key, { kind: 'start' }, false);
+    await show(key, { kind: 'start' }, false);
+    if (!isOvertaken()) endLineSearch(key, text, "the view shows the chain's start");
+  }
+
+  /**
+   * End the search for the line the tab `key` showed before its files
+   * changed, once it shows lines again: a notice says when they hold no
+   * line with its text (`where` says what the view shows instead). A tab
+   * that shows no line (a failed read, which it says itself) looks for the
+   * same line at the next change.
+   */
+  function endLineSearch(key: TabKey, text: string | null, where: string): void {
+    const tab = deps.getTab(key);
+    if (!tab || tab.lines.length === 0) return;
+    lostLines.delete(key);
+    if (text === null || heldAnchorText(key) === text) return;
+    const what = `the line ${tab.name} showed before its files changed`;
+    notifications.info(lineNotFoundNotice(what, where), NOTICE_MS);
   }
 
   /**
@@ -1157,9 +1234,20 @@ export function createChainTabs(deps: ChainTabDeps) {
     }
   }
 
-  /** Show the tab's anchor line again, by its part and its line in it; the start without one. */
+  /**
+   * Show the tab's anchor line again, by its part and its line in it; the
+   * start without one. A tab that has not found its line since its files
+   * changed looks for it by its time and text (`findAnchorAgain`), since
+   * its anchor's file may be another one.
+   */
   async function showAnchorLine(key: TabKey, record: boolean): Promise<void> {
     const anchor = chainOf(key)?.anchor ?? null;
+    const lost = lostLines.get(key);
+    const chain = chainOf(key)?.description;
+    if (lost !== undefined && chain) {
+      await findAnchorAgain(key, chain, { moved: anchor, ...lost });
+      return;
+    }
     const position: ChainPosition =
       anchor === null
         ? { kind: 'start' }
@@ -1254,6 +1342,8 @@ export function createChainTabs(deps: ChainTabDeps) {
   async function moveTo(key: TabKey, position: ChainPosition): Promise<void> {
     const tab = deps.getTab(key);
     if (!tab?.chain) return;
+    // A move the user asks for: the tab looks for a line lost to a change no more.
+    lostLines.delete(key);
     deps.setActive(key);
     const held = heldPosition(tab, position);
     if (held !== null) {
@@ -1489,7 +1579,14 @@ export function createChainTabs(deps: ChainTabDeps) {
    * asked nothing while the chain is not ready.
    */
   function jumpToTime(key: TabKey, query: TimeQuery): Promise<TimeJumpOutcome> {
+    lostLines.delete(key);
     return jumpToTimeOnce(key, query, false);
+  }
+
+  /** Show the chain's end, as the user asks. */
+  function jumpToEnd(key: TabKey): Promise<void> {
+    lostLines.delete(key);
+    return show(key, { kind: 'end' });
   }
 
   /**
@@ -1574,6 +1671,9 @@ export function createChainTabs(deps: ChainTabDeps) {
       : await jumpToTimeOnce(key, query, true);
     if (outcome.kind === 'refused' || outcome.kind === 'unsupported') {
       await findAnchorAgain(key, chain, change);
+    } else if (outcome.kind !== 'superseded') {
+      // The tab went where the jump asked: it looks for its old line no more.
+      lostLines.delete(key);
     }
     return outcome;
   }
@@ -1645,6 +1745,8 @@ export function createChainTabs(deps: ChainTabDeps) {
     stopDescribeWait(key);
     reloadGenerations.delete(key);
     runningReloads.delete(key);
+    lostLines.delete(key);
+    changeCounts.delete(key);
     chainTopLines.forget(key);
   }
 
@@ -1654,7 +1756,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     moveTo,
     loadMore,
     jumpToPosition,
-    jumpToEnd: (key: TabKey) => show(key, { kind: 'end' }),
+    jumpToEnd,
     jumpToTime,
     reload,
     forget,

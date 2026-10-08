@@ -931,19 +931,27 @@ describe('a rotation while a chain tab is open', () => {
     size: 120_000,
     modifiedAt: '2026-10-01T01:47:00.000000Z',
   };
+  /** The new active file a rotation starts. */
+  const D: FakePart = {
+    name: 'app.log',
+    lines: 10,
+    isActive: true,
+    text: 'D',
+    startSecond: 6500,
+    size: 600,
+    modifiedAt: '2026-10-01T02:00:00.000000Z',
+  };
   /** The rotation: A deleted, B compressed into app.log.2.gz, C renamed app.log.1, a new D. */
   const ROTATED: FakePart[] = [
     { ...B, name: 'app.log.2.gz', compression: 'gzip', size: 30_000 },
     { ...C, name: 'app.log.1', isActive: false },
-    {
-      name: 'app.log',
-      lines: 10,
-      isActive: true,
-      text: 'D',
-      startSecond: 6500,
-      size: 600,
-      modifiedAt: '2026-10-01T02:00:00.000000Z',
-    },
+    D,
+  ];
+  /** The same rotation stopped before the compression: B renamed app.log.2, not compressed yet. */
+  const RENAMED: FakePart[] = [
+    { ...B, name: 'app.log.2' },
+    { ...C, name: 'app.log.1', isActive: false },
+    D,
   ];
 
   let chain: FakeChain;
@@ -956,6 +964,123 @@ describe('a rotation while a chain tab is open', () => {
     const t = tab();
     return t.lines[t.anchorLine - t.startLine]?.content;
   }
+
+  function messages(): string[] {
+    return get(notifications).map((n) => n.message);
+  }
+
+  /** Serve the chain, and call `beforeSamples` with the query of each samples request before it is answered. */
+  function hookSamples(beforeSamples: (query: URLSearchParams) => void): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const parsed = new URL(url, 'http://localhost');
+        if (parsed.pathname === '/v1/logs/samples') beforeSamples(parsed.searchParams);
+        return chain.fetch(url, init);
+      }),
+    );
+  }
+
+  /**
+   * Rotate in two steps, as logrotate does: rename every file, then
+   * compress the renamed B. The second step comes while the tab reads the
+   * renamed B as app.log.2, after the first step answered 409. `onCompressed`
+   * runs right after the second step.
+   */
+  function rotateInTwoSteps(onCompressed: () => void = () => {}): void {
+    let isCompressed = false;
+    hookSamples((query) => {
+      if (isCompressed || query.get('part') !== 'app.log.2') return;
+      isCompressed = true;
+      chain.rotateTo(ROTATED, 'pending');
+      onCompressed();
+    });
+    chain.rotateTo(RENAMED, 'pending');
+  }
+
+  /** The samples requests that read the part app.log.1 of the files as they are now (the former active file). */
+  function readsOfNewAppLog1(): URLSearchParams[] {
+    return chain.samplesRequests.filter(
+      (q) => q.get('part') === 'app.log.1' && q.get('fingerprint') === chain.fingerprint,
+    );
+  }
+
+  it('maps its line through a second change from the name the first change gave it', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = anchorText();
+    expect(before).toContain('B local=500');
+
+    rotateInTwoSteps();
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(readsOfNewAppLog1()).toEqual([]);
+    expect(anchorText()).toBe(before);
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+  });
+
+  // The renamed file's line 500 holds other text here (as when the rename
+  // map pairs the wrong file), so the tab looks by time, which a busy
+  // backend never answers: no line of another file may stay on screen.
+  it('shows no line of another file when the renamed line holds other text and the backend stays busy', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+      rotateInTwoSteps(() => {
+        chain.rewritePiece = (piece) => ({
+          ...piece,
+          lines: piece.lines.map((line) => line.replace(' B local=', ' X local=')),
+        });
+        chain.busyAnswers = 100;
+        chain.retryAfter = '1';
+      });
+
+      const loading = files.loadMore(KEY, 'after');
+      await vi.advanceTimersByTimeAsync(20_000);
+      await loading;
+
+      expect(readsOfNewAppLog1()).toEqual([]);
+      expect(tab().lines).toEqual([]);
+      expect(tab().loading).toBe(false);
+      expect(tab().error).toContain('busy');
+
+      // Once the chain is ready the tab looks for the line by its time and
+      // text again, and says it cannot find that text. A notice leaves the
+      // screen after 5 s, so the spy keeps what was said.
+      const info = vi.spyOn(notifications, 'info');
+      chain.busyAnswers = 0;
+      chain.finishTask();
+      await vi.advanceTimersByTimeAsync(20_000);
+      await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+      expect(tab().lines.length).toBeGreaterThan(0);
+      expect(chain.samplesRequests.at(-1)?.getAll('timestamps')).toHaveLength(1);
+      expect(info.mock.calls.map(([message]) => message)).toContainEqual(
+        expect.stringContaining('Cannot find the line app.log'),
+      );
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  // The rotation deleted A: the text of the anchor line is nowhere, and its
+  // time is before the chain's first line.
+  it('says it cannot find the line again, and shows the line at its time, when its file is gone', async () => {
+    await files.openChain(HANDLE, {
+      position: { kind: 'local', part: 'app.log.2.gz', line: 2900 },
+    });
+    expect(anchorText()).toContain('A local=2900');
+
+    chain.rotateTo(ROTATED, 'ready');
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(tab().anchorLine).toBe(1);
+    expect(messages()).toContainEqual(
+      expect.stringContaining('Cannot find the line app.log showed before its files changed'),
+    );
+  });
 
   it('says what changed and shows the same line in the renamed part while the chain is pending', async () => {
     await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
