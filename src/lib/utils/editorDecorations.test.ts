@@ -4,6 +4,7 @@ import {
   anomalyCategoryDecorations,
   hiddenMarkerDecorations,
   highlightedRangeDecorations,
+  isSamePaneView,
   matchLineDecorations,
   paneDecorations,
   regexHighlightDecorations,
@@ -234,5 +235,51 @@ describe('paneDecorations', () => {
 
   it('marks no filter result before the editor has text', () => {
     expect(paneDecorations({ ...nothingShown, filter, text: null })).toEqual([]);
+  });
+});
+
+describe('isSamePaneView', () => {
+  const style = { color: '#0ea5e9', decorationClass: 'palette-0' };
+  const view = {
+    editorWindow,
+    matchedFileLines: [102],
+    highlightedRange: null,
+    anomalies: null,
+    selectedCategory: { name: 'secrets', style },
+    filter: null,
+    text: lines('abc'),
+    hiddenContent: new Map<string, string>(),
+    gutterRuns: [],
+  };
+
+  // A tab's update builds the view anew: the window and the category
+  // are new objects that say the same.
+  it('is the same view when the window and the category say the same in new objects', () => {
+    expect(
+      isSamePaneView(view, {
+        ...view,
+        editorWindow: { ...editorWindow },
+        selectedCategory: { name: 'secrets', style: { ...style } },
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['a window that starts elsewhere', { editorWindow: { ...editorWindow, startLine: 102 } }],
+    ['a window of other length', { editorWindow: { ...editorWindow, lineCount: 11 } }],
+    ['other matched lines, the same numbers in a new list', { matchedFileLines: [102] }],
+    ['a highlighted range', { highlightedRange: { start: 101, end: 101 } }],
+    ['anomalies', { anomalies: [] }],
+    ['another category', { selectedCategory: { name: 'format', style } }],
+    ['no category', { selectedCategory: null }],
+    [
+      'a filter',
+      { filter: { enabled: true, pattern: 'b', mode: 'highlight' as const, compiledRegex: /b/ } },
+    ],
+    ['another text', { text: lines('abc') }],
+    ['another hidden-content map', { hiddenContent: new Map<string, string>() }],
+    ['other gutter runs', { gutterRuns: [] }],
+  ])('is another view with %s', (_name, change) => {
+    expect(isSamePaneView(view, { ...view, ...change })).toBe(false);
   });
 });

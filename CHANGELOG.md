@@ -267,12 +267,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.
-- A log chain's tab builds the lines of text between its parts again
-  only when its lines or its description change, not at every update of
-  the tab (an index task's progress each second, the line kept after a
-  scroll), so the editor no longer removes and adds every one of them
-  each time. It places the missing parts with one pass over the parts
-  for each missing name.
+- An update of a tab that changes nothing it shows (an index task's
+  progress each second, the line kept after a scroll) no longer works
+  its lines over again. The filtered text, the decorations, the search
+  marks and, in a log chain's tab, the gutter labels, the part colours
+  and the lines of text between the parts are worked out again only for
+  new lines, a new filter, new matches or a new description, so the
+  editor no longer removes and adds every one of them each time. A log
+  chain's tab places the missing parts with one pass over the parts for
+  each missing name, and sizes a page with one pass over its parts.
 - A log chain's tab takes a line number from the backend only when it is
   a whole number, as the editor writes it into its gutter as markup, and
   a part's first line only from 1 up. For an answer that numbers a part's

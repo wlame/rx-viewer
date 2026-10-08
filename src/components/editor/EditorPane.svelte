@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
-  import type { OpenFile, RegexFilter } from '$lib/types';
+  import type { FileLine, FileMatch, OpenFile, RegexFilter } from '$lib/types';
   import { detectors, files, settings, resolvedTheme } from '$lib/stores';
   import { recallPane, rememberPane, scrollOnShow } from '$lib/stores/paneMemory';
   import Spinner from '../common/Spinner.svelte';
@@ -14,15 +14,21 @@
   import { anchorAfterScroll, type VisibleLines } from '$lib/utils/anchorLine';
   import { pagingDirection, watchUserInput } from '$lib/utils/paging';
   import { processContent } from '$lib/utils/processContent';
-  import { paneDecorations, toMonacoLine, type PaneView } from '$lib/utils/editorDecorations';
+  import {
+    isSamePaneView,
+    paneDecorations,
+    toMonacoLine,
+    type PaneView,
+  } from '$lib/utils/editorDecorations';
   import { pickAnomalyTarget } from '$lib/utils/anomalyCategories';
   import { acceptsTyping } from '$lib/utils/keyTargets';
   import { isShortcut } from '$lib/utils/shortcuts';
   import { indexBuildLabel } from '$lib/samplesWait';
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
-  import { chainGutterRuns, chainZonesMemo } from '$lib/utils/chainZones';
+  import { chainGutterRuns, chainZonesMemo, type GutterRun } from '$lib/utils/chainZones';
   import { chainLineLabels, topLineOf } from '$lib/utils/chainPane';
   import { matchedTabLines } from '$lib/utils/chainSearch';
+  import { memoizeLast } from '$lib/utils/memoizeLast';
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import ChainInvalid from './ChainInvalid.svelte';
   import './editorDecorations.css';
@@ -38,7 +44,7 @@
   let decorationsCollection: Monaco.editor.IEditorDecorationsCollection | null = null;
 
   // Hidden-content map for hover tooltips, keyed "lineNum:markerIndex".
-  // Assigned together with `content` by processContent below.
+  // Assigned with `content` from what processContent made below.
   let hiddenContentMap: Map<string, string>;
 
   // The header's line readout, whose go-to box the `:` shortcut opens.
@@ -67,8 +73,28 @@
 
   $: monacoTheme = $settings.monacoTheme;
 
+  // Svelte 4 counts the tab as changed at every update of it (an index
+  // task's progress, the anchor line after a scroll), and reruns every
+  // statement below that reads it. The work over the held lines is done
+  // again only when its inputs are other objects: the same lines, filter
+  // and description give the same text, labels, zones and runs.
+  const processedOf = memoizeLast(processContent);
+  const lineLabelsOf = memoizeLast(chainLineLabels);
+  const gutterRunsOf = memoizeLast(chainGutterRuns);
+  // Keyed on whether the tab is a chain's: its chain record is replaced
+  // at each move of the anchor.
+  const matchedLinesOf = memoizeLast(
+    (lines: FileLine[], isChain: boolean, matches: readonly FileMatch[]) =>
+      matchedTabLines({ lines, chain: isChain || undefined }, matches),
+  );
+
+  // A tab without search matches, and a file's tab, which has no gutter
+  // runs: one list each, so the view stays the same.
+  const NO_MATCHES: readonly FileMatch[] = Object.freeze([]);
+  const NO_GUTTER_RUNS: readonly GutterRun[] = Object.freeze([]);
+
   // File matches from trace search
-  $: fileMatches = $files.matches.get(file.path) || [];
+  $: fileMatches = $files.matches.get(file.path) ?? NO_MATCHES;
 
   // Detect language for Monaco
   $: monacoLanguage = detectMonacoLanguage(file.name);
@@ -77,12 +103,10 @@
   $: theme = $resolvedTheme;
 
   // The text Monaco renders, plus what the hide/show filter replaced.
-  // file.lines is referenced directly so Svelte tracks it.
-  $: ({ content, hiddenContent: hiddenContentMap } = processContent(
-    file.lines,
-    file.regexFilter,
-    file.showInvisibleChars,
-  ));
+  // The same text is the same string, so the editor is not given it again.
+  $: processed = processedOf(file.lines, file.regexFilter, file.showInvisibleChars);
+  $: content = processed.content;
+  $: hiddenContentMap = processed.hiddenContent;
 
   // A log chain's tab: its description, the zones at its part edges, the
   // part-local gutter labels while it is pending, and why it cannot be
@@ -91,7 +115,7 @@
   const zonesOf = chainZonesMemo();
   $: chainDescription = file.chain?.description ?? null;
   $: chainZones = zonesOf(file.lines, chainDescription);
-  $: lineLabels = file.chain ? chainLineLabels(file.lines, file.chain.numbering) : null;
+  $: lineLabels = file.chain ? lineLabelsOf(file.lines, file.chain.numbering) : null;
   $: isChainInvalid = Boolean(
     file.chain && (chainDescription?.state === 'invalid' || file.chain.invalidDetail),
   );
@@ -105,7 +129,7 @@
   // Everything the decorations mark; any change to it repaints them.
   $: paneView = {
     editorWindow: { startLine: file.startLine, lineCount: file.lines.length },
-    matchedFileLines: matchedTabLines(file, fileMatches),
+    matchedFileLines: matchedLinesOf(file.lines, file.chain !== undefined, fileMatches),
     highlightedRange: file.highlightedLines,
     anomalies: file.anomalies,
     selectedCategory:
@@ -117,18 +141,32 @@
     hiddenContent: hiddenContentMap,
     gutterRuns:
       file.chain && chainDescription
-        ? chainGutterRuns(file.lines, chainDescription.parts, file.chain.numbering)
-        : [],
+        ? gutterRunsOf(file.lines, chainDescription.parts, file.chain.numbering)
+        : NO_GUTTER_RUNS,
   } satisfies PaneView;
   $: if (monacoEditor) updateDecorations(paneView);
 
-  function updateDecorations(view: PaneView) {
+  // The view the decorations were last drawn for, or null before the first.
+  let decoratedView: PaneView | null = null;
+
+  /**
+   * Draw the decorations of `view`, also when they were drawn for it
+   * last: the editor's text changed under the same model.
+   */
+  function drawDecorations(view: PaneView) {
     if (!monacoEditor) return;
     decorationsCollection?.clear();
     const decorations = paneDecorations(view);
     if (decorations.length > 0) {
       decorationsCollection = monacoEditor.createDecorationsCollection(decorations);
     }
+    decoratedView = view;
+  }
+
+  /** Draw the decorations of `view` unless they are drawn for a view that marks the same. */
+  function updateDecorations(view: PaneView) {
+    if (decoratedView !== null && isSamePaneView(decoratedView, view)) return;
+    drawDecorations(view);
   }
 
   // A filter applied from outside the bar (a link, Back) opens the bar
@@ -334,20 +372,21 @@
     monacoEditor = e.detail.editor;
     restoreTabView();
 
-    // Listen for content changes to apply decorations after content is set
+    // Draw the decorations again over new text: the filter's marks are
+    // found in the editor's text, which changes under the same model.
     const model = monacoEditor.getModel();
     if (model) {
       model.onDidChangeContent(() => {
         // Delay slightly to ensure content is fully rendered
         setTimeout(() => {
-          updateDecorations(paneView);
+          drawDecorations(paneView);
         }, 50);
       });
     }
 
     // Initial decoration update (with delay to ensure content is ready)
     setTimeout(() => {
-      updateDecorations(paneView);
+      drawDecorations(paneView);
     }, 100);
   }
 

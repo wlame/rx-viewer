@@ -216,6 +216,50 @@ export interface PaneView {
   gutterRuns?: readonly GutterRun[];
 }
 
+/** Whether two values of a field of a pane view are the same. */
+type SameField<T> = (a: T, b: T) => boolean;
+
+const isSameObject = <T>(a: T, b: T): boolean => a === b;
+
+/**
+ * How each field of two pane views is compared: as the same object,
+ * except the window and the selected category, which a tab's update
+ * builds anew from numbers and names that say the same.
+ */
+const SAME_PANE_FIELDS: { [K in keyof Required<PaneView>]: SameField<PaneView[K]> } = {
+  editorWindow: (a, b) => a.startLine === b.startLine && a.lineCount === b.lineCount,
+  matchedFileLines: isSameObject,
+  highlightedRange: isSameObject,
+  anomalies: isSameObject,
+  selectedCategory: (a, b) =>
+    a === b ||
+    (a !== null &&
+      b !== null &&
+      a.name === b.name &&
+      a.style.color === b.style.color &&
+      a.style.decorationClass === b.style.decorationClass),
+  filter: isSameObject,
+  text: isSameObject,
+  hiddenContent: isSameObject,
+  gutterRuns: isSameObject,
+};
+
+const PANE_FIELDS = Object.keys(SAME_PANE_FIELDS) as (keyof PaneView)[];
+
+function isSameField<K extends keyof PaneView>(key: K, a: PaneView, b: PaneView): boolean {
+  return SAME_PANE_FIELDS[key](a[key], b[key]);
+}
+
+/**
+ * Whether two pane views mark the same: every field the same. Objects
+ * built from the lines or the text (the matched lines, the hidden
+ * content, the gutter runs) count only as the same object, so a view
+ * whose decorations would differ is never taken for the same one.
+ */
+export function isSamePaneView(a: PaneView, b: PaneView): boolean {
+  return PANE_FIELDS.every((key) => isSameField(key, a, b));
+}
+
 /** The line numbers of each run of editor lines in the run's class. */
 export function gutterDecorations(runs: readonly GutterRun[]): Decoration[] {
   return runs.map((run) => ({

@@ -372,13 +372,22 @@
   // Zones that change without the content (a description that arrives).
   $: if (editor) applyViewZones(viewZones);
 
-  // A new function makes Monaco draw the gutter again: new labels, or a
-  // window that starts elsewhere, may come with the same text.
-  $: if (editor) {
-    void lineLabels;
-    void lineNumbersStart;
+  // The labels and the first number the gutter was last drawn with.
+  let drawnGutter: { labels: readonly string[] | null; start: number } | null = null;
+
+  /**
+   * Make Monaco draw the gutter again, with a new function, for new labels
+   * or a window that starts elsewhere, which may come with the same text.
+   * The same labels and start draw nothing: Svelte passes the labels again
+   * at every update of the parent, as it counts an object as changed.
+   */
+  function redrawGutter(labels: readonly string[] | null, start: number) {
+    if (!editor || (drawnGutter?.labels === labels && drawnGutter.start === start)) return;
+    drawnGutter = { labels, start };
     editor.updateOptions({ lineNumbers: (lineNumber) => getLineNumber(lineNumber) });
   }
+
+  $: if (editor) redrawGutter(lineLabels, lineNumbersStart);
 
   // Update theme when it changes
   $: if (editor) {
