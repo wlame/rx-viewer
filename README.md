@@ -223,7 +223,8 @@ start with a notice that the line could not be found again. A link
 without `fp`, such as one written by hand, names the files as they are
 when it is opened: it opens at `part` and `line` only while that line
 has the link's `time`, when it names one, and otherwise goes by the time
-the same way. A `file` link carries no fingerprint either. A link whose
+the same way; without a `time`, a notice says the view shows that line
+as the files are now. A `file` link carries no fingerprint either. A link whose
 `part` is gone goes by its time too. Back and Forward check an entry the
 same way; a time is not used when the chain is read in another zone
 than when the entry was made.

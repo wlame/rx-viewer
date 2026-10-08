@@ -1309,8 +1309,9 @@ describe('a link to a chain line opened after a rotation', () => {
     expect(messages()).toContainEqual(expect.stringContaining('changed since this link was made'));
   });
 
-  // A link written by hand names the files as they are when it is opened.
-  it('opens the part and line of a link without a fingerprint as the files are now', async () => {
+  // A link written by hand names the files as they are when it is opened;
+  // nothing tells whether its part's name holds the file it was made on.
+  it('opens the part and line of a link without a fingerprint or a time as the files are now, and says so', async () => {
     stubWindow('?chains=1&chain=%2Fl%2Fapp.log&part=app.log.1&line=500');
     chain.rotateTo(ROTATED, 'ready');
     await health.check();
@@ -1318,6 +1319,9 @@ describe('a link to a chain line opened after a rotation', () => {
     await loadView(readViewState());
 
     expect(anchorText()).toContain('C local=500');
+    expect(messages()).toEqual([
+      'This link does not say which files of app.log it was made on: the view shows line 500 of app.log.1 as the files are now',
+    ]);
   });
 
   // A zone moves every time a link names; an entry made in another zone

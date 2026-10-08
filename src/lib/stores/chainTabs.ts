@@ -1449,22 +1449,28 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
-   * Check the line a link (or a history entry) names in the tab `key`,
-   * which went there: a part, a line in it and that line's time. A
-   * rotation since the link was made gives the part's name to another
-   * file, whose line there has another time: that line leaves the screen,
-   * and the link's time finds the line (`checkLine`), on the same line of
-   * its part where several lines share that time. A notice says the files
-   * changed since the link was made, or that no line has its time now. A
-   * link without a time names nothing to check, and a tab that shows no
-   * line (an invalid chain, a failed read) says why itself.
+   * Check the line a link (or a history entry) without a fingerprint
+   * names in the tab `key`, which went there: a part, a line in it and
+   * that line's time. A rotation since the link was made gives the part's
+   * name to another file, whose line there has another time: that line
+   * leaves the screen, and the link's time finds the line (`checkLine`),
+   * on the same line of its part where several lines share that time. A
+   * notice says the files changed since the link was made, or that no
+   * line has its time now. A link without a time leaves nothing to check
+   * the part's line against: a notice says the view shows it as the files
+   * are now. A tab that shows no line (an invalid chain, a failed read)
+   * says why itself.
    */
   async function checkLinkLine(
     key: TabKey,
     link: { part: string; line: number; timeMs: number | null },
   ): Promise<void> {
     const tab = deps.getTab(key);
-    if (!tab?.chain || tab.lines.length === 0 || link.timeMs === null) return;
+    if (!tab?.chain || tab.lines.length === 0) return;
+    if (link.timeMs === null) {
+      sayLinkUnchecked(key, tab.name, link);
+      return;
+    }
     const known: KnownLine = {
       text: null,
       timeMs: link.timeMs,
@@ -1479,6 +1485,20 @@ export function createChainTabs(deps: ChainTabDeps) {
       ? { kind: 'found' }
       : await checkLine(key, known, true);
     sayWhereLinkLanded(tab.name, link, search);
+  }
+
+  /**
+   * Say that the tab `key` shows the part's line a link names (with no
+   * fingerprint and no time) as the chain's files are now: nothing tells
+   * whether the part's name still holds the file the link was made on.
+   */
+  function sayLinkUnchecked(key: TabKey, name: string, link: { part: string; line: number }): void {
+    const held = heldAnchorLine(key);
+    if (held?.part !== link.part || held.localLine !== link.line) return;
+    notifications.info(
+      `This link does not say which files of ${name} it was made on: the view shows line ${link.line} of ${link.part} as the files are now`,
+      NOTICE_MS,
+    );
   }
 
   /**

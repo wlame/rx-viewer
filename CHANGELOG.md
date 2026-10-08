@@ -384,7 +384,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   takes in any change it has not seen yet, and a time written in another
   zone than the chain is read in is not used. A `file=` link that names
   a part in chain mode, which carries no fingerprint, is checked against
-  its time when it names one.
+  its time when it names one. A link with neither a fingerprint nor a
+  time, such as one written by hand, opens at its part's line with a
+  notice that the view shows that line as the files are now.
 - A log chain's tab that knew both the text and the time of its line
   knows it again only by both, where it used to go by the text alone: a
   file the rotation paired by mistake, whose line there holds the same
