@@ -21,6 +21,7 @@ import {
   type ViewState,
 } from './utils/urlState';
 import { nameOf } from './utils/chainSwitch';
+import { fileZoneOf } from './utils/fileZones';
 import { chainHandleOf, chainKey } from './utils/tabKey';
 import type { ChainPosition } from './stores/chainTabs';
 import type { OpenFile, TreeNode } from './types';
@@ -264,7 +265,10 @@ function isOnPosition(tab: OpenFile, position: ChainPosition): boolean {
 /**
  * Open the chain a view names, or bring its tab forward, at the view's
  * part and line (by its time when the part is gone), or at `position`,
- * with its highlighting and filter. Resolves when its lines arrive.
+ * with its highlighting and filter. Resolves when its lines arrive. The
+ * line a view names by its part, line and time is checked once shown
+ * (`files.checkChainLinkLine`): after a rotation the part's name may hold
+ * another file, and the time finds the line.
  */
 async function showChain(
   handle: string,
@@ -278,14 +282,31 @@ async function showChain(
     if (view.highlight !== null) files.setSyntaxHighlighting(key, view.highlight);
     files.setRegexFilter(key, view.filter);
     if (!isOnPosition(open, position)) await files.goToChainLine(key, position);
-    return;
+  } else {
+    const loaded = files.openChain(handle, {
+      position,
+      syntaxHighlighting: view.highlight ?? undefined,
+    });
+    files.setRegexFilter(key, view.filter);
+    await loaded;
   }
-  const loaded = files.openChain(handle, {
-    position,
-    syntaxHighlighting: view.highlight ?? undefined,
-  });
-  files.setRegexFilter(key, view.filter);
-  await loaded;
+  if (position.kind === 'local' && isReadInViewZone(view, key)) {
+    await files.checkChainLinkLine(key, {
+      part: position.part,
+      line: position.line,
+      timeMs: position.timeMs ?? null,
+    });
+  }
+}
+
+/**
+ * Whether the chain or file of `key` is read in the zone the view names
+ * for it, the zone its times were written in: a zone moves every time, so
+ * a time written in another zone names another instant. A link sets its
+ * zones before it opens anything; Back and Forward leave them as they are.
+ */
+function isReadInViewZone(view: Pick<ViewState, 'fileZones'>, key: string): boolean {
+  return fileZoneOf(view.fileZones, key) === fileZones.zoneOf(key);
 }
 
 /**

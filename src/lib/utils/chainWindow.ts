@@ -359,13 +359,28 @@ export function nearestSameText(
   target: number,
   text: string,
 ): number | null {
+  return nearestHeldLine(lines, startLine, target, (line) => line.content === text);
+}
+
+/**
+ * The position of the held line nearest to `target` that `isWanted`
+ * accepts, as `nearestSameText` finds one: the target itself, else the
+ * nearest on either side, the one after when two are as near. Null when
+ * none is, or the held lines do not hold the target.
+ */
+export function nearestHeldLine<Line extends Pick<FileLine, 'lineNumber'>>(
+  lines: readonly Line[],
+  startLine: number,
+  target: number,
+  isWanted: (line: Line) => boolean,
+): number | null {
   const at = target - startLine;
   if (lines[at]?.lineNumber !== target) return null;
   for (let distance = 0; distance < lines.length; distance++) {
     const after = lines[at + distance];
-    if (after?.content === text) return after.lineNumber;
+    if (after !== undefined && isWanted(after)) return after.lineNumber;
     const before = lines[at - distance];
-    if (before?.content === text) return before.lineNumber;
+    if (before !== undefined && isWanted(before)) return before.lineNumber;
     if (after === undefined && before === undefined) return null;
   }
   return null;

@@ -8,6 +8,7 @@ import {
   flattenPieces,
   globalPage,
   learnCounts,
+  nearestHeldLine,
   nearestSameText,
   pageBase,
   pendingEnds,
@@ -408,5 +409,22 @@ describe('nearestSameText', () => {
   it('finds none for a text the held lines do not hold, or a target they do not hold', () => {
     expect(nearestSameText(held, 101, 105, 'zzz')).toBeNull();
     expect(nearestSameText(held, 101, 400, 'a')).toBeNull();
+  });
+});
+
+describe('nearestHeldLine', () => {
+  /** Held lines 201-206: three share one second, and their parts' own lines run from 498. */
+  const held = [5, 7, 7, 7, 8, 9].map((second, i) => ({
+    lineNumber: 201 + i,
+    timestampMs: second * 1000,
+    localLine: 498 + i,
+  }));
+
+  it('finds the nearest line any test accepts, such as a time and a line in its part', () => {
+    const isSecond7AtLine500 = (line: (typeof held)[number]) =>
+      line.timestampMs === 7000 && line.localLine === 500;
+
+    expect(nearestHeldLine(held, 201, 202, isSecond7AtLine500)).toBe(203);
+    expect(nearestHeldLine(held, 201, 202, () => false)).toBeNull();
   });
 });

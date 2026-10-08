@@ -14,6 +14,12 @@ import type { FileLine, OpenFile } from '../types';
 export interface KnownLine {
   text: string | null;
   timeMs: number | null;
+  /**
+   * In a log chain: the part and the line in it that hold the line, when
+   * that is known too (a link names them). A line elsewhere is another
+   * line, whatever its text or time.
+   */
+  place?: { part: string; line: number } | null;
 }
 
 /** How a shown line compares with the line a tab knew: the same, another one, or unknown. */
@@ -21,11 +27,15 @@ export type LineCheck = 'same' | 'other' | 'unknown';
 
 /** Compare the line a tab shows (null when it holds none there) with the line it knew there. */
 export function checkShownLine(
-  shown: Pick<FileLine, 'content' | 'timestampMs'> | null,
+  shown: Pick<FileLine, 'content' | 'timestampMs' | 'part' | 'localLine'> | null,
   known: KnownLine,
 ): LineCheck {
   if (known.text === null && known.timeMs === null) return 'unknown';
   if (shown === null) return 'other';
+  const place = known.place ?? null;
+  if (place !== null && (shown.part !== place.part || shown.localLine !== place.line)) {
+    return 'other';
+  }
   if (known.text !== null) return shown.content === known.text ? 'same' : 'other';
   return (shown.timestampMs ?? null) === known.timeMs ? 'same' : 'other';
 }

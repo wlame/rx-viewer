@@ -45,6 +45,7 @@ import {
   flattenPieces,
   globalPage,
   learnCounts,
+  nearestHeldLine,
   nearestSameText,
   pageBase,
   pendingEnds,
@@ -1265,7 +1266,8 @@ export function createChainTabs(deps: ChainTabDeps) {
    * Show the chain at the known line's time, then go to the nearest held
    * line with its text, which the time's line and its context hold when
    * several lines share that time. Resolves `found` when the view shows a
-   * line with the known text (or, without one, the known time).
+   * line with the known text (or, without one, the known time), and
+   * `same` when that line is at the known place too.
    */
   async function lookByTime(
     key: TabKey,
@@ -1278,15 +1280,30 @@ export function createChainTabs(deps: ChainTabDeps) {
     goToKnownLine(key, known);
     const landed = heldAnchorLine(key);
     if (landed === null) return STOPPED;
-    if (checkShownLine(landed, known) === 'same') return { kind: 'found' };
-    return { kind: 'notFound', where: whereByTime(landed, known.timeMs) };
+    if (checkShownLine(landed, { ...known, place: null }) !== 'same') {
+      return { kind: 'notFound', where: whereByTime(landed, known.timeMs) };
+    }
+    const isAtPlace = known.place != null && checkShownLine(landed, known) === 'same';
+    return { kind: isAtPlace ? 'same' : 'found' };
   }
 
-  /** Move the anchor of the tab `key` to the nearest held line with the known text, when it holds one. */
+  /**
+   * Move the anchor of the tab `key` to the nearest held line that is the
+   * known one: with its text, or, without one, with its time at its line
+   * in a part (a file a rotation renamed keeps its lines' numbers).
+   */
   function goToKnownLine(key: TabKey, known: KnownLine): void {
     const tab = deps.getTab(key);
-    if (!tab || known.text === null) return;
-    const found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, known.text);
+    if (!tab) return;
+    const { text, timeMs } = known;
+    const line = known.place?.line;
+    let found: number | null = null;
+    if (text !== null) {
+      found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, text);
+    } else if (timeMs !== null && line !== undefined) {
+      const isKnown = (held: FileLine) => held.timestampMs === timeMs && held.localLine === line;
+      found = nearestHeldLine(tab.lines, tab.startLine, tab.anchorLine, isKnown);
+    }
     if (found === null || found === tab.anchorLine) return;
     deps.patchTab(key, (t) => ({
       scrollToLine: found,
@@ -1384,6 +1401,47 @@ export function createChainTabs(deps: ChainTabDeps) {
       notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
     }
     return search.kind === 'same';
+  }
+
+  /**
+   * Check the line a link (or a history entry) names in the tab `key`,
+   * which went there: a part, a line in it and that line's time. A
+   * rotation since the link was made gives the part's name to another
+   * file, whose line there has another time: that line leaves the screen,
+   * and the link's time finds the line (`checkLine`), on the same line of
+   * its part where several lines share that time. A notice says the files
+   * changed since the link was made, or that no line has its time now. A
+   * link without a time names nothing to check, and a tab that shows no
+   * line (an invalid chain, a failed read) says why itself.
+   */
+  async function checkLinkLine(
+    key: TabKey,
+    link: { part: string; line: number; timeMs: number | null },
+  ): Promise<void> {
+    const tab = deps.getTab(key);
+    if (!tab?.chain || tab.lines.length === 0 || link.timeMs === null) return;
+    const known: KnownLine = {
+      text: null,
+      timeMs: link.timeMs,
+      place: { part: link.part, line: link.line },
+    };
+    const held = heldAnchorLine(key);
+    // A part that is gone sent the tab to the link's time already.
+    const isAtTimeElsewhere =
+      checkShownLine(held, { ...known, place: null }) === 'same' &&
+      checkShownLine(held, known) !== 'same';
+    const search: LineSearch = isAtTimeElsewhere
+      ? { kind: 'found' }
+      : await checkLine(key, known, true);
+    if (search.kind === 'found') {
+      notifications.info(
+        `The files of ${tab.name} changed since this link was made; the view shows the line at the link's time`,
+        NOTICE_MS,
+      );
+    } else if (search.kind === 'notFound') {
+      const what = `line ${link.line} of ${link.part} that this link names, in ${tab.name}, whose files changed since it was made`;
+      notifications.info(lineNotFoundNotice(what, search.where), NOTICE_MS);
+    }
   }
 
   /**
@@ -1945,6 +2003,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     reload,
     settle,
     confirmLine,
+    checkLinkLine,
     forget,
   };
 }

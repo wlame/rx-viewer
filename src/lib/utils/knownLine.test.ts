@@ -32,6 +32,22 @@ describe('checkShownLine', () => {
   ])('reads %s', (_name, shown, known, expected) => {
     expect(checkShownLine(shown, known)).toBe(expected);
   });
+
+  it('reads a line of a chain as the known one only at the known part and line', () => {
+    const shown = { ...LINE, part: 'app.log.1', localLine: 500 };
+    const known = (part: string, line: number): KnownLine => ({
+      text: null,
+      timeMs: 1000,
+      place: { part, line },
+    });
+
+    expect(checkShownLine(shown, known('app.log.1', 500))).toBe('same');
+    expect(checkShownLine(shown, known('app.log.2.gz', 500))).toBe('other');
+    expect(checkShownLine(shown, known('app.log.1', 501))).toBe('other');
+    expect(checkShownLine(shown, { text: null, timeMs: null, place: { part: 'x', line: 1 } })).toBe(
+      'unknown',
+    );
+  });
 });
 
 describe('heldLineAt', () => {

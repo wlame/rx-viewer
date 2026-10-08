@@ -20,7 +20,8 @@ import {
   type ViewState,
 } from './utils/urlState';
 import type { ChainAnchor, ChainTab, OpenFile } from './types';
-import { FakeChain, T0_MS, serveChain } from './testing/fakeChain';
+import { FakeChain, T0_MS, serveChain, type FakePart } from './testing/fakeChain';
+import { notifications } from './stores/notifications';
 
 const ONE_MB = 1024 * 1024;
 
@@ -932,6 +933,10 @@ describe('a chain tab in the URL', () => {
     expect(chain.samplesRequests[0].has('part')).toBe(false);
     expect(chainTab().anchorLine).toBe(3500);
     expect(chainTab().chain?.anchor).toMatchObject({ part: 'app.log.1', line: 500 });
+    expect(chain.samplesRequests).toHaveLength(1);
+    expect(get(notifications).map((n) => n.message)).toContainEqual(
+      expect.stringContaining('changed since this link was made'),
+    );
   });
 
   it('rewrites the entry as the anchor moves through the parts, and adds none', async () => {
@@ -948,6 +953,166 @@ describe('a chain tab in the URL', () => {
     expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
     expect(urlParams().get('part')).toBe('app.log.2.gz');
     expect(urlParams().get('line')).toBe('2999');
+  });
+});
+
+describe('a link to a chain line opened after a rotation', () => {
+  /**
+   * Files whose lines keep their text and times under any name: A (3000
+   * lines from second 1), B (1500 from 3001) and C, the active file
+   * (2000 from 4501).
+   */
+  const A: FakePart = {
+    name: 'app.log.2.gz',
+    lines: 3000,
+    compression: 'gzip',
+    text: 'A',
+    startSecond: 1,
+  };
+  const B: FakePart = { name: 'app.log.1', lines: 1500, text: 'B', startSecond: 3001 };
+  const C: FakePart = {
+    name: 'app.log',
+    lines: 2000,
+    isActive: true,
+    text: 'C',
+    startSecond: 4501,
+  };
+  /** A numbered rotation: A deleted, B compressed into app.log.2.gz, C renamed app.log.1, a new active file. */
+  const ROTATED: FakePart[] = [
+    { ...B, name: 'app.log.2.gz', compression: 'gzip' },
+    { ...C, name: 'app.log.1', isActive: false },
+    { name: 'app.log', lines: 10, isActive: true, text: 'D', startSecond: 6600 },
+  ];
+  /** The time of B's line 500, which a link made before the rotation names. */
+  const B500_TIME = new Date(T0_MS + 3500_000).toISOString();
+  const LINK_TO_B500 = `?chains=1&chain=%2Fl%2Fapp.log&part=app.log.1&line=500&time=${encodeURIComponent(B500_TIME)}`;
+
+  let chain: FakeChain;
+
+  beforeEach(() => {
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    chain = new FakeChain({ dir: '/l', name: 'app.log', parts: [A, B, C], state: 'ready' });
+    serveChain(chain);
+  });
+
+  afterEach(() => {
+    resetStores();
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    fileZones.replace([]);
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  function chainTab(): OpenFile {
+    const found = get(files).openFiles.find((f) => f.path === chainKey('/l/app.log'));
+    if (!found) throw new Error('the chain tab is not open');
+    return found;
+  }
+
+  function anchorText(): string | undefined {
+    const tab = chainTab();
+    const line = tab.lines[tab.anchorLine - tab.startLine];
+    return line?.lineNumber === tab.anchorLine ? line.content : undefined;
+  }
+
+  function messages(): string[] {
+    return get(notifications).map((n) => n.message);
+  }
+
+  it('opens the line of the part it names, and says nothing, while that line has its time', async () => {
+    stubWindow(LINK_TO_B500);
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chain.samplesRequests.map((q) => q.has('timestamps'))).toEqual([false]);
+    expect(messages()).toEqual([]);
+  });
+
+  it("goes by the link's time when the part it names holds another file now, and says so", async () => {
+    stubWindow(LINK_TO_B500);
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chainTab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+    expect(chain.samplesRequests.at(-1)?.getAll('timestamps')).toEqual([B500_TIME]);
+    expect(messages()).toContainEqual(
+      "The files of app.log changed since this link was made; the view shows the line at the link's time",
+    );
+  });
+
+  it("goes by the link's time once a pending chain is ready, when the part holds another file", async () => {
+    stubWindow(LINK_TO_B500);
+    chain.rotateTo(ROTATED, 'pending');
+    await health.check();
+
+    const loading = loadView(readViewState());
+    await vi.waitFor(() =>
+      expect(chain.samplesRequests.some((q) => q.has('timestamps'))).toBe(true),
+    );
+    chain.finishTask();
+    await loading;
+    await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chainTab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+  });
+
+  it("says so when no line has the link's time after the rotation", async () => {
+    const time = new Date(T0_MS + 2900_000).toISOString();
+    stubWindow(
+      `?chains=1&chain=%2Fl%2Fapp.log&part=app.log.2.gz&line=2900&time=${encodeURIComponent(time)}`,
+    );
+    chain.rotateTo(ROTATED, 'ready');
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(anchorText()).toContain('B local=1');
+    expect(messages()).toContainEqual(
+      'Cannot find line 2900 of app.log.2.gz that this link names, in app.log, whose files changed since it was made; the view shows the first line at or after its time',
+    );
+  });
+
+  it('goes by the time of an entry Back returns to when the open tab took a rotation in since', async () => {
+    stubWindow(LINK_TO_B500);
+    await health.check();
+    const entry = readViewState();
+    await loadView(entry);
+    chain.rotateTo(ROTATED, 'ready');
+    await files.loadMore(chainKey('/l/app.log'), 'after');
+    await vi.waitFor(() => expect(chainTab().loading).toBe(false));
+    await files.goToChainLine(chainKey('/l/app.log'), { kind: 'global', line: 1600 });
+    expect(anchorText()).toContain('C local=100');
+
+    await restoreView(entry);
+
+    expect(anchorText()).toContain('B local=500');
+    expect(messages()).toContainEqual(expect.stringContaining('changed since this link was made'));
+  });
+
+  // A zone moves every time a link names; an entry made in another zone
+  // than the chain is read in now names times that cannot be compared.
+  it('compares no time of an entry made in another zone than the chain is read in now', async () => {
+    const shifted = new Date(T0_MS + 3500_000 + 7200_000).toISOString();
+    stubWindow(
+      `?chains=1&chain=%2Fl%2Fapp.log&ftz=${encodeURIComponent('+02:00@chain:/l/app.log')}`,
+    );
+    await health.check();
+    await loadView(readViewState());
+    expect(fileZones.zoneOf(chainKey('/l/app.log'))).toBe('+02:00');
+
+    stubWindow(
+      `?chains=1&chain=%2Fl%2Fapp.log&part=app.log.1&line=500&time=${encodeURIComponent(shifted)}`,
+    );
+    await restoreView(readViewState());
+
+    expect(anchorText()).toContain('B local=500');
+    expect(chain.samplesRequests.some((q) => q.get('timestamps') === shifted)).toBe(false);
   });
 });
 

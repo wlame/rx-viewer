@@ -356,6 +356,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Another line leaves the screen and the line is looked for by its time,
   with a notice when it is not found. A file tab says so when its file
   holds other text at the line, or no longer reaches it.
+- A link to a line of a log chain (`part`, `line`, `time`) opened after
+  a rotation no longer shows the line of the file that took the part's
+  name in silence. The tab opens at the part's line only while that line
+  has the link's time; otherwise it goes by the link's time, to the same
+  line of its part where several lines share that time, and says the
+  files changed since the link was made, or that no line has its time
+  now. A link whose part is gone says so too. Back and Forward check an
+  entry the same way, unless the chain is read in another zone than when
+  the entry was made, since a zone moves every time.
 - An older chain mode switch still waiting for the backend no longer
   moves a log chain's tab back over a newer view, such as the entry Back
   pressed twice lands on: a switch to the mode already set ends with the

@@ -210,7 +210,14 @@ A chain's tab writes `chain`, `part`, `line` and `time` together:
 `?chains=1&chain=/var/log/syslog&part=syslog.3.gz&line=500&time=2026-10-03T14:00:00.123Z`.
 A link with `chain` turns chain mode on. A link with `chains=1` and a
 `file` that names a part of a chain opens the chain's tab at that part
-and line.
+and line. A rotation after a link was made gives the name of its `part`
+to another file: the tab opens at `part` and `line` only while that line
+has the link's `time`, and otherwise goes by the time, on the same line
+of its part where several lines share that time, with a notice that the
+files changed since the link was made (or that no line has its time
+now). A link whose `part` is gone goes by its time too. Back and Forward
+check an entry the same way, unless the chain is read in another zone
+than when the entry was made.
 
 ## The API it calls
 

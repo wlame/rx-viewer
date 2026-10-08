@@ -1075,6 +1075,18 @@ function createFilesStore() {
   }
 
   /**
+   * Check the line a link names in a chain's tab that went there: its
+   * part's line must have the link's time, or the time finds the line,
+   * with a notice that the files changed since (`stores/chainTabs.ts`).
+   */
+  function checkChainLinkLine(
+    key: TabKey,
+    link: { part: string; line: number; timeMs: number | null },
+  ): Promise<void> {
+    return chains.checkLinkLine(key, link);
+  }
+
+  /**
    * Toggle syntax highlighting for a specific file
    */
   function toggleSyntaxHighlighting(key: TabKey) {
@@ -1252,6 +1264,7 @@ function createFilesStore() {
     goToChainLine,
     settleChain,
     confirmChainLine,
+    checkChainLinkLine,
     applyIndex,
     closeFile,
     loadMore,
