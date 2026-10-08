@@ -75,6 +75,12 @@ describe('partTimeLabel', () => {
     expect(partTimeLabel(T0 + 1500, p)).toBe('2026-10-01 00:00:01.500');
   });
 
+  it('writes a part whose lines write a zone in the zone the chain is read in', () => {
+    const zoned = { format: 'iso' as const, has_zone: true, assumed_zone: '+02:00' };
+    const p = part('a.1', { time_format: zoned, example: '2026-10-01 00:00:00.000' });
+    expect(partTimeLabel(T0, p)).toBe('2026-10-01 02:00:00.000');
+  });
+
   it('writes ISO 8601 in UTC for a part without a known format', () => {
     expect(partTimeLabel(T0, part('a.1'))).toBe('2026-10-01T00:00:00.000Z');
   });

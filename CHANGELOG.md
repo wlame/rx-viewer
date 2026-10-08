@@ -172,6 +172,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a whole number, as the editor writes it into its gutter as markup. For
   an answer that numbers a part's lines with anything else, the tab shows
   an error and no line from it, where it used to stay loading.
+- The line of text above each part of a log chain, and the one over a
+  time gap, write their times in the zone chosen for the chain
+  (`ftz=<zone>@chain:<handle>`) for a part whose lines write a zone too;
+  they used to write those in UTC.
 
 ## [0.6.0] - 2026-10-06
 

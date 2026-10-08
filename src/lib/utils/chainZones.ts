@@ -22,23 +22,27 @@ export interface EditorViewZone {
 }
 
 /**
- * The layout a part writes its timestamps in, for `formatInFileLayout`. A
- * part whose timestamps carry a zone is shown in UTC, as ISO 8601: its
- * description does not give the offset its lines write.
+ * The layout a part writes its timestamps in, for `formatInFileLayout`,
+ * shown in the zone its timestamps are read in (`assumed_zone`): the
+ * zone chosen for the chain (`file_tz`) when one is, else `RX_LOG_TZ` for
+ * a part whose lines write no zone, and UTC for one whose lines do (its
+ * description does not give the offset its lines write).
  */
-function layoutOf(part: ChainPart): FileTimeLayout {
+export function partTimeLayout(part: ChainPart): FileTimeLayout {
   const format = part.time_format;
   return {
     format: format?.format ?? null,
     example: part.example,
     day_first: part.day_first,
-    display_zone: format && !format.has_zone ? format.assumed_zone : null,
+    display_zone: format?.assumed_zone ?? null,
   };
 }
 
 /** `ms` written the way `part` writes a timestamp, or ISO 8601 in UTC when its format is unknown. */
 export function partTimeLabel(ms: number, part: ChainPart): string {
-  return part.time_format ? formatInFileLayout(ms, layoutOf(part)) : new Date(ms).toISOString();
+  return part.time_format
+    ? formatInFileLayout(ms, partTimeLayout(part))
+    : new Date(ms).toISOString();
 }
 
 /** `app.log.3.gz · 2026-10-01 00:00:00.000 – 2026-10-01 23:59:59.998 · 1,205 lines`, what is known of it. */
@@ -102,7 +106,7 @@ function nextHigherPart(numbers: readonly (number | null)[], number: number): nu
  * order. A name whose number cannot be read gets no zone. The work is
  * one pass over the parts per missing name.
  */
-function missingBeforeParts(chain: ChainResponse): Map<string, string[]> {
+export function missingPartsBefore(chain: ChainResponse): Map<string, string[]> {
   const numbers = chain.parts.map(partNumber);
   const missing = chain.missing
     .map((name) => ({ name, number: missingNumber(name, chain.name) }))
@@ -132,7 +136,7 @@ function planZones(chain: ChainResponse): ZonePlan {
   return {
     partsByName: new Map(chain.parts.map((part) => [part.name, part])),
     gapBefore: new Map(chain.gaps.map((gap) => [gap.before, gap])),
-    missingBefore: missingBeforeParts(chain),
+    missingBefore: missingPartsBefore(chain),
   };
 }
 
