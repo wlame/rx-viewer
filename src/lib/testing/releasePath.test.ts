@@ -1,13 +1,14 @@
-import { readFileSync, readdirSync } from 'fs';
-import { resolve } from 'path';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { dirname, join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
 import {
+  guardedWorkflowFiles,
   interpolations,
   pasteViolations,
   readJustfile,
-  runExpressionViolations,
-  runScripts,
   variadicViolations,
+  workflowExpressionViolations,
 } from './releasePath';
 
 /** The repository root, seen from this file. */
@@ -97,42 +98,173 @@ describe('the repository justfile', () => {
 });
 
 describe('the workflow guard', () => {
-  it('reads block and inline run scripts, and nothing after them', () => {
+  /** A workflow whose one job runs `steps`, each line indented under `steps:`. */
+  const workflowWith = (steps: string) =>
+    ['on: push', 'jobs:', '  build:', '    runs-on: ubuntu-latest', '    steps:', steps, ''].join(
+      '\n',
+    );
+
+  it.each([
+    ['a run script in a block', '      - run: |\n          echo "${{ github.ref_name }}"'],
+    [
+      'a run script that starts on the next line',
+      '      - name: x\n        run:\n          echo "${{ github.ref_name }}"',
+    ],
+    [
+      'a plain run script continued on a second line',
+      '      - name: x\n        run: echo start\n          "${{ github.ref_name }}"',
+    ],
+    [
+      'a double-quoted run script continued on a second line',
+      '      - name: x\n        run: "echo start\n          ${{ github.ref_name }}"',
+    ],
+    ['a step written as a flow mapping', '      - { name: x, run: "echo ${{ github.ref_name }}" }'],
+    ['a quoted run key', '      - name: x\n        "run": echo ${{ github.ref_name }}'],
+    [
+      'a run script that is an alias of an anchored env value',
+      '      - env:\n          S: &s echo ${{ github.ref_name }}\n        run: *s',
+    ],
+    [
+      'a shell that holds the expression',
+      '      - shell: bash -c "echo ${{ github.ref_name }}; {0}"\n        run: echo hi',
+    ],
+    [
+      'the script input of actions/github-script',
+      '      - uses: actions/github-script@v7\n        with:\n          script: console.log("${{ github.ref_name }}")',
+    ],
+    [
+      'an expression spelled with an escape in a double-quoted script',
+      '      - run: "echo \\x24{{ github.ref_name }}"',
+    ],
+    [
+      'a run script merged in from an anchored mapping',
+      '      - uses: some/action@v1\n        with: &inputs\n          run: echo ${{ github.ref_name }}\n      - <<: *inputs\n        name: merged',
+    ],
+  ])('refuses %s', (_name, steps) => {
+    const violations = workflowExpressionViolations('w.yml', workflowWith(steps), 'workflow');
+
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0]).toMatch(/^w\.yml: jobs\.build\.steps\[\d\]\./);
+  });
+
+  it('refuses an expression in the default shell of every run step', () => {
     const workflow = [
-      'steps:',
-      '  - name: one',
-      '    run: |',
-      '      echo "${{ github.ref_name }}"',
-      '',
-      '      echo done',
-      '    env:',
-      '      X: ${{ inputs.part }}',
-      '  - run: just ci',
+      'on: push',
+      'defaults:',
+      '  run:',
+      '    shell: bash -c "${{ inputs.x }} {0}"',
+      'jobs: {}',
     ].join('\n');
 
-    expect(runScripts(workflow)).toEqual([
-      { line: 3, text: '      echo "${{ github.ref_name }}"\n\n      echo done' },
-      { line: 9, text: 'just ci' },
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([
+      'w.yml: defaults.run.shell holds a ${{ … }} expression outside the places GitHub hands it to no shell and no script; pass it through env: and read it as "$NAME"',
     ]);
-    expect(runExpressionViolations('w.yml', workflow)).toEqual([
-      'w.yml:3: a run: script holds a ${{ … }} expression; pass it through env: and read it as "$NAME"',
+  });
+
+  it('lets an expression through in an if, an env value or an action input', () => {
+    const workflow = [
+      'on: push',
+      'env:',
+      '  TOP: ${{ github.sha }}',
+      'jobs:',
+      '  build:',
+      "    if: ${{ github.event_name == 'push' }}",
+      '    runs-on: ubuntu-latest',
+      '    env:',
+      '      JOB: ${{ github.ref_name }}',
+      '    steps:',
+      '      - uses: actions/checkout@v4',
+      "        if: ${{ github.ref == 'refs/heads/main' }}",
+      '        with:',
+      '          ref: ${{ github.ref }}',
+      '      - run: echo "$TAG"',
+      '        env:',
+      '          TAG: ${{ github.ref_name }}',
+    ].join('\n');
+
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([]);
+  });
+
+  it('refuses an expression in a key', () => {
+    const workflow = workflowWith(
+      '      - env:\n          "${{ github.ref_name }}": x\n        run: echo',
+    );
+
+    expect(workflowExpressionViolations('w.yml', workflow, 'workflow')).toEqual([
+      'w.yml: jobs.build.steps[0].env holds a ${{ … }} expression in a key, where GitHub reads none',
     ]);
+  });
+
+  it.each([
+    ['a file it cannot read as YAML', 'jobs:\n  a: [\n'],
+    ['a value with an explicit tag', 'jobs:\n  a:\n    steps:\n      - run: !!binary JHt7\n'],
+    ['a value with an unknown tag', 'jobs:\n  a:\n    steps:\n      - run: !custom x\n'],
+  ])('refuses %s', (_name, workflow) => {
+    const violations = workflowExpressionViolations('w.yml', workflow, 'workflow');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatch(/^w\.yml: cannot read the YAML: /);
+  });
+
+  it('refuses a run step of a composite action, and lets its outputs and input defaults through', () => {
+    const action = [
+      'name: x',
+      'inputs:',
+      '  token:',
+      '    default: ${{ github.token }}',
+      'outputs:',
+      '  out:',
+      '    value: ${{ steps.a.outputs.b }}',
+      'runs:',
+      '  using: composite',
+      '  steps:',
+      '    - run: echo "${{ inputs.token }}"',
+      '      shell: bash',
+    ].join('\n');
+
+    expect(workflowExpressionViolations('action.yml', action, 'action')).toEqual([
+      'action.yml: runs.steps[0].run holds a ${{ … }} expression outside the places GitHub hands it to no shell and no script; pass it through env: and read it as "$NAME"',
+    ]);
+  });
+
+  it('lists the workflows by .yml and .yaml, and every YAML file under .github/actions', () => {
+    const root = mkdtempSync(join(tmpdir(), 'workflow-guard-'));
+    try {
+      const write = (path: string) => {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), 'name: x\n');
+      };
+      write('.github/workflows/a.yml');
+      write('.github/workflows/b.yaml');
+      write('.github/workflows/notes.txt');
+      write('.github/actions/setup/action.yml');
+      write('.github/actions/deep/inner/action.yaml');
+      write('.github/dependabot.yml');
+
+      expect(guardedWorkflowFiles(root)).toEqual([
+        { path: '.github/actions/deep/inner/action.yaml', kind: 'action' },
+        { path: '.github/actions/setup/action.yml', kind: 'action' },
+        { path: '.github/workflows/a.yml', kind: 'workflow' },
+        { path: '.github/workflows/b.yaml', kind: 'workflow' },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
 describe('the repository workflows', () => {
-  const names = readdirSync(resolve(ROOT, WORKFLOWS)).filter((name) => name.endsWith('.yml'));
+  const guarded = guardedWorkflowFiles(ROOT);
 
-  it('are read: ci.yml and release.yml run scripts', () => {
-    expect(names).toEqual(expect.arrayContaining(['ci.yml', 'release.yml']));
-    for (const name of names) {
-      expect(runScripts(repoFile(`${WORKFLOWS}/${name}`)).length).toBeGreaterThan(0);
-    }
+  it('are read: ci.yml and release.yml among them', () => {
+    expect(guarded.map((file) => file.path)).toEqual(
+      expect.arrayContaining([`${WORKFLOWS}/ci.yml`, `${WORKFLOWS}/release.yml`]),
+    );
   });
 
-  it('paste no expression into a run script', () => {
-    const violations = names.flatMap((name) =>
-      runExpressionViolations(name, repoFile(`${WORKFLOWS}/${name}`)),
+  it('hold an expression only where GitHub hands it to no shell and no script', () => {
+    const violations = guarded.flatMap((file) =>
+      workflowExpressionViolations(file.path, repoFile(file.path), file.kind),
     );
     expect(violations).toEqual([]);
   });

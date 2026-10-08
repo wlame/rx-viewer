@@ -130,8 +130,14 @@ computed value (the version, from a tag name) is exported and read as
 `"$BUILD_VERSION"`; a workflow passes every `${{ … }}` to a `run:` script
 through `env:`. A tag name may hold a quote, `;` or `$(`.
 `src/lib/testing/releasePath.test.ts` fails on any other `{{…}}` in a
-recipe and any `${{` in a `run:` script, and checks that `release.yml`
-refuses a tag that is not exactly `vX.Y.Z` before anything runs.
+recipe, and on any `${{` in a workflow (`.yml` or `.yaml`) or a file
+under `.github/actions` that stands outside the places GitHub hands to
+no shell and no script (an `if`, an `env` value, an action input other
+than `script`: `EXPRESSION_PLACES` in `releasePath.ts`). It reads those
+files with a YAML parser, so no spelling of a step (a flow mapping, a
+quoted key, an alias, a merge key, an escape) gets past it. It also
+checks that `release.yml` refuses a tag that is not exactly `vX.Y.Z`
+before anything runs.
 
 **`just typecheck` is green and must stay that way.** `svelte-check` reports
 0 errors and 0 warnings. The a11y suppression that used to hide warnings is

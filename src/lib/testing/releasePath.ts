@@ -1,24 +1,28 @@
 /**
  * Readers for the guard test of the release path: what the justfile
- * pastes into its shell lines, and what the GitHub workflows paste into
- * their `run:` scripts.
+ * pastes into its shell lines, and where the GitHub workflows and the
+ * repository's actions hold a `${{ … }}` expression.
  *
  * just pastes a `{{…}}` expression into a recipe's shell line before the
  * shell reads it, and GitHub pastes a `${{ … }}` expression into a `run:`
- * script before the shell reads that. Either way the shell reads the
- * value as code: a quote in it ends the quoted string around it, and a
- * `;`, `$(` or backtick after that starts a command. A pushed tag name
- * may hold all of those (`v1.0.0';id;'` is a legal ref), and the version
- * a build stamps comes from `git describe`, which prints a tag name. So
- * a recipe pastes only variables the justfile assigns a string literal,
- * takes its arguments as `"$1"` or `"$@"`, and reads a computed value
- * from the environment; a workflow passes every expression to a script
- * through `env:`.
+ * script (or a `shell:`, or the script of actions/github-script) before
+ * the shell or the script reads it. Either way the value is read as
+ * code: a quote in it ends the quoted string around it, and a `;`, `$(`
+ * or backtick after that starts a command. A pushed tag name may hold
+ * all of those (`v1.0.0';id;'` is a legal ref), and the version a build
+ * stamps comes from `git describe`, which prints a tag name. So a recipe
+ * pastes only variables the justfile assigns a string literal, takes its
+ * arguments as `"$1"` or `"$@"`, and reads a computed value from the
+ * environment; a workflow passes every expression to a script through
+ * `env:`.
  *
- * The readers know the parts of just's syntax this repo uses and refuse
- * the rest: an expression they cannot read is reported, never let
- * through.
+ * The readers refuse what they cannot read: the justfile reader knows the
+ * parts of just's syntax this repo uses, and the workflow reader lets an
+ * expression stand only at the places listed in `EXPRESSION_PLACES`.
  */
+import { existsSync, readdirSync, statSync } from 'fs';
+import { join } from 'path';
+import { parseAllDocuments, visit, type Document } from 'yaml';
 
 /** A recipe of the justfile: its name, attributes, parameters and body lines. */
 export interface JustRecipe {
@@ -178,51 +182,216 @@ export function variadicViolations(justfile: Justfile): string[] {
     );
 }
 
-/** A `run:` script of a workflow: the line it starts on (from 1) and its text. */
-export interface RunScript {
-  line: number;
-  text: string;
+/** A file GitHub reads steps from: a workflow, or an action kept in the repository. */
+export type WorkflowFileKind = 'workflow' | 'action';
+
+/** A file the workflow guard reads: its path from the repository root, and its kind. */
+export interface GuardedWorkflowFile {
+  path: string;
+  kind: WorkflowFileKind;
 }
 
-const RUN_KEY = /^(\s*)(?:-\s+)?run:\s*(.*)$/;
-const BLOCK_SCALAR = /^[|>][-+]?\d*\s*(?:#.*)?$/;
+/** What starts an expression GitHub evaluates and pastes into the value that holds it. */
+const EXPRESSION = '${{';
 
-function indentOf(line: string): number {
-  return line.length - line.trimStart().length;
+/**
+ * The places of a workflow or an action where GitHub hands a value to no
+ * shell and no script: the only places a `${{ … }}` may stand. A place
+ * names the mapping keys and sequence items from the document's root:
+ * `*` is any key, `#` any item. Every other place is refused, so a new
+ * form of a shell step (a key spelled another way, a value reached
+ * through an alias or a merge) is refused rather than missed.
+ */
+const EXPRESSION_PLACES: Record<WorkflowFileKind, readonly string[]> = {
+  workflow: [
+    'run-name',
+    'env.*',
+    'jobs.*.name',
+    'jobs.*.if',
+    'jobs.*.runs-on',
+    'jobs.*.env.*',
+    'jobs.*.outputs.*',
+    'jobs.*.with.*',
+    'jobs.*.steps.#.name',
+    'jobs.*.steps.#.if',
+    'jobs.*.steps.#.env.*',
+    'jobs.*.steps.#.with.*',
+  ],
+  action: [
+    'inputs.*.default',
+    'outputs.*.value',
+    'runs.steps.#.name',
+    'runs.steps.#.if',
+    'runs.steps.#.env.*',
+    'runs.steps.#.with.*',
+  ],
+};
+
+/** Action inputs that hold code the action runs (actions/github-script runs `script`), refused under any `with`. */
+const SCRIPT_INPUTS: ReadonlySet<string> = new Set(['script']);
+
+/** The most aliases a file may resolve; more is refused (an alias can repeat a large value many times). */
+const MAX_ALIASES = 100;
+
+/** A place in a document: its mapping keys and sequence items from the root. */
+type Place = readonly (string | number)[];
+
+/** Whether `place` is the place `pattern` names (see `EXPRESSION_PLACES`). */
+function isPlaceOf(place: Place, pattern: string): boolean {
+  const steps = pattern.split('.');
+  return (
+    steps.length === place.length &&
+    steps.every((step, i) => {
+      const at = place[i];
+      if (step === '#') return typeof at === 'number';
+      return typeof at === 'string' && (step === '*' || step === at);
+    })
+  );
+}
+
+/** Whether GitHub hands the value at `place` of a `kind` file to no shell and no script. */
+function isExpressionPlace(kind: WorkflowFileKind, place: Place): boolean {
+  const name = place.at(-1);
+  if (place.at(-2) === 'with' && typeof name === 'string' && SCRIPT_INPUTS.has(name)) return false;
+  return EXPRESSION_PLACES[kind].some((pattern) => isPlaceOf(place, pattern));
+}
+
+/** A place as a person reads it: `jobs.build.steps[0].run`. */
+function placeName(place: Place): string {
+  return place
+    .map((at, i) => (typeof at === 'number' ? `[${at}]` : i === 0 ? at : `.${at}`))
+    .join('');
+}
+
+/** An expression found in a document: at a value's place, or in a key of the mapping at `place`. */
+interface FoundExpression {
+  place: Place;
+  isKey: boolean;
 }
 
 /**
- * The `run:` scripts of a workflow: a block (`run: |`) is every line
- * after the key indented more than the key, or blank; an inline value is
- * the rest of the key's line.
+ * Every expression in a document read into plain values: each string
+ * value or key that holds one. A value that holds itself (a recursive
+ * alias) is reported as found where it repeats, never walked again.
  */
-export function runScripts(workflow: string): RunScript[] {
-  const lines = workflow.split('\n');
-  const scripts: RunScript[] = [];
-  lines.forEach((line, index) => {
-    const run = RUN_KEY.exec(line);
-    if (!run) return;
-    if (!BLOCK_SCALAR.test(run[2])) {
-      scripts.push({ line: index + 1, text: run[2] });
-      return;
-    }
-    const keyIndent = indentOf(line) + (line.trimStart().startsWith('-') ? 2 : 0);
-    const block: string[] = [];
-    for (const next of lines.slice(index + 1)) {
-      if (next.trim() !== '' && indentOf(next) <= keyIndent) break;
-      block.push(next);
-    }
-    scripts.push({ line: index + 1, text: block.join('\n') });
-  });
-  return scripts;
+function expressionsIn(value: unknown, place: Place, ancestors: Set<object>): FoundExpression[] {
+  if (typeof value === 'string') return value.includes(EXPRESSION) ? [{ place, isKey: false }] : [];
+  if (typeof value !== 'object' || value === null) return [];
+  if (ancestors.has(value)) return [{ place, isKey: false }];
+  const inside = new Set(ancestors).add(value);
+  if (Array.isArray(value)) {
+    return value.flatMap((item, i) => expressionsIn(item, [...place, i], inside));
+  }
+  return Object.entries(value).flatMap(([key, item]) => [
+    ...(key.includes(EXPRESSION) ? [{ place, isKey: true }] : []),
+    ...expressionsIn(item, [...place, key], inside),
+  ]);
 }
 
-/** Every `run:` script of a workflow that holds a `${{ … }}` expression, by the line it starts on. */
-export function runExpressionViolations(name: string, workflow: string): string[] {
-  return runScripts(workflow)
-    .filter((script) => script.text.includes('${{'))
-    .map(
-      (script) =>
-        `${name}:${script.line}: a run: script holds a \${{ … }} expression; pass it through env: and read it as "$NAME"`,
-    );
+/**
+ * Why a document cannot be checked as text: the first explicit tag it
+ * holds (`!!binary` turns base64 into bytes that may spell `${{`), or
+ * null when it holds none. Workflows have no use for a tag.
+ */
+function tagIn(document: Document.Parsed): string | null {
+  let tag: string | null = null;
+  visit(document, {
+    Node(_key, node) {
+      if (node.tag === undefined) return undefined;
+      tag = `a value tagged ${node.tag}, which the guard does not read as text`;
+      return visit.BREAK;
+    },
+  });
+  return tag;
+}
+
+function expressionViolation(name: string, found: FoundExpression): string {
+  const where = placeName(found.place);
+  if (found.isKey) {
+    return `${name}: ${where} holds a \${{ … }} expression in a key, where GitHub reads none`;
+  }
+  return `${name}: ${where} holds a \${{ … }} expression outside the places GitHub hands it to no shell and no script; pass it through env: and read it as "$NAME"`;
+}
+
+/**
+ * Every `${{ … }}` of a workflow or an action file (`text`, named `name`
+ * in the messages) that stands outside the places GitHub hands to no
+ * shell and no script (`EXPRESSION_PLACES`). The file is read by a YAML
+ * parser, so every form of a value counts: a block, a plain or quoted
+ * scalar over several lines, a flow mapping, a quoted key, an escape
+ * such as `\x24{{`, an alias, a merge key. Every scalar is read as text
+ * (the failsafe schema). A file the parser cannot read, reads with a
+ * warning, or that holds an explicit tag, is refused.
+ */
+export function workflowExpressionViolations(
+  name: string,
+  text: string,
+  kind: WorkflowFileKind,
+): string[] {
+  const violations: string[] = [];
+  for (const document of parseAllDocuments(text, { schema: 'failsafe' })) {
+    const problem = document.errors[0]?.message ?? document.warnings[0]?.message ?? tagIn(document);
+    if (problem !== null) {
+      violations.push(`${name}: cannot read the YAML: ${problem}`);
+      continue;
+    }
+    let value: unknown;
+    try {
+      value = document.toJS({ maxAliasCount: MAX_ALIASES });
+    } catch (error) {
+      violations.push(`${name}: cannot read the YAML: ${(error as Error).message}`);
+      continue;
+    }
+    for (const found of expressionsIn(value, [], new Set())) {
+      if (found.isKey || !isExpressionPlace(kind, found.place)) {
+        violations.push(expressionViolation(name, found));
+      }
+    }
+  }
+  return violations;
+}
+
+/** The directory GitHub reads workflows from: its files, not its subdirectories. */
+const WORKFLOWS_DIR = '.github/workflows';
+
+/** The directory that holds the repository's own actions, at any depth. */
+const ACTIONS_DIR = '.github/actions';
+
+const YAML_NAME = /\.ya?ml$/i;
+
+/** How many directories deep the guard reads under `ACTIONS_DIR`; deeper is refused, never skipped. */
+const MAX_ACTION_DEPTH = 16;
+
+/** The YAML files in `dir` (a path from `root`), and with `depth` in its subdirectories that deep. */
+function yamlFilesIn(root: string, dir: string, depth: number): string[] {
+  if (!existsSync(join(root, dir))) return [];
+  return readdirSync(join(root, dir))
+    .sort()
+    .flatMap((entry) => {
+      const path = `${dir}/${entry}`;
+      // statSync follows a link, so a linked file or directory is read as what it names.
+      const stat = statSync(join(root, path));
+      if (stat.isFile()) return YAML_NAME.test(entry) ? [path] : [];
+      if (!stat.isDirectory() || depth === 0) return [];
+      if (depth === 1) throw new Error(`${path} is more than ${MAX_ACTION_DEPTH} directories deep`);
+      return yamlFilesIn(root, path, depth - 1);
+    });
+}
+
+/**
+ * The files of the repository at `root` the workflow guard reads: every
+ * `.yml` and `.yaml` workflow, and every YAML file under
+ * `.github/actions` at any depth (a composite action's `action.yml`
+ * runs steps too). Sorted by path.
+ */
+export function guardedWorkflowFiles(root: string): GuardedWorkflowFile[] {
+  const workflows = yamlFilesIn(root, WORKFLOWS_DIR, 0).map((path) => ({
+    path,
+    kind: 'workflow' as const,
+  }));
+  const actions = yamlFilesIn(root, ACTIONS_DIR, MAX_ACTION_DEPTH + 1).map((path) => ({
+    path,
+    kind: 'action' as const,
+  }));
+  return [...workflows, ...actions].sort((a, b) => (a.path < b.path ? -1 : 1));
 }

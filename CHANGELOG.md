@@ -305,7 +305,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `just release-notes` takes only `X.Y.Z`, `just dev` only a number and
   `just release-remote` only `major`, `minor` or `patch`. A test fails
   when a recipe pastes anything but a variable set to a fixed string, or
-  a workflow pastes an expression into a `run:` script.
+  when a workflow (`.yml` or `.yaml`) or a file under `.github/actions`
+  holds an expression anywhere but an `if`, an `env` value or an action
+  input other than `script`. The test reads those files with a YAML
+  parser (`yaml`, a new development dependency), so a step spelled as a
+  flow mapping, with a quoted key, an alias, a merge key or an escape
+  is checked like any other, and a file it cannot read fails it.
 - A log chain's tab whose files change twice before it shows its line
   again (a rotation that renames the files, then compresses one) looks
   for that line from the name the first change gave its file, so it no
