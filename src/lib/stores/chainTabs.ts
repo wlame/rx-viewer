@@ -28,7 +28,9 @@ import type {
   IndexBuild,
   OpenFile,
 } from '../types';
+import { compareParts, changeNotice, type PartChanges } from '../utils/chainChanges';
 import { isChainIndexed, neighbourPartWithLines } from '../utils/chainParts';
+import { directoryOf, nameOf, partPath } from '../utils/chainSwitch';
 import { chainTimeRefusal } from '../utils/chainTime';
 import {
   MAX_CHANGES_IN_WINDOW,
@@ -43,6 +45,7 @@ import {
   flattenPieces,
   globalPage,
   learnCounts,
+  nearestSameText,
   pageBase,
   pendingEnds,
   pendingPage,
@@ -100,6 +103,12 @@ export interface OpenChainOptions {
   position?: ChainPosition;
   /** Highlighting as a link gives it, in place of the size-based default. */
   syntaxHighlighting?: boolean;
+  /**
+   * The fingerprint of the chain's files that `position` was read from (a
+   * search's): when the files are others now, the position names other
+   * text, and the tab does not go there.
+   */
+  fingerprint?: string;
 }
 
 /** Lines asked before and after the target of a jump: the most the backend serves on a side. */
@@ -150,16 +159,6 @@ type OmitEach<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 /** A request of a chain's lines, without the handle: by lines (of a part), or by times. */
 type ChainRequest = OmitEach<LogSamplesParams, 'handle'>;
-
-/** The name of a chain from its handle: the last element of the path. */
-function nameOf(handle: string): string {
-  return handle.slice(handle.lastIndexOf('/') + 1);
-}
-
-/** The directory of a chain from its handle. */
-function directoryOf(handle: string): string {
-  return handle.slice(0, handle.lastIndexOf('/')) || '/';
-}
 
 /**
  * The value a time position sends as `timestamps`: an instant in RFC 3339
@@ -257,6 +256,16 @@ function resolvePosition(position: ChainPosition, chain: ChainResponse): ChainPo
   if (chain.parts.some((part) => part.name === position.part)) return position;
   const timeMs = position.timeMs ?? null;
   return timeMs === null ? { kind: 'start' } : { kind: 'time', ms: timeMs };
+}
+
+/** What a tab knew of its anchor line before its chain's files changed, and where it is now. */
+interface ChainChange {
+  /** The anchor before the change. */
+  anchor: ChainAnchor | null;
+  /** The anchor's part under its name after the change; null when that file is gone. */
+  moved: ChainAnchor | null;
+  /** The anchor line's text, or null when the tab did not hold it. */
+  text: string | null;
 }
 
 export function createChainTabs(deps: ChainTabDeps) {
@@ -501,9 +510,10 @@ export function createChainTabs(deps: ChainTabDeps) {
   /**
    * Describe the chain of the tab `key` and keep the description. A
    * description the tab already holds is sent back by its fingerprint,
-   * so a chain whose files changed answers as changed. Null when the
-   * request was superseded or failed (the tab says why), or the handle
-   * names no chain (the tab closes).
+   * so a chain whose files changed answers as changed, and that new
+   * description is not kept: the caller reads the chain again with it.
+   * Null when the request was superseded or failed (the tab says why), or
+   * the handle names no chain (the tab closes).
    */
   async function describe(
     key: TabKey,
@@ -518,7 +528,9 @@ export function createChainTabs(deps: ChainTabDeps) {
       });
       if (answer === SUPERSEDED) return null;
       const isChanged = answer.kind === 'changed';
-      applyDescription(key, answer.chain, isChanged);
+      // A changed chain is the caller's to read again: the tab keeps the
+      // description it held until then, to compare the parts with.
+      if (!isChanged) applyDescription(key, answer.chain, false);
       return { chain: answer.chain, isChanged };
     } catch (error) {
       if (isAbortError(error)) return null;
@@ -577,7 +589,35 @@ export function createChainTabs(deps: ChainTabDeps) {
       notifications.error(`${handle} is not a log chain`, NOTICE_MS);
       return;
     }
-    await deps.openFileAt(`${directoryOf(handle)}/${anchor.part}`, anchor.line);
+    const path = partPath(handle, anchor.part);
+    if (!(await isListed(path))) {
+      notifications.info(
+        `${nameOf(handle)} is no longer a log chain, and ${anchor.part} is gone`,
+        NOTICE_MS,
+      );
+      return;
+    }
+    await deps.openFileAt(path, anchor.line);
+  }
+
+  /**
+   * Whether the listing of its directory names the file `path`. A listing
+   * that fails says nothing, and the file is taken to be there: its tab
+   * then says why it cannot be read.
+   */
+  async function isListed(path: string): Promise<boolean> {
+    try {
+      const listing = await api.getTree(directoryOf(path));
+      return (listing.entries ?? []).some((entry) => entry.path === path);
+    } catch (error) {
+      console.debug('The directory listing failed; opening the file all the same:', path, error);
+      return true;
+    }
+  }
+
+  /** Whether `error` says the handle names no chain (any more). */
+  function isNoChain(error: unknown): boolean {
+    return error instanceof ApiError && error.status === HTTP_NOT_FOUND;
   }
 
   /**
@@ -655,7 +695,13 @@ export function createChainTabs(deps: ChainTabDeps) {
         signal,
         onStatus: (task) => showBuild({ taskId, progress: task.progress }),
       });
-      await describe(key);
+      // A chain whose files changed meanwhile is read again by the caller:
+      // the request was planned on the parts and numbers it had.
+      const described = await describe(key);
+      if (described?.isChanged) {
+        deps.patchTab(key, () => ({ indexBuild: null }));
+        return { kind: 'changed', chain: described.chain };
+      }
     }
   }
 
@@ -833,7 +879,9 @@ export function createChainTabs(deps: ChainTabDeps) {
     try {
       answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
     } catch (error) {
-      if (!isAbortError(error)) showFailure(key, error);
+      if (isAbortError(error)) return;
+      if (isNoChain(error)) await closeAsNoChain(key);
+      else showFailure(key, error);
       return;
     }
     if (answer === SUPERSEDED) return;
@@ -936,40 +984,151 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
-   * The chain's files changed on disk (a rotation): keep its current
-   * description, drop the lines, and find the anchor line again by its
-   * time once the chain is ready, else by its part when that still
-   * exists, else show the start. After two changes in a row with no
-   * lines read between them, the tab stops and says why.
+   * The chain's files changed on disk (a rotation): say how, keep its new
+   * description, drop the lines, and find the anchor line again
+   * (`findAnchorAgain`). A chain that is invalid now leaves its tab
+   * (`leaveInvalidChain`). After more than `MAX_CHANGES_IN_WINDOW`
+   * changes within a minute, the tab stops and says why.
    */
   async function readAgainAfterChange(key: TabKey, chain: ChainResponse): Promise<void> {
-    const changes = changesInWindow(changeTimes.get(key) ?? [], Date.now());
-    changeTimes.set(key, changes);
-    if (changes.length > MAX_CHANGES_IN_WINDOW) {
+    const change = noteChange(key, chain);
+    if (change === null) return;
+    if (chain.state === 'invalid') {
+      await leaveInvalidChain(key, chain, change.moved);
+      return;
+    }
+    await findAnchorAgain(key, chain, change);
+  }
+
+  /**
+   * Take in a change of the chain's files: count it towards the stop,
+   * compare the parts the tab held with the chain's parts now and say how
+   * they changed, keep the new description and drop the lines. Null when
+   * the files changed too often and the tab stopped.
+   */
+  function noteChange(key: TabKey, chain: ChainResponse): ChainChange | null {
+    const times = changesInWindow(changeTimes.get(key) ?? [], Date.now());
+    changeTimes.set(key, times);
+    if (times.length > MAX_CHANGES_IN_WINDOW) {
       changeTimes.delete(key);
       showError(
         key,
         new Error(`The files of ${chain.name} keep changing on disk; open the chain again later`),
       );
+      return null;
+    }
+    const tab = deps.getTab(key);
+    const before = tab?.chain?.description ?? null;
+    const anchor = tab?.chain?.anchor ?? null;
+    const changes = before === null ? null : compareParts(before.parts, chain.parts);
+    notifications.info(changeNotice(chain.name, changes), NOTICE_MS);
+    const text = tab && anchor ? anchorTextOf(tab, anchor) : null;
+    applyDescription(key, chain, true);
+    deps.patchTab(key, () => ({ lines: [], startLine: 1, endLine: 0 }));
+    return { anchor, moved: anchor && movedAnchor(anchor, changes), text };
+  }
+
+  /** The text of the held line the tab is anchored on, when it is the anchor's line. */
+  function anchorTextOf(tab: OpenFile, anchor: ChainAnchor): string | null {
+    const line = tab.lines[tab.anchorLine - tab.startLine];
+    const isAnchorLine =
+      line?.lineNumber === tab.anchorLine &&
+      line.part === anchor.part &&
+      line.localLine === anchor.line;
+    return isAnchorLine ? line.content : null;
+  }
+
+  /**
+   * The anchor in the file that held it, under that file's name after the
+   * change; null when the file is gone. Without a comparison (the tab
+   * held no description), the part keeps its name.
+   */
+  function movedAnchor(anchor: ChainAnchor, changes: PartChanges | null): ChainAnchor | null {
+    if (changes === null) return anchor;
+    const name = changes.nameMap.get(anchor.part);
+    return name === undefined ? null : { ...anchor, part: name };
+  }
+
+  /**
+   * Show the anchor line after a change of the chain's files. A ready
+   * chain is read at the anchor's time, and the view goes to the nearest
+   * line with the anchor's text there, else to the time's line. Before
+   * the chain is ready (a numbered rotation renames every part, and each
+   * is indexed again), the file that held the anchor is read under its
+   * new name at the same line; a line there with other text falls back to
+   * the time. Without a time or that file, the chain's start.
+   */
+  async function findAnchorAgain(
+    key: TabKey,
+    chain: ChainResponse,
+    { anchor, moved, text }: ChainChange,
+  ): Promise<void> {
+    const time = anchor?.timeMs ?? null;
+    if (chain.state === 'ready' && time !== null) {
+      await showByTimeAndText(key, time, text);
+      return;
+    }
+    if (moved !== null) {
+      await show(key, { kind: 'local', part: moved.part, line: moved.line, timeMs: time }, false);
+      const tab = deps.getTab(key);
+      const shown = tab?.lines[tab.anchorLine - tab.startLine]?.content;
+      if (text === null || time === null || shown === text) return;
+    }
+    if (time !== null) {
+      await showByTimeAndText(key, time, text);
+      return;
+    }
+    if (moved === null) await show(key, { kind: 'start' }, false);
+  }
+
+  /**
+   * Show the chain at the instant `ms`, then go to the nearest held line
+   * whose text is `text`, which the time's line and its context hold when
+   * several lines share the anchor's time.
+   */
+  async function showByTimeAndText(key: TabKey, ms: number, text: string | null): Promise<void> {
+    await show(key, { kind: 'time', ms }, false);
+    const tab = deps.getTab(key);
+    if (!tab || text === null) return;
+    const found = nearestSameText(tab.lines, tab.startLine, tab.anchorLine, text);
+    if (found === null || found === tab.anchorLine) return;
+    deps.patchTab(key, (t) => ({
+      scrollToLine: found,
+      anchorLine: found,
+      chain: t.chain && {
+        ...t.chain,
+        anchor: anchorAt(t.lines, t.startLine, found) ?? t.chain.anchor,
+      },
+    }));
+  }
+
+  /**
+   * The chain is invalid after its files changed: its tab becomes the
+   * file tab of the file that held its anchor line, at that line, under
+   * the file's name now; when that file is gone, or the tab had no
+   * anchor, the tab closes. A notice says which.
+   */
+  async function leaveInvalidChain(
+    key: TabKey,
+    chain: ChainResponse,
+    moved: ChainAnchor | null,
+  ): Promise<void> {
+    const handle = handleOf(key);
+    const codes = chain.reasons.map((reason) => reason.code).join(', ');
+    forget(key);
+    deps.closeTab(key);
+    if (moved === null) {
+      notifications.info(
+        `${chain.name} is no longer a valid log chain, and the file that held its line is gone`,
+        NOTICE_MS,
+      );
       return;
     }
     notifications.info(
-      `Files of ${chain.name} changed on disk; the chain was read again`,
+      `${chain.name} is no longer a valid log chain${codes ? ` (${codes})` : ''}; ${moved.part} opens as a file`,
       NOTICE_MS,
     );
-    applyDescription(key, chain, true);
-    const anchor = chainOf(key)?.anchor ?? null;
-    deps.patchTab(key, () => ({ lines: [], startLine: 1, endLine: 0 }));
-    if (chain.state === 'invalid') {
-      deps.patchTab(key, () => ({ loading: false }));
-      return;
-    }
-    let position: ChainPosition = { kind: 'start' };
-    if (anchor?.timeMs != null && chain.state === 'ready')
-      position = { kind: 'time', ms: anchor.timeMs };
-    else if (anchor !== null)
-      position = { kind: 'local', part: anchor.part, line: anchor.line, timeMs: anchor.timeMs };
-    await show(key, position, false);
+    await deps.openFileAt(partPath(handle, moved.part), moved.line);
   }
 
   /**
@@ -1014,14 +1173,24 @@ export function createChainTabs(deps: ChainTabDeps) {
    * store before the first request, and it closes with a notice when
    * chain features cannot act; an invalid chain shows its reasons and no
    * lines.
+   *
+   * With a `fingerprint` (a search's), the position holds only for those
+   * files: a chain whose files changed since opens at its start, and an
+   * open tab stays where it is (it describes its chain first when its
+   * own description is not of those files); either says to search again.
+   * Resolves whether the tab shows the files `fingerprint` names.
    */
-  async function openChain(handle: string, options: OpenChainOptions = {}): Promise<void> {
-    const { position = { kind: 'start' }, syntaxHighlighting } = options;
+  async function openChain(handle: string, options: OpenChainOptions = {}): Promise<boolean> {
+    const { position = { kind: 'start' }, syntaxHighlighting, fingerprint } = options;
     const key = chainKey(handle);
+    const isSearched = () =>
+      fingerprint === undefined || chainOf(key)?.description?.fingerprint === fingerprint;
     if (deps.getTab(key)) {
       deps.setActive(key);
+      if (!isSearched()) await refresh(key);
+      if (!isSearched()) return changedSinceSearch(key);
       if (position.kind !== 'start') await moveTo(key, position);
-      return;
+      return isSearched() || changedSinceSearch(key);
     }
     if (syntaxHighlighting !== undefined) highlightGiven.add(key);
     deps.addTab(newChainTab(handle, position, syntaxHighlighting ?? true));
@@ -1032,15 +1201,30 @@ export function createChainTabs(deps: ChainTabDeps) {
       forget(key);
       deps.closeTab(key);
       notifications.info(`${refused} (${handle})`, NOTICE_MS);
-      return;
+      return false;
     }
     const described = await describe(key);
-    if (described === null) return;
+    if (described === null) return false;
     if (described.chain.state === 'invalid') {
       deps.patchTab(key, () => ({ loading: false }));
-      return;
+      return isSearched();
+    }
+    if (!isSearched()) {
+      deps.patchTab(key, (tab) => ({ chain: tab.chain && { ...tab.chain, anchor: null } }));
+      await show(key, { kind: 'start' });
+      return changedSinceSearch(key);
     }
     await show(key, position);
+    return isSearched() || changedSinceSearch(key);
+  }
+
+  /** Say that the chain of the tab `key` changed since the search that named a line in it. */
+  function changedSinceSearch(key: TabKey): false {
+    notifications.info(
+      `The chain ${nameOf(handleOf(key))} changed since the search; search again`,
+      NOTICE_MS,
+    );
+    return false;
   }
 
   /** The position of `target` among the held lines, or null when they do not hold it. */
@@ -1138,6 +1322,10 @@ export function createChainTabs(deps: ChainTabDeps) {
       answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
     } catch (error) {
       if (isAbortError(error)) return;
+      if (isNoChain(error)) {
+        await closeAsNoChain(key);
+        return;
+      }
       deps.patchTab(key, () => ({ loading: false }));
       if (error instanceof ChainBusyError) notifications.info(error.message, NOTICE_MS);
       console.error('Failed to load more lines of the log chain:', key, error);
@@ -1332,10 +1520,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       return { kind: 'refused', message: messageOf(error) };
     }
     if (answer === SUPERSEDED) return afterCutShort();
-    if (answer.kind === 'changed') {
-      await readAgainAfterChange(key, answer.chain);
-      return { kind: 'superseded' };
-    }
+    if (answer.kind === 'changed') return jumpAfterChange(key, query, answer.chain, isRetry);
     if (answer.kind === 'invalid') {
       // The query or the chain: the description says which, and an
       // invalid chain then shows its reasons.
@@ -1344,6 +1529,35 @@ export function createChainTabs(deps: ChainTabDeps) {
       return { kind: 'refused', message: answer.detail };
     }
     return showTimeAnswer(key, { position, value }, request, answer.samples);
+  }
+
+  /**
+   * The chain's files changed while a jump by time ran: take the change
+   * in and ask the time once more in the chain as it is now. A jump that
+   * cannot go there (the chain is pending again, or it is a second
+   * change) says why, and the tab finds its anchor line again.
+   */
+  async function jumpAfterChange(
+    key: TabKey,
+    query: TimeQuery,
+    chain: ChainResponse,
+    isRetry: boolean,
+  ): Promise<TimeJumpOutcome> {
+    deps.patchTab(key, () => ({ loading: false }));
+    const change = noteChange(key, chain);
+    const changedMessage = `The files of ${chain.name} changed on disk while the jump ran; ask for the time again`;
+    if (change === null) return { kind: 'refused', message: changedMessage };
+    if (chain.state === 'invalid') {
+      await leaveInvalidChain(key, chain, change.moved);
+      return { kind: 'refused', message: `${chain.name} is no longer a valid log chain` };
+    }
+    const outcome: TimeJumpOutcome = isRetry
+      ? { kind: 'refused', message: changedMessage }
+      : await jumpToTimeOnce(key, query, true);
+    if (outcome.kind === 'refused' || outcome.kind === 'unsupported') {
+      await findAnchorAgain(key, chain, change);
+    }
+    return outcome;
   }
 
   /** Show the answer of a jump by time to `value`, and say where it landed. */

@@ -22,8 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps the line the tab is anchored on as `part=` (the part that holds
   it), `line=` (its line in that part) and `time=` (its timestamp); a
   link whose part is gone opens at that time. An invalid chain shows no
-  lines. A chain whose files changed on disk (a rotation) is read again
-  at the anchor line's time, with a notice.
+  lines.
 - What a chain's tab shows. The gutter shows global numbers once the
   chain is ready; before that it shows each part's own numbers, muted.
   Every second part's numbers are in a second colour, in light and dark
@@ -100,6 +99,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after five the tab says so and stops. The tab stops reading a chain
   whose files changed three times within a minute, whatever it read
   between the changes.
+- A rotation while a log chain's tab is open. When the tab's next
+  request finds the chain's files changed on disk (the backend's 409), a
+  notice says how, from the parts before and after compared by name,
+  size, modification time and first timestamp: "Files of syslog changed
+  on disk (renamed 2, new 1, removed 1); chain reloaded". The tab drops
+  its lines and finds its line again: in a ready chain at the line's
+  time, on the nearest line around it with the same text; while the
+  chain is pending again (a numbered rotation renames every part, and
+  each is indexed again), at the same line of the file that held it,
+  under that file's new name, and at its time when that line reads
+  otherwise. A chain that is invalid after the change, or no longer a
+  chain, becomes the file tab of the file that held the line, at that
+  line; when that file is gone, the tab closes with a notice. A jump by
+  time that meets a change asks for the time once more in the chain as
+  it is now, or says in the box why it cannot.
 - A zone the backend refuses for a log chain is dropped with a notice,
   and the chain is read as its lines write times, as for a file.
   Choosing a zone while a jump by time on a chain runs cancels the jump
@@ -119,6 +133,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode off, or in a chain the search found invalid, a click opens the
   part as a file at its line. The summary counts the log chains found.
   With chain mode off a search is the same as before.
+- A click on a search match in a log chain whose files changed since
+  the search (a rotation renamed its parts, so the match's part and line
+  now name other text) does not go there: a chain's new tab opens at its
+  start, an open tab stays where it is, no line is marked, and a notice
+  says "The chain app.log changed since the search; search again".
 - The files a search skipped are listed under its summary, closed until
   opened ("N files skipped"), each by its path under the searched folder
   (the full path in its tooltip) with the backend's reason: a binary

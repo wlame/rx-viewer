@@ -38,7 +38,9 @@ const traceState = trace as unknown as Writable<{
 
 const { openFileAtLine, openChainAt } = vi.hoisted(() => ({
   openFileAtLine: vi.fn(async (_path: string, _line: number) => {}),
-  openChainAt: vi.fn(async (_handle: string, _position: unknown, _marks: unknown) => {}),
+  openChainAt: vi.fn(
+    async (_handle: string, _position: unknown, _marks: unknown, _fingerprint?: string) => {},
+  ),
 }));
 vi.mock('$lib/fileOpening', () => ({ openFileAtLine, openChainAt }));
 
@@ -253,10 +255,16 @@ describe('SearchResults of a chain search', () => {
     row(target, 1).click();
     await settle();
 
-    expect(openChainAt).toHaveBeenCalledWith('/logs/app.log', { kind: 'global', line: 3500 }, [
-      { lineNumber: 12, part: 'app.log.2.gz', patternId: 'p1', pattern: 'timeout' },
-      { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' },
-    ]);
+    // The chain's fingerprint as the search read it goes with the click.
+    expect(openChainAt).toHaveBeenCalledWith(
+      '/logs/app.log',
+      { kind: 'global', line: 3500 },
+      [
+        { lineNumber: 12, part: 'app.log.2.gz', patternId: 'p1', pattern: 'timeout' },
+        { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' },
+      ],
+      '00000000000000a1',
+    );
     expect(openFileAtLine).not.toHaveBeenCalled();
   });
 
@@ -271,6 +279,7 @@ describe('SearchResults of a chain search', () => {
       '/logs/svc.log',
       { kind: 'local', part: 'svc.log.1', line: 7 },
       [{ lineNumber: 7, part: 'svc.log.1', patternId: 'p1', pattern: 'timeout' }],
+      '00000000000000a1',
     );
   });
 
@@ -337,6 +346,7 @@ describe('SearchResults of a chain search', () => {
       '/logs/app.log',
       { kind: 'local', part: 'app.log.1', line: 321 },
       [{ lineNumber: 321, part: 'app.log.1', patternId: 'p1', pattern: 'timeout' }],
+      '00000000000000a1',
     );
   });
 });

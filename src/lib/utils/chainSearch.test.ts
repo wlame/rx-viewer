@@ -47,6 +47,7 @@ describe('chainPlaceOf', () => {
       state: 'ready',
       chainLine: 3500,
       part: 'app.log.1',
+      fingerprint: '00000000000000a1',
     });
   });
 
@@ -57,6 +58,7 @@ describe('chainPlaceOf', () => {
       state: 'pending',
       chainLine: null,
       part: 'svc.log.1',
+      fingerprint: '00000000000000a1',
     });
   });
 
@@ -68,6 +70,18 @@ describe('chainPlaceOf', () => {
     });
 
     expect(chainPlaceOf(capped.matches[0], capped)?.chainLine).toBeNull();
+  });
+
+  it('keeps the fingerprint of the files the search found in the chain', () => {
+    const rotated = chainSearchAnswer({
+      files: { f1: '/logs/app.log.1' },
+      chains: {
+        c1: chainRef('/logs/app.log', ['f1'], 'ready', { fingerprint: '00000000000000b2' }),
+      },
+      matches: [chainMatch({ file: 'f1', chain: 'c1', chain_line: 5 })],
+    });
+
+    expect(chainPlaceOf(rotated.matches[0], rotated)?.fingerprint).toBe('00000000000000b2');
   });
 
   it('places a file searched on its own in no chain', () => {
@@ -100,6 +114,7 @@ describe('opensChainTab', () => {
     state,
     chainLine: null,
     part: 'app.log.1',
+    fingerprint: '00000000000000a1',
   });
 
   it.each([
@@ -164,6 +179,21 @@ describe('chainTabMatches', () => {
   it('lists nothing for a trace answer', () => {
     expect(chainTabMatches(traceAnswer(), '/logs/app.log', () => 1)).toEqual([]);
   });
+
+  it.each(['toString', '__proto__'])(
+    'names a match whose pattern id %s the table lacks by its id',
+    (pattern) => {
+      const answer = chainSearchAnswer({
+        files: { f1: '/logs/app.log.1' },
+        chains: { c1: chainRef('/logs/app.log', ['f1'], 'ready') },
+        matches: [chainMatch({ file: 'f1', pattern, chain: 'c1', chain_line: 5 })],
+      });
+
+      const marks = chainTabMatches(answer, '/logs/app.log', () => 5);
+
+      expect(marks.map((mark) => mark.pattern)).toEqual([pattern]);
+    },
+  );
 });
 
 describe('chainMatchedLines', () => {
@@ -256,6 +286,7 @@ describe('noChainLineTitle', () => {
     state,
     chainLine: null,
     part: 'app.log.1',
+    fingerprint: '00000000000000a1',
   });
 
   it.each([

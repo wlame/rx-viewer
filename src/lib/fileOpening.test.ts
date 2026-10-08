@@ -219,7 +219,26 @@ describe('openChainAt', () => {
     const place = chainPlaceOf(match, answer);
     if (!place) throw new Error('the match is in no chain');
     const marks = chainTabMatches(answer, place.handle, (m) => m.absolute_line_number);
-    await openChainAt(place.handle, chainPositionOf(place, match.absolute_line_number), marks);
+    await openChainAt(
+      place.handle,
+      chainPositionOf(place, match.absolute_line_number),
+      marks,
+      place.fingerprint,
+    );
+  }
+
+  /** The files after a rotation: every part renamed one number up, and a new active file. */
+  const ROTATED: FakePart[] = [
+    { name: 'app.log.3.gz', lines: 3000, compression: 'gzip' },
+    { name: 'app.log.2.gz', lines: 1500, compression: 'gzip' },
+    { name: 'app.log.1', lines: 2000 },
+    { name: 'app.log', lines: 5, isActive: true },
+  ];
+
+  function changedNotices(): string[] {
+    return get(notifications)
+      .map((n) => n.message)
+      .filter((message) => message.includes('changed since the search'));
   }
 
   function tab(): OpenFile {
@@ -291,6 +310,55 @@ describe('openChainAt', () => {
     expect(markedTexts()).toContainEqual(
       expect.stringContaining('LINE 3500 part=app.log.1 local=500'),
     );
+  });
+
+  // The row reads app.log.1:500, which is now line 500 of another file.
+  it('opens a chain whose files changed since the search at its start, with no marks, and says so', async () => {
+    const chain = await serve('ready');
+    const answer = await searchChain();
+    chain.rotateTo(ROTATED);
+
+    await openFirstMatch(answer);
+
+    expect(tab().anchorLine).toBe(1);
+    expect(get(files).matches.get(KEY) ?? []).toEqual([]);
+    expect(changedNotices()).toEqual(['The chain app.log changed since the search; search again']);
+    expect(chain.samplesRequests.some((q) => q.get('lines') === '3500')).toBe(false);
+  });
+
+  it('leaves an open chain tab where it is, without the marks, for a match of an older search', async () => {
+    const chain = await serve('ready');
+    const answer = await searchChain();
+    await openFirstMatch(answer);
+    chain.rotateTo(ROTATED);
+    const second = answer.matches[1];
+    const place = chainPlaceOf(second, answer);
+    if (!place) throw new Error('the match is in no chain');
+
+    await openChainAt(
+      place.handle,
+      chainPositionOf(place, second.absolute_line_number),
+      [{ lineNumber: 7, part: 'app.log', patternId: 'p1', pattern: PATTERN }],
+      place.fingerprint,
+    );
+
+    expect(get(files).matches.get(KEY)).toEqual([]);
+    expect(changedNotices()).toHaveLength(1);
+    expect(tab().chain?.description?.fingerprint).toBe(chain.fingerprint);
+  });
+
+  it('moves an open chain tab whose files changed to a match of a search made since', async () => {
+    const chain = await serve('ready');
+    await openFirstMatch(await searchChain());
+    chain.rotateTo(ROTATED);
+    const answer = await searchChain();
+
+    await openFirstMatch(answer);
+
+    expect(changedNotices()).toEqual([]);
+    expect(tab().chain?.description?.fingerprint).toBe(chain.fingerprint);
+    const shown = tab().lines[tab().anchorLine - tab().startLine].content;
+    expect(shown).toBe(chain.partLineText('app.log.1', 500));
   });
 
   it('moves an open chain tab to the next match, in the same tab', async () => {

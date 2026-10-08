@@ -38,6 +38,11 @@ export interface ChainMatchPlace {
   chainLine: number | null;
   /** The name of the part the match is in: the last element of its path. */
   part: string;
+  /**
+   * The fingerprint of the chain's files when the search read them: a
+   * chain whose files changed since numbers its parts and lines otherwise.
+   */
+  fingerprint: string;
 }
 
 /** The last element of a path. */
@@ -63,6 +68,7 @@ export function chainPlaceOf(match: SearchMatch, response: SearchResponse): Chai
     state: chain.state,
     chainLine: chainLine >= 1 ? chainLine : null,
     part: fileNameOf(response.files[match.file]),
+    fingerprint: chain.fingerprint,
   };
 }
 
@@ -121,7 +127,9 @@ export function chainTabMatches(
       lineNumber: line,
       part: place.part,
       patternId: match.pattern,
-      pattern: response.patterns[match.pattern] ?? match.pattern,
+      pattern: Object.hasOwn(response.patterns, match.pattern)
+        ? response.patterns[match.pattern]
+        : match.pattern,
     });
   }
   return marks;

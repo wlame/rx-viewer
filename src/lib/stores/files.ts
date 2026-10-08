@@ -1025,9 +1025,10 @@ function createFilesStore() {
 
   /**
    * Open the tab of the log chain `handle` (`stores/chainTabs.ts`), or
-   * bring it forward at `options.position`.
+   * bring it forward at `options.position`. Resolves false when the
+   * chain's files are not the ones `options.fingerprint` names.
    */
-  function openChain(handle: string, options: OpenChainOptions = {}): Promise<void> {
+  function openChain(handle: string, options: OpenChainOptions = {}): Promise<boolean> {
     return chains.openChain(handle, options);
   }
 

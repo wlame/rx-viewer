@@ -146,7 +146,7 @@ describe('ChainTreeNode', () => {
   });
 
   it("opens the chain's tab and selects its row on a click", async () => {
-    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue();
+    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue(true);
     const { item } = mount();
 
     item.click();
@@ -158,7 +158,7 @@ describe('ChainTreeNode', () => {
   });
 
   it.each(['Enter', ' '])('opens the chain on %j', (key) => {
-    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue();
+    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue(true);
     const { item } = mount();
 
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -198,7 +198,7 @@ describe('ChainTreeNode', () => {
 
   it('lists the parts under the chain, read-only, when they are given', () => {
     const openFile = vi.spyOn(files, 'openFile').mockResolvedValue();
-    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue();
+    const openChain = vi.spyOn(files, 'openChain').mockResolvedValue(true);
     const parts = ['pkg.log.3.gz', 'pkg.log.1', 'pkg.log'].map(partNode);
     const { target } = mount(chainEntry(), parts);
 

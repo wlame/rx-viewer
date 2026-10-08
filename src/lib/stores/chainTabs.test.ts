@@ -877,3 +877,180 @@ describe('a time jump on a chain tab whose zone changes', () => {
     expect(tab().anchorLine).toBe(3000);
   });
 });
+
+describe('a rotation while a chain tab is open', () => {
+  /**
+   * Three files whose lines keep their text and times under any name:
+   * A (3000 lines from second 1), B (1500 from 3001) and C, the active
+   * file (2000 lines from 4450, so its first lines share times with B's
+   * last ones).
+   */
+  const A: FakePart = {
+    name: 'app.log.2.gz',
+    lines: 3000,
+    compression: 'gzip',
+    text: 'A',
+    startSecond: 1,
+    size: 60_000,
+    modifiedAt: '2026-10-01T00:50:00.000000Z',
+  };
+  const B: FakePart = {
+    name: 'app.log.1',
+    lines: 1500,
+    text: 'B',
+    startSecond: 3001,
+    size: 90_000,
+    modifiedAt: '2026-10-01T01:15:00.000000Z',
+  };
+  const C: FakePart = {
+    name: 'app.log',
+    lines: 2000,
+    isActive: true,
+    text: 'C',
+    startSecond: 4450,
+    size: 120_000,
+    modifiedAt: '2026-10-01T01:47:00.000000Z',
+  };
+  /** The rotation: A deleted, B compressed into app.log.2.gz, C renamed app.log.1, a new D. */
+  const ROTATED: FakePart[] = [
+    { ...B, name: 'app.log.2.gz', compression: 'gzip', size: 30_000 },
+    { ...C, name: 'app.log.1', isActive: false },
+    {
+      name: 'app.log',
+      lines: 10,
+      isActive: true,
+      text: 'D',
+      startSecond: 6500,
+      size: 600,
+      modifiedAt: '2026-10-01T02:00:00.000000Z',
+    },
+  ];
+
+  let chain: FakeChain;
+  beforeEach(async () => {
+    chain = await serve({ state: 'ready', parts: [A, B, C] });
+  });
+
+  /** The text of the line the tab is anchored on. */
+  function anchorText(): string | undefined {
+    const t = tab();
+    return t.lines[t.anchorLine - t.startLine]?.content;
+  }
+
+  it('says what changed and shows the same line in the renamed part while the chain is pending', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = anchorText();
+    expect(before).toContain('B local=500');
+
+    chain.rotateTo(ROTATED, 'pending');
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(get(notifications).map((n) => n.message)).toContain(
+      'Files of app.log changed on disk (renamed 2, new 1, removed 1); chain reloaded',
+    );
+    expect(anchorText()).toBe(before);
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.2.gz', line: 500 });
+    expect(chain.samplesRequests.at(-1)?.get('part')).toBe('app.log.2.gz');
+  });
+
+  // The time of the anchor line names the first line at or after it: a
+  // line of B with the same time; the anchor's own text is 51 lines on.
+  it('finds the anchor line again by its time and its text once the chain is ready', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log', line: 20 } });
+    const before = anchorText();
+    expect(before).toContain('C local=20');
+
+    chain.rotateTo(ROTATED, 'ready');
+    await files.loadMore(KEY, 'after');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(chain.samplesRequests.at(-1)?.getAll('timestamps')).toHaveLength(1);
+    expect(anchorText()).toBe(before);
+    expect(tab().anchorLine).toBe(1520);
+    expect(tab().scrollToLine).toBe(1520);
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.1', line: 20 });
+  });
+
+  it('becomes the file tab of the renamed part at its line when the chain is invalid after the change', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = anchorText();
+
+    chain.rotateTo(ROTATED, 'invalid');
+    await files.loadMore(KEY, 'after');
+
+    await vi.waitFor(() =>
+      expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.2.gz']),
+    );
+    const file = get(files).openFiles[0];
+    await vi.waitFor(() => expect(get(files).openFiles[0].loading).toBe(false));
+    const shown = get(files).openFiles[0];
+    expect(shown.lines[shown.anchorLine - shown.startLine]?.content).toBe(before);
+    expect(file.anchorLine).toBe(500);
+    expect(get(notifications).some((n) => n.message.includes('no longer a valid log chain'))).toBe(
+      true,
+    );
+  });
+
+  it('closes with a notice when the chain is invalid and the file that held its line is gone', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.2.gz', line: 5 } });
+
+    chain.rotateTo(ROTATED, 'invalid');
+    await files.loadMore(KEY, 'after');
+
+    await vi.waitFor(() => expect(get(files).openFiles).toEqual([]));
+    expect(get(notifications).some((n) => n.message.includes('is gone'))).toBe(true);
+  });
+
+  it('becomes the file tab of its part when the handle names no chain any more', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log', line: 20 } });
+    const before = anchorText();
+
+    chain.rotateTo([C]);
+    chain.isGone = true;
+    await files.loadMore(KEY, 'after');
+
+    await vi.waitFor(() => expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log']));
+    await vi.waitFor(() => expect(get(files).openFiles[0].loading).toBe(false));
+    const shown = get(files).openFiles[0];
+    expect(shown.anchorLine).toBe(20);
+    expect(shown.lines[shown.anchorLine - shown.startLine]?.content).toBe(before);
+  });
+
+  it('closes with a notice when the handle names no chain and its part is gone', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 20 } });
+
+    chain.rotateTo([C]);
+    chain.isGone = true;
+    await files.loadMore(KEY, 'after');
+
+    await vi.waitFor(() => expect(get(files).openFiles).toEqual([]));
+    expect(get(notifications).some((n) => n.message.includes('app.log.1 is gone'))).toBe(true);
+  });
+
+  it('asks a jump by time once more after the files changed, at the time asked', async () => {
+    await files.openChain(HANDLE);
+    chain.rotateTo(ROTATED, 'ready');
+
+    const outcome = await files.jumpToTime(KEY, T0_MS + 4469_000);
+
+    expect(outcome).toEqual({ kind: 'found', line: 1469 });
+    expect(tab().anchorLine).toBe(1469);
+    expect(get(notifications).some((n) => n.message.includes('changed on disk'))).toBe(true);
+    timeCursor.clear();
+  });
+
+  it('says so in the box when the chain is pending after the change, and shows its line', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 500 } });
+    const before = anchorText();
+    chain.rotateTo(ROTATED, 'pending');
+
+    const outcome = await files.jumpToTime(KEY, T0_MS + 4469_000);
+
+    expect(outcome.kind).toBe('refused');
+    expect(outcome.kind === 'refused' && outcome.message).toContain('not ready');
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+    expect(anchorText()).toBe(before);
+    timeCursor.clear();
+  });
+});

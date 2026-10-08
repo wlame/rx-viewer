@@ -145,7 +145,7 @@
       const marks = chainTabMatches(response, chain.handle, (m) =>
         displayLine(m, getFilePath(m.file)),
       );
-      await openChainAt(chain.handle, chainPositionOf(chain, line), marks);
+      await openChainAt(chain.handle, chainPositionOf(chain, line), marks, chain.fingerprint);
       return;
     }
     await openFileAtLine(filePath, line);

@@ -88,12 +88,18 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
  * parts: the open tab moves there, or the tab opens there. The tab marks
  * `marks`, the search's matches in the chain by part and line in it, so
  * the marks stay on their lines however the tab numbers them.
+ *
+ * `fingerprint` is the chain's as the search found it. When the chain's
+ * files changed since, the part and line of a match name other text: the
+ * tab does not go there (a new tab opens at the chain's start), marks
+ * nothing, and says to search again.
  */
 export async function openChainAt(
   handle: string,
   position: ChainPosition,
   marks: FileMatch[],
+  fingerprint?: string,
 ): Promise<void> {
-  files.setMatches(chainKey(handle), marks);
-  await files.openChain(handle, { position });
+  const isSearchedChain = await files.openChain(handle, { position, fingerprint });
+  files.setMatches(chainKey(handle), isSearchedChain ? marks : []);
 }
