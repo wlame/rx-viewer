@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { trace, tree, files } from '$lib/stores';
+  import { chainModeOn } from '$lib/stores/chainMode';
   import { notifications } from '$lib/stores/notifications';
   import { searchShowsOffsets } from '$lib/stores/layout';
   import {
@@ -12,11 +13,19 @@
   } from '$lib/offsetLines';
   import { SUPERSEDED } from '$lib/utils/latestRequest';
   import { resolveMatchLine } from '$lib/utils/matchLine';
-  import { searchedFileCount } from '$lib/utils/traceSummary';
+  import { chainCount, searchedFileCount, skippedFiles } from '$lib/utils/traceSummary';
+  import {
+    chainPlaceOf,
+    chainPositionOf,
+    chainTabMatches,
+    opensChainTab,
+    type ChainMatchPlace,
+  } from '$lib/utils/chainSearch';
   import { formatCount } from '$lib/utils/format';
-  import { openFileAtLine } from '$lib/fileOpening';
-  import type { TraceMatch } from '$lib/types';
+  import { openChainAt, openFileAtLine } from '$lib/fileOpening';
+  import type { SearchMatch, TraceMatch } from '$lib/types';
   import FileBadges from '../common/FileBadges.svelte';
+  import SkippedFiles from './SkippedFiles.svelte';
 
   // Byte offset -> absolute line number, for matches whose line the
   // backend could not report, keyed by offsetKey.
@@ -97,10 +106,9 @@
     return lookup.line;
   }
 
-  async function openMatch(match: TraceMatch, filePath: string) {
+  /** Highlight every match in this file whose line we already know. */
+  function markFileMatches(filePath: string) {
     if (!$trace.response) return;
-
-    // Highlight every match in this file whose line we already know.
     const fileMatches = $trace.response.matches
       .filter((m) => getFilePath(m.file) === filePath)
       .map((m) => ({ line: displayLine(m, filePath), m }))
@@ -111,6 +119,20 @@
         pattern: getPattern(entry.m.pattern),
       }));
     files.setMatches(filePath, fileMatches);
+  }
+
+  /**
+   * Show a match: in its log chain's tab while chain mode is on and the
+   * chain can be read, else in its file's tab (a part of a chain is a
+   * file of its own). The line is the part's own line, the one the
+   * answer gives or the one its byte offset resolves to.
+   */
+  async function openMatch(match: SearchMatch, filePath: string) {
+    const response = $trace.response;
+    if (!response) return;
+    const place = chainPlaceOf(match, response);
+    const chain: ChainMatchPlace | null = opensChainTab(place, $chainModeOn) ? place : null;
+    if (!chain) markFileMatches(filePath);
 
     let line = displayLine(match, filePath);
     if (line === null) {
@@ -118,7 +140,20 @@
     }
     if (line === null) return;
 
+    if (chain) {
+      const marks = chainTabMatches(response, chain.handle, (m) =>
+        displayLine(m, getFilePath(m.file)),
+      );
+      await openChainAt(chain.handle, chainPositionOf(chain, line), marks);
+      return;
+    }
     await openFileAtLine(filePath, line);
+  }
+
+  /** Why a chain's part has no line in its chain, for its tooltip. */
+  function partTitle(place: ChainMatchPlace): string {
+    const why = place.state === 'pending' ? 'its parts are being indexed' : `it is ${place.state}`;
+    return `${place.part}, a part of the log chain ${place.name}: no line in the chain while ${why}`;
   }
 
   // Get file path from file ID
@@ -165,7 +200,11 @@
           Found {formatCount($trace.response.matches.length, 'match', 'matches')} in {formatCount(
             searchedFileCount($trace.response),
             'file',
-          )} ({$trace.response.time.toFixed(2)}s)
+          )}{#if chainCount($trace.response) > 0}, {formatCount(
+              chainCount($trace.response),
+              'log chain',
+            )}{/if}
+          ({$trace.response.time.toFixed(2)}s)
           {#if $trace.response.max_results && $trace.response.matches.length >= $trace.response.max_results}
             <span class="text-gh-attention-fg dark:text-gh-attention-dark-fg">
               (limited to {$trace.response.max_results})
@@ -182,6 +221,8 @@
       </div>
     </div>
 
+    <SkippedFiles skipped={skippedFiles($trace.response)} />
+
     {#if $trace.response.matches.length > 0}
       <ul class="divide-y divide-gh-border-default dark:divide-gh-border-dark-default">
         {#each $trace.response.matches as match (`${match.file}:${match.offset}:${match.pattern}`)}
@@ -190,43 +231,73 @@
           {@const isResolving = resolving[offsetKey(filePath, match.offset)]}
           {@const whyUnknown = unresolved[offsetKey(filePath, match.offset)]}
           {@const fileMetadata = getFileMetadata(filePath)}
+          {@const place = chainPlaceOf(match, $trace.response)}
           <li>
             <button
               class="w-full text-left px-3 py-2 hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
               on:click={() => openMatch(match, filePath)}
             >
               <div class="flex items-center gap-2 text-sm">
-                <span class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate">
-                  {filePath.split('/').pop()}
-                </span>
-                {#if fileMetadata}
-                  <FileBadges
-                    isCompressed={fileMetadata.is_compressed}
-                    compressionFormat={fileMetadata.compression_format}
-                    isIndexed={fileMetadata.is_indexed}
-                  />
-                {/if}
-                {#if $searchShowsOffsets}
-                  <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
-                    @{match.offset}
+                {#if place && place.chainLine !== null}
+                  <!-- A ready chain's match: its line in the chain, its part's own line beside it. -->
+                  <span
+                    class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate"
+                    title={place.handle}
+                  >
+                    {place.name}:{place.chainLine}
                   </span>
+                  <span
+                    class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted truncate"
+                    title={filePath}
+                  >
+                    {place.part}:{lineNum ?? '?'}
+                  </span>
+                  {#if fileMetadata}
+                    <FileBadges
+                      isCompressed={fileMetadata.is_compressed}
+                      compressionFormat={fileMetadata.compression_format}
+                      isIndexed={fileMetadata.is_indexed}
+                    />
+                  {/if}
                   <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-                    {#if lineNum !== null}(:{lineNum}){:else if isResolving}(resolving line…){:else if whyUnknown}(line
-                      unknown: {whyUnknown}){/if}
+                    {$searchShowsOffsets ? `@${match.offset}` : `(@${match.offset})`}
                   </span>
                 {:else}
-                  <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
-                    {#if lineNum !== null}
-                      :{lineNum}
-                    {:else if isResolving}
-                      resolving line…
-                    {:else}
-                      line unknown{#if whyUnknown}: {whyUnknown}{/if}
-                    {/if}
+                  <span
+                    class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate"
+                    title={place ? partTitle(place) : undefined}
+                  >
+                    {filePath.split('/').pop()}
                   </span>
-                  <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
-                    (@{match.offset})
-                  </span>
+                  {#if fileMetadata}
+                    <FileBadges
+                      isCompressed={fileMetadata.is_compressed}
+                      compressionFormat={fileMetadata.compression_format}
+                      isIndexed={fileMetadata.is_indexed}
+                    />
+                  {/if}
+                  {#if $searchShowsOffsets}
+                    <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
+                      @{match.offset}
+                    </span>
+                    <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                      {#if lineNum !== null}(:{lineNum}){:else if isResolving}(resolving line…){:else if whyUnknown}(line
+                        unknown: {whyUnknown}){/if}
+                    </span>
+                  {:else}
+                    <span class="text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
+                      {#if lineNum !== null}
+                        :{lineNum}
+                      {:else if isResolving}
+                        resolving line…
+                      {:else}
+                        line unknown{#if whyUnknown}: {whyUnknown}{/if}
+                      {/if}
+                    </span>
+                    <span class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted">
+                      (@{match.offset})
+                    </span>
+                  {/if}
                 {/if}
               </div>
               {#if match.line_text}

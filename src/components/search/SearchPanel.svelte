@@ -2,6 +2,7 @@
   import { get } from 'svelte/store';
   import { trace, tree, files, health, backendHas } from '$lib/stores';
   import { searchRequest } from '$lib/stores/trace';
+  import { chainModeOn } from '$lib/stores/chainMode';
   import { searchFocusRequested } from '$lib/stores/layout';
   import { isShortcut } from '$lib/utils/shortcuts';
   import {
@@ -12,7 +13,7 @@
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
   import { DEFAULT_MAX_RESULTS, type SearchState } from '$lib/utils/urlState';
-  import { fileKeys } from '$lib/utils/tabKey';
+  import { chainSearchPaths, fileKeys } from '$lib/utils/tabKey';
   import Spinner from '../common/Spinner.svelte';
   import SearchResults from './SearchResults.svelte';
   import SearchToggles from './SearchToggles.svelte';
@@ -73,9 +74,12 @@
     handleSearch();
   }
 
-  // A search of the open tabs reads their files: a chain's tab is no file.
-  $: openFilePaths = fileKeys($files.openFiles.map((f) => f.path));
-  $: pathsKnown = onlyOpenedFiles ? openFilePaths.length > 0 : hasRoots;
+  // A search of the open tabs: in chain mode a chain's tab by its handle,
+  // which the chain search reads as the chain; otherwise the files only,
+  // since a trace takes no chain.
+  $: openTabKeys = $files.openFiles.map((f) => f.path);
+  $: openTabPaths = $chainModeOn ? chainSearchPaths(openTabKeys) : fileKeys(openTabKeys);
+  $: pathsKnown = onlyOpenedFiles ? openTabPaths.length > 0 : hasRoots;
   $: if (restorePending && !$health.loading && pathsKnown) runRestoredSearch();
 
   function addPattern() {
@@ -100,7 +104,7 @@
     let pathsToSearch: string[];
     if (onlyOpenedFiles) {
       // Search only in currently opened files
-      pathsToSearch = openFilePaths;
+      pathsToSearch = openTabPaths;
       if (pathsToSearch.length === 0) {
         return; // No files open, nothing to search
       }
@@ -119,8 +123,10 @@
     };
     searchRequest.set(shownRequest);
 
-    // Search with all patterns
-    await trace.search(pathsToSearch, validPatterns, {
+    // Search with all patterns; in chain mode rotated logs are searched
+    // as log chains.
+    const runSearch = $chainModeOn ? trace.searchChains : trace.search;
+    await runSearch(pathsToSearch, validPatterns, {
       maxResults,
       flags: flagsSupported ? matchingFlagParams(toggles) : {},
     });
@@ -182,7 +188,7 @@
         disabled={$trace.searching ||
           searchPatterns.every((p) => !p.trim()) ||
           (!hasRoots && !onlyOpenedFiles) ||
-          (onlyOpenedFiles && openFilePaths.length === 0)}
+          (onlyOpenedFiles && openTabPaths.length === 0)}
       >
         {#if $trace.searching}
           <Spinner size="sm" />
@@ -233,8 +239,8 @@
             class="text-gh-fg-muted dark:text-gh-fg-dark-muted cursor-pointer"
           >
             Only opened files
-            {#if onlyOpenedFiles && openFilePaths.length > 0}
-              <span class="text-xs">({openFilePaths.length})</span>
+            {#if onlyOpenedFiles && openTabPaths.length > 0}
+              <span class="text-xs">({openTabPaths.length})</span>
             {/if}
           </label>
         </div>
@@ -245,7 +251,7 @@
       <p class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mt-2">
         No search roots available. Configure search roots or enable "Only opened files" to search.
       </p>
-    {:else if onlyOpenedFiles && openFilePaths.length === 0}
+    {:else if onlyOpenedFiles && openTabPaths.length === 0}
       <p class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mt-2">
         No files currently opened. Open some files to search in them.
       </p>

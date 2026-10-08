@@ -86,6 +86,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chain is read again in it, its times follow, and the tab stays on its
   line. On a chain's tab the bar and the stash need the backend to serve
   log chains, not time queries on single files.
+- Search in chain mode. With chain mode on, the search panel searches
+  the same roots as log chains (rx-go's `/v1/logs/trace`), and "Only
+  opened files" names each open chain's tab by its handle beside the
+  open files. A match in a ready chain reads `app.log:123456`, its line
+  in the chain, with `app.log.3.gz:500`, its part and its line there,
+  beside it; a match in a chain whose parts are still being indexed
+  reads `app.log.3.gz:500` alone, and its tooltip names the chain. The
+  matches keep the order the backend sends. A click opens the chain's
+  tab at the match's line in the chain, or at the part's line while the
+  chain gives none, and the tab marks the search's matches in that
+  chain on their lines, before and after the chain is ready. With chain
+  mode off, or in a chain the search found invalid, a click opens the
+  part as a file at its line. The summary counts the log chains found.
+  With chain mode off a search is the same as before.
+- The files a search skipped are listed under its summary, closed until
+  opened ("N files skipped"), each with the backend's reason: a binary
+  file, a file that cannot be read and, in chain mode, another encoding
+  of a chain's part (`duplicate_part`). At most 100 are listed, followed
+  by how many more there are.
 
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed
