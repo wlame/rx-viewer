@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Y" before a part that follows a time gap, and "missing: NAME" where a
   missing numbered part would be. The tab's caption is `syslog [3/12]`,
   where 3 is the part of the top line on screen; its tooltip is
-  `syslog.3.gz : 500`. The header shows the chain's state, its lines
+  `syslog.3.gz : 500`. A row under the header shows the chain's state, its lines
   (the frozen parts' lines and `…` while the active file is not
   counted), its time range, `idx` once every frozen part with lines is
   indexed, `indexing 5/12 parts · 40%` while the index task runs, its
