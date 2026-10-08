@@ -50,9 +50,9 @@ describe('searchedFileCount', () => {
 describe('skippedFiles', () => {
   it('lists each skipped path with its reason, in the order of the answer', () => {
     const response = makeResponse({
-      skipped_files: ['/var/log/wtmp', '/var/log/app.log.2'],
+      skipped_files: ['/var/log/login.bin', '/var/log/app.log.2'],
       skip_reasons: [
-        { path: '/var/log/wtmp', reason: 'binary file' },
+        { path: '/var/log/login.bin', reason: 'binary file' },
         {
           path: '/var/log/app.log.2',
           reason:
@@ -63,7 +63,7 @@ describe('skippedFiles', () => {
 
     expect(skippedFiles(response)).toEqual({
       shown: [
-        { path: '/var/log/wtmp', reason: 'binary file' },
+        { path: '/var/log/login.bin', reason: 'binary file' },
         {
           path: '/var/log/app.log.2',
           reason:
@@ -75,9 +75,9 @@ describe('skippedFiles', () => {
   });
 
   it('gives a path no reason when the answer gives it none', () => {
-    const response = makeResponse({ skipped_files: ['/var/log/wtmp'], skip_reasons: [] });
+    const response = makeResponse({ skipped_files: ['/var/log/login.bin'], skip_reasons: [] });
 
-    expect(skippedFiles(response).shown).toEqual([{ path: '/var/log/wtmp', reason: null }]);
+    expect(skippedFiles(response).shown).toEqual([{ path: '/var/log/login.bin', reason: null }]);
   });
 
   // A directory walk can skip thousands of files; the list shows a few
@@ -119,15 +119,15 @@ describe('chainCount', () => {
 
 describe('pathInSearch', () => {
   it.each([
-    { path: '/srv/logs/atop/atop_1', searched: ['/srv/logs'], expected: 'atop/atop_1' },
+    { path: '/srv/logs/stats/stats_1', searched: ['/srv/logs'], expected: 'stats/stats_1' },
     // The deepest searched path that holds it names it.
-    { path: '/srv/logs/atop/atop_1', searched: ['/srv', '/srv/logs'], expected: 'atop/atop_1' },
+    { path: '/srv/logs/stats/stats_1', searched: ['/srv', '/srv/logs'], expected: 'stats/stats_1' },
     // A path the search named itself reads as its name.
-    { path: '/srv/logs/wtmp', searched: ['/srv/logs/wtmp'], expected: 'wtmp' },
+    { path: '/srv/logs/login.bin', searched: ['/srv/logs/login.bin'], expected: 'login.bin' },
     // A searched path is a whole directory, not a prefix of a name.
-    { path: '/srv/logs2/wtmp', searched: ['/srv/logs'], expected: '/srv/logs2/wtmp' },
-    { path: '/srv/logs/wtmp', searched: ['/'], expected: 'srv/logs/wtmp' },
-    { path: '/srv/logs/wtmp', searched: [], expected: '/srv/logs/wtmp' },
+    { path: '/srv/logs2/login.bin', searched: ['/srv/logs'], expected: '/srv/logs2/login.bin' },
+    { path: '/srv/logs/login.bin', searched: ['/'], expected: 'srv/logs/login.bin' },
+    { path: '/srv/logs/login.bin', searched: [], expected: '/srv/logs/login.bin' },
   ])('writes $path searched in $searched as $expected', ({ path, searched, expected }) => {
     expect(pathInSearch(path, searched)).toBe(expected);
   });

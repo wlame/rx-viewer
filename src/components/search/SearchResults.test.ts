@@ -347,10 +347,10 @@ describe('SearchResults skipped files', () => {
 
   it('lists every skipped file with its reason, another encoding of a part among them', async () => {
     const answer = chainSearchAnswer({
-      skipped_files: ['/logs/app.log.2', '/logs/wtmp'],
+      skipped_files: ['/logs/app.log.2', '/logs/login.bin'],
       skip_reasons: [
         { path: '/logs/app.log.2', reason: DUPLICATE },
-        { path: '/logs/wtmp', reason: 'binary file' },
+        { path: '/logs/login.bin', reason: 'binary file' },
       ],
     });
 
@@ -363,7 +363,7 @@ describe('SearchResults skipped files', () => {
       [...(skipped?.querySelectorAll('li') ?? [])].map((li) =>
         li.textContent?.replace(/\s+/g, ' ').trim(),
       ),
-    ).toEqual([`app.log.2: ${DUPLICATE}`, 'wtmp: binary file']);
+    ).toEqual([`app.log.2: ${DUPLICATE}`, 'login.bin: binary file']);
   });
 
   it('says how many more files were skipped than it lists', async () => {
