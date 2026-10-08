@@ -111,10 +111,11 @@ export class FakeChain {
 
   /**
    * End the index task: the task's status says how it ended, and the
-   * chain is ready unless `isReady` is false.
+   * chain is ready unless `isReady` is false, or invalid with `isValid`
+   * false.
    */
-  finishTask({ isReady = true } = {}): void {
-    if (isReady) this.state = 'ready';
+  finishTask({ isReady = true, isValid = true } = {}): void {
+    if (isReady) this.state = isValid ? 'ready' : 'invalid';
     this.isFinished = true;
     this.finish();
   }

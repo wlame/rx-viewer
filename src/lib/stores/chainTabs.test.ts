@@ -155,6 +155,19 @@ describe('a ready chain tab', () => {
     expect(tab().scrollToLine).toBe(3500);
   });
 
+  // At the top of the held lines a wheel turns no scroll, so no scroll
+  // would ever ask for the page before.
+  it('loads the page beyond a held line it goes to near an edge of the held lines', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'global', line: 3100 } });
+    expect(tab().startLine).toBe(3000);
+
+    await files.goToChainLine(KEY, { kind: 'local', part: 'app.log.1', line: 1 });
+
+    await vi.waitFor(() => expect(tab().startLine).toBe(1));
+    expect(tab().anchorLine).toBe(3001);
+    expect(requestedLines(chain).at(-1)).toBe('1-2999');
+  });
+
   it('sends the fingerprint it holds with every samples request', async () => {
     await files.openChain(HANDLE);
     await files.loadMore(KEY, 'after');
@@ -260,6 +273,26 @@ describe('a pending chain tab', () => {
     expect(tab().scrollToLine).toBe(3020);
     expect(heldLinesAgree('global')).toBe(true);
     expect(tab().chain?.indexTask).toBeNull();
+  });
+
+  it('shows no line once the index task finds the chain invalid, and its reasons once', async () => {
+    vi.unstubAllGlobals();
+    const reasons = [
+      {
+        code: 'active_not_last' as const,
+        parts: ['app.log'],
+        message: 'it starts first',
+        overlap_ms: null,
+      },
+    ];
+    chain = await serve({ state: 'pending', reasons });
+    await files.openChain(HANDLE);
+
+    chain.finishTask({ isValid: false });
+
+    await vi.waitFor(() => expect(tab().chain?.description?.state).toBe('invalid'));
+    expect(tab().lines).toEqual([]);
+    expect(tab().chain?.invalidDetail).toBeNull();
   });
 
   // The backend drops a finished task from its table: a 404 means it ended.

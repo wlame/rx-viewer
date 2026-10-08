@@ -87,6 +87,14 @@ export interface OpenChainOptions {
 /** Lines asked before and after the target of a jump: the most the backend serves on a side. */
 const JUMP_CONTEXT = 100;
 
+/**
+ * About one screen of lines. A held line the tab goes to this close to an
+ * edge of the held lines also loads the page beyond that edge: the editor
+ * cannot centre it, and at the top of the held lines a wheel turns no
+ * scroll, so no scroll would ask for the page.
+ */
+const SCREEN_LINES = 50;
+
 /** 202 answers a load waits through before it gives up; each one is a task followed to its end. */
 const MAX_WAITS = 3;
 
@@ -634,8 +642,12 @@ export function createChainTabs(deps: ChainTabDeps) {
     follow(key, samples.index_build);
   }
 
-  /** The chain cannot be read as one text: no lines, and the backend's reasons. */
-  function showInvalid(key: TabKey, detail: string): void {
+  /**
+   * The chain cannot be read as one text: no lines, and the backend's
+   * refusal of a read when one came (`detail`); a description's reasons
+   * show from the description itself.
+   */
+  function showInvalid(key: TabKey, detail: string | null): void {
     deps.patchTab(key, (tab) => ({
       lines: [],
       startLine: 1,
@@ -689,7 +701,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       return;
     }
     if (chain.state === 'invalid') {
-      showInvalid(key, chain.reasons.map((reason) => reason.message).join('; '));
+      showInvalid(key, null);
       return;
     }
     // A load in flight answers by global numbers itself once the chain is ready.
@@ -783,6 +795,11 @@ export function createChainTabs(deps: ChainTabDeps) {
           anchor: anchorAt(t.lines, t.startLine, held) ?? t.chain.anchor,
         },
       }));
+      if (held - tab.startLine < SCREEN_LINES && !tab.reachedStart) {
+        await loadMore(key, 'before');
+      } else if (tab.endLine - held < SCREEN_LINES && !tab.reachedEnd) {
+        await loadMore(key, 'after');
+      }
       return;
     }
     await show(key, position);
