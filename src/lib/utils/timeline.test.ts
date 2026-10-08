@@ -10,6 +10,7 @@ import {
   pendingIndexReason,
   sideOfAxis,
   steppedInstant,
+  timeJumpFeature,
   timeLabelFor,
   timelineAxis,
   type TimelineFile,
@@ -246,6 +247,12 @@ describe('the time helpers on a chain tab', () => {
   it("writes an instant the way the chain's first part writes a time", () => {
     expect(hasTimeFormat(ready)).toBe(true);
     expect(timeLabelFor(CHAIN_T0 + 1_500, ready)).toBe('2026-10-01 00:00:01.500');
+  });
+
+  it('needs the log chain routes to jump a chain by time, and time queries to jump a file', () => {
+    expect(timeJumpFeature(ready)).toBe('log_chains');
+    expect(timeJumpFeature(middleware)).toBe('samples_timestamps');
+    expect(timeJumpFeature(undefined)).toBe('samples_timestamps');
   });
 
   it('says why a pending chain cannot jump by time, and names nothing once it is ready', () => {

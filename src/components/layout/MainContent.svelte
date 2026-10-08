@@ -9,6 +9,7 @@
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import { chainTabCaption } from '$lib/utils/chainPane';
   import { FILE_ZONES_FULL, fileZoneOf } from '$lib/utils/fileZones';
+  import { timeJumpFeature } from '$lib/utils/timeline';
   import { STASH_ADD_LABEL, STASH_REFUSALS, stashAddRefusal } from '$lib/utils/timeStash';
   import EditorPane from '../editor/EditorPane.svelte';
   import FileBadges from '../common/FileBadges.svelte';
@@ -23,7 +24,7 @@
   $: activeFile = activeOpenFile($files);
   $: validActiveIndex = activeFile ? $files.openFiles.indexOf(activeFile) : 0;
 
-  $: canJump = backendHas('samples_timestamps', $health);
+  $: canJump = backendHas(timeJumpFeature(activeFile), $health);
   $: canChooseZone = backendHas('file_tz', $health);
   // Zones are kept by tab key, which a tab holds in `path`.
   $: chosenZone = activeFile ? fileZoneOf($fileZones, activeFile.path) : null;

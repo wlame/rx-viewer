@@ -74,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disabled. Until the chain is ready nothing moves it by time, and the
   tooltip says why: its parts' line indexes are being built, the
   backend's reason it has no index task, or the checks it failed.
+- The timeline bar of a log chain's tab spans the chain from its first
+  to its last time. A tick marks where each part starts (its tooltip
+  names the part and its first time), a shaded band covers each time
+  gap, and a red dot marks where missing parts would be; marks that fall
+  close together on a chain of many parts become one. The slider reads
+  out the part that holds its time. Until the chain is ready the bar
+  says why it does not jump. The zone button before the axis shows the
+  zone the chain is read in and chooses one for the chain alone
+  (`ftz=<zone>@chain:<handle>`, apart from the file at its handle): the
+  chain is read again in it, its times follow, and the tab stays on its
+  line. On a chain's tab the bar and the stash need the backend to serve
+  log chains, not time queries on single files.
 
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed

@@ -1,3 +1,4 @@
+import type { BackendFeature } from '../stores/health';
 import type { FileLine, OpenFile } from '../types';
 import {
   chainRangeUnknownReason,
@@ -45,6 +46,15 @@ export function pendingIndexReason(file: PendingIndexFile | undefined): string |
   if (file?.chain) return chainTimeRefusal(file.name, file.chain);
   if (!file?.pendingIndex) return null;
   return PENDING_INDEX_REASONS[file.pendingIndex](file.name);
+}
+
+/**
+ * The backend feature a tab's jumps by time need: a log chain's tab moves
+ * through the log chain routes, which take times wherever they are
+ * served; a file's tab needs time queries on `/v1/samples`.
+ */
+export function timeJumpFeature(file: Pick<OpenFile, 'chain'> | undefined): BackendFeature {
+  return file?.chain ? 'log_chains' : 'samples_timestamps';
 }
 
 /** The span of the axis, as UTC instants in ms; `startMs <= endMs`. */

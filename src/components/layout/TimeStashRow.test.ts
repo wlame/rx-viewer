@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 import type { OpenFile, TimeRangeResponse } from '$lib/types';
 import type { TimeJumpOutcome } from '$lib/stores/files';
 import { notifications } from '$lib/stores/notifications';
+import { CHAIN_T0, HOUR_MS, chainDescription, chainTabOf } from '$lib/testing/chainDescription';
 import TimeStashRow from './TimeStashRow.svelte';
 
 const MINUTE = 60_000;
@@ -182,5 +183,44 @@ describe('TimeStashRow', () => {
     expect(get(notifications).map((n) => n.message)).toEqual([
       'Cannot go to 2025-12-10 07:30:00.000 in middleware.log: no route',
     ]);
+  });
+});
+
+describe('TimeStashRow on a log chain', () => {
+  const chainTab = (state: 'ready' | 'pending') =>
+    ({
+      path: 'chain:/l/agent.log',
+      name: 'agent.log',
+      timeRange: null,
+      pendingIndex: null,
+      chain: chainTabOf(
+        chainDescription(state === 'ready' ? {} : { state, first_ms: null, last_ms: null }),
+      ),
+    }) as OpenFile;
+  const insideChain = CHAIN_T0 + HOUR_MS;
+  const afterChain = CHAIN_T0 + 3 * HOUR_MS;
+
+  it("jumps the chain's tab to an entry inside its range, and disables one outside it", async () => {
+    const { entries, goButton, jump } = mount({
+      stash: [insideChain, afterChain],
+      activeFile: chainTab('ready'),
+    });
+
+    expect(entries()[0].textContent).toContain('2026-10-01 01:00:00.000');
+    expect(goButton(0).disabled).toBe(false);
+    expect(goButton(1).disabled).toBe(true);
+    expect(entries()[1].title).toBe('After the last time in agent.log');
+    goButton(0).click();
+    await tick();
+    expect(jump).toHaveBeenCalledWith(insideChain);
+  });
+
+  it('disables every entry while the chain is pending, saying why', () => {
+    const { entries, goButton } = mount({ stash: [insideChain], activeFile: chainTab('pending') });
+
+    expect(goButton(0).disabled).toBe(true);
+    expect(entries()[0].title).toBe(
+      'agent.log is not ready: the line indexes of its parts are being built',
+    );
   });
 });

@@ -20,11 +20,19 @@
    * On a backend that reads a file in a chosen zone (`file_tz`), the
    * bar starts with the file's zone, which opens a picker to choose one
    * or to go back to the file's own.
+   *
+   * A log chain's tab shows the chain's axis, from its first to its last
+   * time, with a tick where each part starts, a band over each time gap
+   * and a dot where missing parts would be; the slider's value names the
+   * part of its time. Until the chain is ready the bar says why it does
+   * not jump, and its zone is the chain's.
    */
-  import type { OpenFile, TimeRangeResponse } from '$lib/types';
+  import type { OpenFile } from '$lib/types';
   import type { TimeJumpOutcome, TimeQuery } from '$lib/stores/files';
-  import { formatInFileLayout } from '$lib/utils/timeFormat';
+  import { partAtTime } from '$lib/utils/chainTime';
+  import { chainTimelineMarks } from '$lib/utils/chainTimeline';
   import { isShortcut, type ShortcutId } from '$lib/utils/shortcuts';
+  import ChainTimelineMarks from './ChainTimelineMarks.svelte';
   import FileZoneControl from './FileZoneControl.svelte';
   import {
     effectiveTimeAt,
@@ -35,6 +43,9 @@
     sideOfAxis,
     steppedInstant,
     pendingIndexReason,
+    timeLabelFor,
+    timeLayoutOf,
+    timeRangeUnknownReason,
     timelineAxis,
     type TimeAxis,
     type TimelineStep,
@@ -99,16 +110,26 @@
     pendingMs = null;
   }
 
+  // A chain's tab reads its times from the chain's description.
+  $: description = activeFile?.chain?.description ?? null;
   $: canType = hasTimeFormat(activeFile);
-  $: isReadingRange = Boolean(activeFile?.isReadingTimeRange && activeFile.timeRange === null);
-  $: isShown = canJump && activeFile !== undefined && (canType || isReadingRange);
+  $: isReadingRange = activeFile?.chain
+    ? description === null && activeFile.error === null
+    : Boolean(activeFile?.isReadingTimeRange && activeFile.timeRange === null);
+  // A described chain shows the bar in every state, to say why it cannot jump yet.
+  $: isShown =
+    canJump && activeFile !== undefined && (canType || isReadingRange || description !== null);
   $: axis = timelineAxis(activeFile);
   $: isPoint = axis !== null && isPointAxis(axis);
   // Why the file cannot be jumped by time yet, or null when it can.
   $: blockedReason = pendingIndexReason(activeFile);
   $: canScrub = axis !== null && !isPoint && blockedReason === null;
 
-  $: layout = activeFile?.timeRange;
+  $: marks = description ? chainTimelineMarks(description) : null;
+  $: shownZone = timeLayoutOf(activeFile)?.display_zone ?? null;
+  $: unknownRangeText = activeFile?.chain
+    ? timeRangeUnknownReason(activeFile)
+    : 'The time range is not known yet';
   $: anchorMs = activeFile ? effectiveTimeAt(activeFile.lines, activeFile.anchorLine) : null;
   $: thumbMs = pendingMs ?? dragMs ?? keyMs ?? anchorMs;
   $: labelMs = dragMs ?? keyMs ?? hoverMs;
@@ -116,9 +137,13 @@
   // The cursor is marked only where the file has times.
   $: isCursorOnAxis = axis !== null && cursorMs !== null && sideOfAxis(cursorMs, axis) === null;
 
-  /** `ms` written the way the file of `range` writes a time, or ISO 8601 without one. */
-  function labelOf(ms: number, range: TimeRangeResponse | null | undefined): string {
-    return range ? formatInFileLayout(ms, range) : new Date(ms).toISOString();
+  /** What the slider reads out for `ms` in `file`: its time and, on a chain, the part that holds it. */
+  function valueTextOf(ms: number | null, file: OpenFile | undefined): string {
+    if (ms === null) return 'Position not known';
+    const label = timeLabelFor(ms, file);
+    const chain = file?.chain?.description;
+    const part = chain ? partAtTime(chain, ms) : null;
+    return part ? `${label}, in ${part.name}` : label;
   }
 
   /** Where `ms` is on the axis, in percent of the track. */
@@ -192,14 +217,9 @@
            border-b border-gh-border-default dark:border-gh-border-dark-default"
   >
     {#if canType && canChooseZone && activeFile}
-      <FileZoneControl
-        fileName={activeFile.name}
-        shownZone={layout?.display_zone ?? null}
-        {chosenZone}
-        choose={chooseZone}
-      />
+      <FileZoneControl fileName={activeFile.name} {shownZone} {chosenZone} choose={chooseZone} />
     {/if}
-    {#if !canType}
+    {#if !canType && isReadingRange}
       <span data-reading-range class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
         Reading the time range…
       </span>
@@ -208,7 +228,7 @@
         class="font-mono tabular-nums whitespace-nowrap text-gh-fg-muted dark:text-gh-fg-dark-muted
                {isPoint ? '' : 'hidden lg:inline'}"
       >
-        {labelOf(axis.startMs, layout)}
+        {timeLabelFor(axis.startMs, activeFile)}
       </span>
       <div
         bind:this={track}
@@ -218,7 +238,7 @@
         aria-valuemin={axis.startMs}
         aria-valuemax={axis.endMs}
         aria-valuenow={thumbMs ?? axis.startMs}
-        aria-valuetext={thumbMs !== null ? labelOf(thumbMs, layout) : 'Position not known'}
+        aria-valuetext={valueTextOf(thumbMs, activeFile)}
         aria-disabled={!canScrub}
         title={blockedReason ?? undefined}
         class="relative flex-1 min-w-24 self-stretch rounded outline-none touch-none select-none
@@ -240,13 +260,16 @@
         >
           <div
             data-band
-            title={activeFile?.path}
+            title={activeFile?.chain?.handle ?? activeFile?.path}
             class="absolute rounded-full bg-gh-accent-emphasis/75 dark:bg-gh-accent-dark-fg/70"
             style="top: 2px; height: {BAND_HEIGHT}px; {isPoint
               ? 'left: calc(50% - 3px); width: 6px'
               : 'left: 0; width: 100%'}"
           />
         </div>
+        {#if marks}
+          <ChainTimelineMarks {marks} />
+        {/if}
         {#if hoverMs !== null && dragMs === null}
           <div
             class="absolute top-1 bottom-1 w-px pointer-events-none bg-gh-fg-muted/40 dark:bg-gh-fg-dark-muted/40"
@@ -290,7 +313,7 @@
               axis,
             )}%)"
           >
-            {labelOf(labelMs, layout)}
+            {timeLabelFor(labelMs, activeFile)}
           </div>
         {/if}
       </div>
@@ -298,7 +321,7 @@
         <span
           class="hidden lg:inline font-mono tabular-nums whitespace-nowrap text-gh-fg-muted dark:text-gh-fg-dark-muted"
         >
-          {labelOf(axis.endMs, layout)}
+          {timeLabelFor(axis.endMs, activeFile)}
         </span>
       {/if}
     {:else if blockedReason !== null}
@@ -307,7 +330,7 @@
       </span>
     {:else}
       <span class="flex-1 text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
-        The time range is not known yet
+        {unknownRangeText}
       </span>
     {/if}
     {#if canType}

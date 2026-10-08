@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
-import type { FileLine, OpenFile, TimeRangeResponse } from '$lib/types';
+import type { ChainResponse, FileLine, OpenFile, TimeRangeResponse } from '$lib/types';
 import type { TimeJumpOutcome, TimeQuery } from '$lib/stores/files';
+import {
+  CHAIN_T0,
+  HOUR_MS,
+  ISO_FORMAT,
+  chainDescription,
+  chainPart,
+  chainTabOf,
+} from '$lib/testing/chainDescription';
 import TimelineBar from './TimelineBar.svelte';
 
 /** 2025-12-10 07:00:00 UTC. */
@@ -585,5 +593,158 @@ describe('TimelineBar time zone', () => {
     const { target } = mount({ activeFile: unknown, canChooseZone: true, chosenZone: 'UTC' });
 
     expect(zoneButton(target)).not.toBeNull();
+  });
+});
+
+describe('TimelineBar on a log chain', () => {
+  /**
+   * agent.log.3.gz 00:00–00:54, agent.log.2 missing, agent.log.1
+   * 01:00–02:00, no lines to agent.log at 05:00–06:00.
+   */
+  const ready = chainDescription({
+    parts: [
+      chainPart('agent.log.3.gz', {
+        key: '3',
+        first_ms: CHAIN_T0,
+        max_ms: CHAIN_T0 + 0.9 * HOUR_MS,
+      }),
+      chainPart('agent.log.1', {
+        key: '1',
+        first_ms: CHAIN_T0 + HOUR_MS,
+        max_ms: CHAIN_T0 + 2 * HOUR_MS,
+      }),
+      chainPart('agent.log', { is_active: true, first_ms: CHAIN_T0 + 5 * HOUR_MS }),
+    ],
+    missing: ['agent.log.2'],
+    missing_count: 1,
+    gaps: [
+      {
+        after: 'agent.log.1',
+        before: 'agent.log',
+        from_ms: CHAIN_T0 + 2 * HOUR_MS,
+        to_ms: CHAIN_T0 + 5 * HOUR_MS,
+      },
+    ],
+    last_ms: CHAIN_T0 + 6 * HOUR_MS,
+  });
+  const pending = chainDescription({ ...ready, state: 'pending', first_ms: null, last_ms: null });
+
+  function chainFile(description: ChainResponse | null, fields: Partial<OpenFile> = {}) {
+    return openFile('chain:/l/agent.log', {
+      name: 'agent.log',
+      chain: chainTabOf(description),
+      ...fields,
+    });
+  }
+
+  const titles = (target: HTMLElement, selector: string) =>
+    [...target.querySelectorAll<HTMLElement>(selector)].map((element) => element.title);
+  const leftOf = (target: HTMLElement, selector: string) =>
+    [...target.querySelectorAll<HTMLElement>(selector)].map((e) => parseFloat(e.style.left));
+
+  it("spans the chain from its first to its last time, labelled in its first part's layout", () => {
+    const { target } = mount({ activeFile: chainFile(ready) });
+    const slider = sliderOf(target);
+
+    expect(slider.getAttribute('aria-valuemin')).toBe(String(CHAIN_T0));
+    expect(slider.getAttribute('aria-valuemax')).toBe(String(CHAIN_T0 + 6 * HOUR_MS));
+    expect(slider.getAttribute('aria-disabled')).toBe('false');
+    expect(target.textContent).toContain('2026-10-01 00:00:00.000');
+    expect(target.textContent).toContain('2026-10-01 06:00:00.000');
+  });
+
+  it("ticks each part edge with the part's name, shades the gap and marks the missing part", () => {
+    const { target } = mount({ activeFile: chainFile(ready) });
+
+    expect(titles(target, '[data-part-edge]')).toEqual([
+      'agent.log.1 from 2026-10-01 01:00:00.000',
+      'agent.log from 2026-10-01 05:00:00.000',
+    ]);
+    expect(leftOf(target, '[data-part-edge]').map((left) => Math.round(left * 100))).toEqual([
+      1667, 8333,
+    ]);
+    const [gap] = target.querySelectorAll<HTMLElement>('[data-gap]');
+    expect(gap.title).toBe('No lines from 2026-10-01 02:00:00.000 to 2026-10-01 05:00:00.000');
+    expect(parseFloat(gap.style.left)).toBeCloseTo(100 / 3);
+    expect(parseFloat(gap.style.width)).toBeCloseTo(50);
+    expect(titles(target, '[data-missing-part]')).toEqual(['Missing: agent.log.2']);
+    expect(leftOf(target, '[data-missing-part]')[0]).toBeCloseTo((0.95 / 6) * 100);
+  });
+
+  it('names the part of the time under the thumb in the value it reads out', () => {
+    const lines = stampedLines(3, [CHAIN_T0 + 1.5 * HOUR_MS]);
+    const { target } = mount({ activeFile: chainFile(ready, { lines, anchorLine: 3 }) });
+
+    expect(sliderOf(target).getAttribute('aria-valuetext')).toBe(
+      '2026-10-01 01:30:00.000, in agent.log.1',
+    );
+  });
+
+  it('says why it does not jump while the chain is pending, and jumps once it is ready', async () => {
+    const { target, jump } = mount({ activeFile: chainFile(pending) });
+    const reason = 'agent.log is not ready: the line indexes of its parts are being built';
+
+    expect(target.querySelector('[role="slider"]')).toBeNull();
+    expect(target.querySelector('[data-index-pending]')?.textContent?.trim()).toBe(reason);
+    const input = target.querySelector<HTMLInputElement>('input[aria-label="Go to time"]');
+    expect(input?.disabled).toBe(true);
+    expect(input?.title).toBe(reason);
+
+    bar?.$set({ activeFile: chainFile(ready) });
+    await tick();
+    const slider = sliderOf(target);
+    await pointer(slider, 'pointerdown', 0);
+    await pointer(slider, 'pointerup', 0);
+    await settle();
+
+    expect(slider.getAttribute('aria-disabled')).toBe('false');
+    expect(target.querySelector<HTMLInputElement>('input')?.disabled).toBe(false);
+    expect(jump).toHaveBeenCalledWith(CHAIN_T0);
+  });
+
+  it('says why an invalid chain does not jump', () => {
+    const invalid = chainDescription({
+      ...pending,
+      state: 'invalid',
+      reasons: [{ code: 'overlap', message: 'overlap', overlap_ms: 5000, parts: [] }],
+    });
+    const { target } = mount({ activeFile: chainFile(invalid) });
+
+    expect(target.querySelector('[data-index-pending]')?.textContent?.trim()).toBe(
+      'agent.log is not a valid log chain: overlap',
+    );
+  });
+
+  it('says the chain is being read before its first description', () => {
+    const { target } = mount({ activeFile: chainFile(null) });
+
+    expect(target.querySelector('[data-reading-range]')).not.toBeNull();
+  });
+
+  it('names the end of a ready chain whose last time is not known', () => {
+    const { target } = mount({ activeFile: chainFile({ ...ready, last_ms: null }) });
+
+    expect(target.textContent).toContain('The last time of agent.log is not known');
+  });
+
+  it('shows the zone the chain is read in, and marks the zone chosen for it', async () => {
+    const zoneButton = () =>
+      target.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]');
+    const { target } = mount({ activeFile: chainFile(ready), canChooseZone: true });
+    expect(zoneButton()?.textContent?.trim()).toBe('UTC');
+
+    const inZone = {
+      ...ready,
+      parts: ready.parts.map((part) => ({
+        ...part,
+        time_format: { ...ISO_FORMAT, assumed_zone: '+02:00' },
+      })),
+    };
+    bar?.$set({ activeFile: chainFile(inZone), chosenZone: '+02:00' });
+    await tick();
+
+    expect(zoneButton()?.dataset.chosen).toBe('true');
+    expect(zoneButton()?.textContent?.trim()).toBe('+02:00');
+    expect(target.textContent).toContain('2026-10-01 02:00:00.000');
   });
 });
