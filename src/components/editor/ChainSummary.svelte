@@ -68,6 +68,11 @@
         {chainIndexingLabel(parts, chain.indexTask.progress)}
       </span>
     {/if}
+    {#if description.state === 'pending' && !chain.indexTask && chain.buildRefused}
+      <span class="badge badge-warning text-[10px] py-0" title={chain.buildRefused}>
+        waiting for an index task
+      </span>
+    {/if}
     {#if chain.indexProblem}
       <span class="badge badge-warning text-[10px] py-0" title={chain.indexProblem}>
         index task

@@ -299,6 +299,12 @@ export interface ChainTab {
   indexTask: IndexBuild | null;
   /** Why the index task cannot be followed or failed, in words, or null. */
   indexProblem: string | null;
+  /**
+   * Why the backend started no index task for the pending chain, as the
+   * last description or answer about one part gave it
+   * (`index_build_refused`), or null.
+   */
+  buildRefused: string | null;
   /** The backend's reasons for refusing to read an invalid chain (a 422), or null. */
   invalidDetail: string | null;
 }

@@ -640,3 +640,240 @@ describe('the zone of a chain tab', () => {
     expect(tab().anchorLine).toBe(3500);
   });
 });
+
+describe('a pending chain that stays pending', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Serve `chain`, and keep the time of every task status request. */
+  async function serveTimed(chain: FakeChain): Promise<number[]> {
+    const statusTimes: number[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.includes('/v1/tasks/')) statusTimes.push(Date.now());
+        return chain.fetch(url, init);
+      }),
+    );
+    await health.check();
+    chainMode.set(true);
+    return statusTimes;
+  }
+
+  function describes(chain: FakeChain): number {
+    return chain.requests.filter((r) => r.startsWith('/v1/logs/chain?')).length;
+  }
+
+  // A description that names an index task which has already ended (or
+  // ends at once) every time would otherwise be followed in a tight loop.
+  it('waits longer before each next index task it follows, and stops after five with a message', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = new FakeChain({ name: 'app.log', parts: PARTS, state: 'pending' });
+    const statusTimes = await serveTimed(chain);
+    await files.openChain(HANDLE);
+
+    chain.finishTask({ isReady: false });
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    const gaps = statusTimes.slice(1).map((time, i) => time - statusTimes[i]);
+    expect(gaps).toEqual([1000, 2000, 4000, 8000, 16_000]);
+    expect(describes(chain)).toBe(7);
+    expect(tab().chain?.indexProblem).toContain('still pending');
+    expect(tab().chain?.indexTask).toBeNull();
+    expect(tab().error).toBeNull();
+  });
+
+  it('describes a chain with no index task again after a few seconds, and keeps the reason in the tab', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = new FakeChain({ name: 'app.log', parts: PARTS, state: 'pending' });
+    chain.refusedBuild = 'no place for its index task';
+    await serveTimed(chain);
+    await files.openChain(HANDLE);
+
+    expect(describes(chain)).toBe(1);
+    expect(tab().chain?.buildRefused).toBe('no place for its index task');
+    expect(tab().chain?.indexTask).toBeNull();
+    expect(tab().lines.length).toBeGreaterThan(0);
+
+    await vi.advanceTimersByTimeAsync(4900);
+    expect(describes(chain)).toBe(1);
+    chain.refusedBuild = null;
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(describes(chain)).toBe(2);
+    expect(tab().chain?.buildRefused).toBeNull();
+    expect(tab().chain?.indexTask).toEqual({ taskId: CHAIN_TASK_ID, progress: null });
+  });
+
+  it('takes the reason a samples answer about one part gives for no index task', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = new FakeChain({ name: 'app.log', parts: PARTS, state: 'pending' });
+    await serveTimed(chain);
+    await files.openChain(HANDLE);
+    chain.refusedBuild = 'no place for its index task';
+
+    await files.loadMore(KEY, 'after');
+
+    expect(tab().chain?.buildRefused).toBe('no place for its index task');
+    const before = describes(chain);
+    await vi.advanceTimersByTimeAsync(5100);
+    expect(describes(chain)).toBe(before + 1);
+  });
+
+  it('stops describing a chain that never gets an index task, and says why', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = new FakeChain({ name: 'app.log', parts: PARTS, state: 'pending' });
+    chain.refusedBuild = 'no place for its index task';
+    await serveTimed(chain);
+    await files.openChain(HANDLE);
+
+    await vi.advanceTimersByTimeAsync(3_600_000);
+
+    expect(describes(chain)).toBe(9);
+    expect(tab().chain?.indexProblem).toContain('no place for its index task');
+  });
+});
+
+describe('a chain the backend is too busy for', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('asks again after the Retry-After of a 503, keeping its lines, with a notice', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = await serve({ state: 'pending' });
+    await files.openChain(HANDLE);
+    const held = tab().lines;
+    chain.busyAnswers = 1;
+    chain.retryAfter = '2';
+
+    const moving = files.goToChainLine(KEY, { kind: 'time', ms: T0_MS + 3500_000 });
+    await vi.advanceTimersByTimeAsync(1900);
+
+    expect(get(notifications).some((n) => n.message.includes('busy'))).toBe(true);
+    expect(tab().lines).toBe(held);
+    expect(tab().error).toBeNull();
+    const asked = chain.samplesRequests.filter((q) => q.has('timestamps')).length;
+    expect(asked).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(200);
+    expect(chain.samplesRequests.filter((q) => q.has('timestamps')).length).toBe(2);
+    chain.finishTask();
+    await vi.advanceTimersByTimeAsync(2000);
+    await moving;
+
+    expect(tab().anchorLine).toBe(3500);
+    expect(tab().error).toBeNull();
+  });
+
+  it('stops after three busy answers in a row, keeping its lines, and says so', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const chain = await serve({ state: 'pending' });
+    await files.openChain(HANDLE);
+    const held = tab().lines;
+    chain.busyAnswers = 100;
+    chain.retryAfter = null;
+
+    const moving = files.goToChainLine(KEY, { kind: 'time', ms: T0_MS + 3500_000 });
+    // Three waits of 5 s: the notice of the fourth answer is still on screen.
+    await vi.advanceTimersByTimeAsync(15_100);
+    await moving;
+
+    expect(chain.samplesRequests.filter((q) => q.has('timestamps')).length).toBe(4);
+    expect(tab().lines).toBe(held);
+    expect(tab().loading).toBe(false);
+    expect(tab().error).toBeNull();
+    expect(get(notifications).some((n) => n.message.includes('still busy'))).toBe(true);
+  });
+});
+
+describe('the files of a chain that keep changing', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stops at the third change within a minute, even with lines read between them', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const chain = await serve({ state: 'ready' });
+    await files.openChain(HANDLE);
+
+    for (let change = 1; change <= 3; change++) {
+      chain.rotateTo([...chain.parts]);
+      await files.jumpToEnd(KEY);
+      await vi.waitFor(() => expect(tab().loading).toBe(false));
+      vi.advanceTimersByTime(10_000);
+    }
+
+    expect(tab().error).toContain('keep changing');
+    expect(get(notifications).filter((n) => n.message.includes('changed on disk'))).toHaveLength(2);
+  });
+
+  it('reads the chain again at each change more than a minute after the two before', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const chain = await serve({ state: 'ready' });
+    await files.openChain(HANDLE);
+
+    for (let change = 1; change <= 3; change++) {
+      chain.rotateTo([...chain.parts]);
+      await files.jumpToEnd(KEY);
+      await vi.waitFor(() => expect(tab().loading).toBe(false));
+      vi.advanceTimersByTime(31_000);
+    }
+
+    expect(tab().error).toBeNull();
+    expect(get(notifications).filter((n) => n.message.includes('changed on disk'))).toHaveLength(3);
+  });
+});
+
+describe('the zone of a chain tab the backend refuses', () => {
+  const FEATURES = ['log_chains', 'samples_index_build', 'file_tz', 'time_range'];
+
+  afterEach(() => {
+    fileZones.clear(KEY);
+  });
+
+  it('drops the zone with a notice and reads the chain as its lines write times', async () => {
+    const chain = await serve({ state: 'ready', features: FEATURES });
+    chain.refusedZones.add('+02:00');
+    await files.openChain(HANDLE, { position: { kind: 'global', line: 3500 } });
+
+    await files.setFileZone(KEY, '+02:00');
+
+    expect(fileZones.zoneOf(KEY)).toBeNull();
+    expect(get(notifications).some((n) => n.message.includes('zone +02:00'))).toBe(true);
+    expect(tab().error).toBeNull();
+    expect(tab().anchorLine).toBe(3500);
+    expect(chain.samplesRequests.at(-1)?.has('file_tz')).toBe(false);
+  });
+});
+
+describe('a time jump on a chain tab whose zone changes', () => {
+  const FEATURES = ['log_chains', 'samples_index_build', 'file_tz', 'time_range'];
+
+  afterEach(() => {
+    fileZones.clear(KEY);
+    timeCursor.clear();
+  });
+
+  it('is cancelled by the zone change and asked once more in the new zone', async () => {
+    const chain = await serve({ state: 'ready', features: FEATURES });
+    await files.openChain(HANDLE);
+    chain.holdSamples();
+
+    const jump = files.jumpToTime(KEY, '2026-10-01T00:50:00');
+    await vi.waitFor(() =>
+      expect(chain.requests.filter((r) => r.includes('timestamps='))).toHaveLength(1),
+    );
+    const zoned = files.setFileZone(KEY, '+02:00');
+    chain.releaseSamples();
+    await zoned;
+
+    const outcome = await jump;
+
+    expect(outcome).toEqual({ kind: 'found', line: 3000 });
+    const timeQueries = chain.samplesRequests.filter((q) => q.has('timestamps'));
+    expect(timeQueries.at(-1)?.get('file_tz')).toBe('+02:00');
+    expect(tab().anchorLine).toBe(3000);
+  });
+});

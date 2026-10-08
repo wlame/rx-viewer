@@ -40,11 +40,12 @@ export function chainTimeAxis(chain: ChainResponse): TimeAxis | null {
 /**
  * Why a chain's tab cannot be moved by time yet, or null when it can (the
  * chain is ready). A pending chain gives the backend's reason it has no
- * index task, or why its task failed, when it knows one.
+ * index task (from the last description or answer about one part), or
+ * why its task failed, when it knows one.
  */
 export function chainTimeRefusal(
   name: string,
-  tab: Pick<ChainTab, 'description' | 'indexProblem'>,
+  tab: Pick<ChainTab, 'description' | 'indexProblem'> & Partial<Pick<ChainTab, 'buildRefused'>>,
 ): string | null {
   const chain = tab.description;
   if (chain === null) return `The log chain ${name} is being read`;
@@ -54,6 +55,7 @@ export function chainTimeRefusal(
     return `${name} is not a valid log chain${codes ? `: ${codes}` : ''}`;
   }
   const why =
+    tab.buildRefused ??
     chain.index_build_refused ??
     tab.indexProblem ??
     'the line indexes of its parts are being built';

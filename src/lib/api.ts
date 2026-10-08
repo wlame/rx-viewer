@@ -35,6 +35,11 @@ class ApiError extends Error {
     message: string,
     /** The unparsed response body, kept for logging and debugging. */
     public body: string = message,
+    /**
+     * The `Retry-After` header of a refusal, as sent: how long a busy
+     * backend (503) asks the client to wait. Null without one.
+     */
+    public retryAfter: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -314,6 +319,7 @@ async function fetchJsonAnswer<T>(url: string, options?: RequestInit): Promise<J
       response.statusText,
       errorMessageFrom(text, response.statusText),
       text,
+      response.headers?.get('Retry-After') ?? null,
     );
   }
 

@@ -31,6 +31,12 @@ import type {
 import { isChainIndexed, neighbourPartWithLines } from '../utils/chainParts';
 import { chainTimeRefusal } from '../utils/chainTime';
 import {
+  MAX_CHANGES_IN_WINDOW,
+  changesInWindow,
+  waitBefore,
+  type PendingWaitKind,
+} from '../utils/chainWaits';
+import {
   LOCAL_NUMBERING_BASE,
   anchorAt,
   chainPageSize,
@@ -46,16 +52,17 @@ import {
 } from '../utils/chainWindow';
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestRequest';
+import { retryAfterMs } from '../utils/retryAfter';
 import type { SampleWindow } from '../utils/sampleWindow';
 import { addPage, maxHeldLines } from '../utils/slidingWindow';
 import { chainHandleOf, chainKey, type TabKey } from '../utils/tabKey';
-import { watchTask } from '../utils/taskPolling';
+import { sleep, watchTask } from '../utils/taskPolling';
 import { timeLabelFor } from '../utils/timeline';
 import { chainMode, isChainModeOn } from './chainMode';
 import { chainTopLines } from './chainTopLines';
 import { commandLog } from './commands';
 import type { TimeJumpOutcome, TimeQuery } from './files';
-import { requestZoneOf } from './fileZones';
+import { fileZones, requestZoneOf } from './fileZones';
 import { backendHas, health } from './health';
 import { notifications } from './notifications';
 import { timeCursor } from './timeCursor';
@@ -110,11 +117,11 @@ const SCREEN_LINES = 50;
 const MAX_WAITS = 3;
 
 /**
- * Changes of a chain's files (409 answers) a tab reads again through in a
- * row; at the next one it stops and says the files keep changing, so a
- * flapping writer cannot keep it reading.
+ * Busy answers (503: no place for the chain's index task) a request is
+ * asked again through, each after the wait the backend names; at the
+ * next one it stops and says the backend is still busy.
  */
-const MAX_CHANGES_IN_A_ROW = 2;
+const MAX_BUSY_RETRIES = 3;
 
 /** How long a notice about a chain stays on screen. */
 const NOTICE_MS = 5000;
@@ -122,7 +129,21 @@ const NOTICE_MS = 5000;
 /** The statuses of a task that has not ended. */
 const RUNNING_STATUSES: ReadonlySet<string> = new Set(['queued', 'running']);
 
+const HTTP_BAD_REQUEST = 400;
 const HTTP_NOT_FOUND = 404;
+const HTTP_SERVICE_UNAVAILABLE = 503;
+
+/**
+ * The backend stayed too busy to start the chain's index task through
+ * every retry: not a failure of the chain, so a tab that shows lines
+ * keeps them and says so in a notice.
+ */
+class ChainBusyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChainBusyError';
+  }
+}
 
 /** `Omit` over each member of a union, so the union stays one. */
 type OmitEach<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -183,6 +204,7 @@ function newChainTab(
     anchor: anchorOfPosition(position),
     indexTask: null,
     indexProblem: null,
+    buildRefused: null,
     invalidDetail: null,
   };
   return {
@@ -246,8 +268,16 @@ export function createChainTabs(deps: ChainTabDeps) {
   const goneTasks = new Map<TabKey, string>();
   /** The chain tabs whose highlighting a link gave, which the size-based default leaves alone. */
   const highlightGiven = new Set<TabKey>();
-  /** The changes of each tab's files read again through in a row; a window's lines end the row. */
-  const changesInARow = new Map<TabKey, number>();
+  /** When each tab's files last changed on disk, within the window that counts towards a stop. */
+  const changeTimes = new Map<TabKey, number[]>();
+  /** How many times each tab waited for its pending chain, by why, since it was last not pending. */
+  const pendingRounds = new Map<TabKey, Record<PendingWaitKind, number>>();
+  /** The wait of each tab before it describes its chain again, which closing the tab cancels. */
+  const describeWaits = new Map<TabKey, AbortController>();
+  /** How many times each tab was read again in a new zone, so a jump knows it was cut short by one. */
+  const reloadGenerations = new Map<TabKey, number>();
+  /** The reading again in a new zone each tab is doing, if any. */
+  const runningReloads = new Map<TabKey, Promise<void>>();
 
   function chainOf(key: TabKey): ChainTab | undefined {
     return deps.getTab(key)?.chain;
@@ -305,37 +335,124 @@ export function createChainTabs(deps: ChainTabDeps) {
       });
       return;
     }
+    // A task that ended while the chain stayed pending is followed by the
+    // next one only after a wait, longer each time, and not past a few.
+    const rounds = roundsOf(key).taskEnded;
+    const wait = waitBefore('taskEnded', rounds);
+    if (wait === null) {
+      stopFollow(key);
+      setChain(key, {
+        indexTask: null,
+        indexProblem: `${rounds} index tasks of ${nameOf(handleOf(key))} ended and it is still pending; open the chain again later`,
+      });
+      return;
+    }
     stopFollow(key);
     const entry = { taskId, controller: new AbortController() };
     follows.set(key, entry);
     const isCurrent = () => follows.get(key) === entry;
     setChain(key, { indexTask: { taskId, progress: null }, indexProblem: null });
 
-    watchTask(taskId, {
-      fetchStatus: (id, signal) => api.getTaskStatus(id, { signal }),
-      signal: entry.controller.signal,
-      onStatus: (task) => {
-        if (isCurrent()) setChain(key, { indexTask: { taskId, progress: task.progress } });
-      },
-    }).then(
-      (end) => {
-        if (!isCurrent()) return;
-        follows.delete(key);
-        if (end.kind === 'gone') goneTasks.set(key, taskId);
-        else goneTasks.delete(key);
-        setChain(key, { indexTask: null });
+    const signal = entry.controller.signal;
+    sleep(wait, signal)
+      .then(() =>
+        watchTask(taskId, {
+          fetchStatus: (id, statusSignal) => api.getTaskStatus(id, { signal: statusSignal }),
+          signal,
+          onStatus: (task) => {
+            if (isCurrent()) setChain(key, { indexTask: { taskId, progress: task.progress } });
+          },
+        }),
+      )
+      .then(
+        (end) => {
+          if (!isCurrent()) return;
+          follows.delete(key);
+          if (end.kind === 'gone') goneTasks.set(key, taskId);
+          else goneTasks.delete(key);
+          countRound(key, 'taskEnded');
+          setChain(key, { indexTask: null });
+          void refresh(key);
+        },
+        (error: unknown) => {
+          if (!isCurrent() || isAbortError(error)) return;
+          follows.delete(key);
+          const reason = error instanceof Error ? error.message : String(error);
+          setChain(key, {
+            indexTask: null,
+            indexProblem: `The index task cannot be followed: ${reason}`,
+          });
+        },
+      );
+  }
+
+  /** How many times the tab `key` waited for its pending chain, by why. */
+  function roundsOf(key: TabKey): Record<PendingWaitKind, number> {
+    return pendingRounds.get(key) ?? { taskEnded: 0, noTask: 0 };
+  }
+
+  function countRound(key: TabKey, kind: PendingWaitKind): void {
+    const rounds = roundsOf(key);
+    pendingRounds.set(key, { ...rounds, [kind]: rounds[kind] + 1 });
+  }
+
+  /** Stop the wait of the tab `key` before it describes its chain again. */
+  function stopDescribeWait(key: TabKey): void {
+    describeWaits.get(key)?.abort();
+    describeWaits.delete(key);
+  }
+
+  /**
+   * The pending chain of the tab `key` has no index task: the backend has
+   * no place to start one (`reason`). The tab keeps the reason, describes
+   * the chain again after a wait, longer each time, which starts the task
+   * once a place is free, and stops after a few with a message.
+   */
+  function waitForTaskPlace(key: TabKey, reason: string | null): void {
+    // No task runs for the chain now, so a task followed before has ended.
+    stopFollow(key);
+    setChain(key, { buildRefused: reason, indexTask: null });
+    if (describeWaits.has(key)) return;
+    const round = roundsOf(key).noTask + 1;
+    const wait = waitBefore('noTask', round);
+    if (wait === null) {
+      const why = reason ?? 'the backend started none';
+      setChain(key, {
+        indexProblem: `${nameOf(handleOf(key))} has no index task: ${why}; open the chain again later`,
+      });
+      return;
+    }
+    countRound(key, 'noTask');
+    const controller = new AbortController();
+    describeWaits.set(key, controller);
+    sleep(wait, controller.signal).then(
+      () => {
+        if (describeWaits.get(key) !== controller) return;
+        describeWaits.delete(key);
         void refresh(key);
       },
-      (error: unknown) => {
-        if (!isCurrent() || isAbortError(error)) return;
-        follows.delete(key);
-        const reason = error instanceof Error ? error.message : String(error);
-        setChain(key, {
-          indexTask: null,
-          indexProblem: `The index task cannot be followed: ${reason}`,
-        });
-      },
+      () => {},
     );
+  }
+
+  /**
+   * What a pending chain's description or answer says about its index
+   * task: follow the task it names, or wait for a place for one when it
+   * names none.
+   */
+  function followPending(
+    key: TabKey,
+    build: { task_id: string; status: string } | null,
+    refused: string | null,
+  ): void {
+    if (build === null) {
+      waitForTaskPlace(key, refused);
+      return;
+    }
+    stopDescribeWait(key);
+    pendingRounds.set(key, { ...roundsOf(key), noTask: 0 });
+    setChain(key, { buildRefused: null });
+    follow(key, build);
   }
 
   /**
@@ -371,7 +488,14 @@ export function createChainTabs(deps: ChainTabDeps) {
             : defaultSyntaxHighlighting(size),
       };
     });
-    if (chain.state === 'pending') follow(key, chain.index_build);
+    if (chain.state === 'pending') {
+      followPending(key, chain.index_build, chain.index_build_refused);
+      return;
+    }
+    // A chain that is not pending waits for nothing.
+    pendingRounds.delete(key);
+    stopDescribeWait(key);
+    setChain(key, { buildRefused: null });
   }
 
   /**
@@ -386,10 +510,12 @@ export function createChainTabs(deps: ChainTabDeps) {
   ): Promise<{ chain: ChainResponse; isChanged: boolean } | null> {
     const handle = handleOf(key);
     const fingerprint = chainOf(key)?.description?.fingerprint;
+    let sentZone: string | undefined;
     try {
-      const answer = await describes.run(key, (signal) =>
-        api.logChain(handle, { signal, fileTz: requestZoneOf(key), fingerprint }),
-      );
+      const answer = await describes.run(key, (signal) => {
+        sentZone = requestZoneOf(key);
+        return api.logChain(handle, { signal, fileTz: sentZone, fingerprint });
+      });
       if (answer === SUPERSEDED) return null;
       const isChanged = answer.kind === 'changed';
       applyDescription(key, answer.chain, isChanged);
@@ -400,9 +526,41 @@ export function createChainTabs(deps: ChainTabDeps) {
         await closeAsNoChain(key);
         return null;
       }
+      if (isRefusedZone(key, error, sentZone)) {
+        // The zone is gone now, so the next description sends none.
+        dropRefusedZone(key, sentZone, error);
+        return describe(key);
+      }
       showError(key, error);
       return null;
     }
+  }
+
+  /**
+   * Whether `error` is the backend's refusal of the zone `sentZone` that a
+   * description of the tab `key` carried, while the tab still has it: a
+   * description answers 400 for a valid handle only for its `file_tz`.
+   */
+  function isRefusedZone(
+    key: TabKey,
+    error: unknown,
+    sentZone: string | undefined,
+  ): sentZone is string {
+    return (
+      error instanceof ApiError &&
+      error.status === HTTP_BAD_REQUEST &&
+      sentZone !== undefined &&
+      fileZones.zoneOf(key) === sentZone
+    );
+  }
+
+  /** Drop the zone the backend refused for the tab `key`, with a notice, as a file's tab does. */
+  function dropRefusedZone(key: TabKey, zone: string, error: unknown): void {
+    fileZones.clear(key);
+    notifications.error(
+      `Cannot read ${nameOf(handleOf(key))} in the zone ${zone}: ${messageOf(error)}`,
+      NOTICE_MS,
+    );
   }
 
   /**
@@ -423,6 +581,35 @@ export function createChainTabs(deps: ChainTabDeps) {
   }
 
   /**
+   * The backend answered a request about the chain `handle` busy (503): no
+   * place for the chain's index task yet. The first time says so in a
+   * notice; each wait is the one the answer's `Retry-After` names (a few
+   * seconds without it). At the busy answer after `MAX_BUSY_RETRIES` to
+   * one load, throws a `ChainBusyError`.
+   */
+  async function waitWhileBusy(
+    handle: string,
+    busy: number,
+    error: ApiError,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const name = nameOf(handle);
+    if (busy > MAX_BUSY_RETRIES) {
+      throw new ChainBusyError(
+        `The backend is still busy with the indexes of other log chains; ask ${name} again later`,
+      );
+    }
+    const wait = retryAfterMs(error.retryAfter, Date.now());
+    if (busy === 1) {
+      notifications.info(
+        `The backend is busy with the indexes of other log chains; ${name} is asked again in ${Math.round(wait / 1000)} s`,
+        NOTICE_MS,
+      );
+    }
+    await sleep(wait, signal);
+  }
+
+  /**
    * The lines a request asks for, after any index task the backend
    * answers 202 with: the load shows the task, follows it to its end,
    * describes the chain again and asks once more. Each request carries
@@ -435,19 +622,27 @@ export function createChainTabs(deps: ChainTabDeps) {
   ): Promise<Exclude<LogSamplesAnswer, { kind: 'building' }>> {
     await contractGate.pass(signal);
     const params = { handle: handleOf(key), ...request } as LogSamplesParams;
-    for (let waits = 0; ; waits++) {
-      const answer = await api.logSamples(params, {
-        signal,
-        respondAsync: true,
-        fileTz: requestZoneOf(key),
-        fingerprint: chainOf(key)?.description?.fingerprint,
-      });
+    for (let waits = 0, busy = 0; ;) {
+      let answer: LogSamplesAnswer;
+      try {
+        answer = await api.logSamples(params, {
+          signal,
+          respondAsync: true,
+          fileTz: requestZoneOf(key),
+          fingerprint: chainOf(key)?.description?.fingerprint,
+        });
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== HTTP_SERVICE_UNAVAILABLE) throw error;
+        busy += 1;
+        await waitWhileBusy(params.handle, busy, error, signal);
+        continue;
+      }
       if (answer.kind !== 'building') {
         if (waits > 0) deps.patchTab(key, () => ({ indexBuild: null }));
-        if (answer.kind === 'samples') changesInARow.delete(key);
         return answer;
       }
-      if (waits >= MAX_WAITS) {
+      waits += 1;
+      if (waits > MAX_WAITS) {
         throw new Error(
           `The line indexes of ${nameOf(params.handle)} are still being built; try again later`,
         );
@@ -638,7 +833,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     try {
       answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
     } catch (error) {
-      if (!isAbortError(error)) showError(key, error);
+      if (!isAbortError(error)) showFailure(key, error);
       return;
     }
     if (answer === SUPERSEDED) return;
@@ -649,6 +844,22 @@ export function createChainTabs(deps: ChainTabDeps) {
       // lines with no whole number: the tab says why and shows no line.
       if (!isAbortError(error)) showError(key, error);
     }
+  }
+
+  /**
+   * Show a failed load: a busy backend in a notice, the lines the tab
+   * shows kept (the chain is fine, the backend only had no place for its
+   * index task); any other failure, or a busy backend before the tab
+   * shows a line, in the tab.
+   */
+  function showFailure(key: TabKey, error: unknown): void {
+    const isBusy = error instanceof ChainBusyError;
+    if (isBusy && (deps.getTab(key)?.lines.length ?? 0) > 0) {
+      deps.patchTab(key, () => ({ loading: false }));
+      notifications.info(error.message, NOTICE_MS);
+      return;
+    }
+    showError(key, error);
   }
 
   /** What a window's answer does to the tab: its lines, a changed chain, or an invalid one. */
@@ -691,7 +902,20 @@ export function createChainTabs(deps: ChainTabDeps) {
         'file',
         piecesOf(samples).map((p) => p.cli_command),
       );
-    follow(key, samples.index_build);
+    followAnswer(key, samples);
+  }
+
+  /**
+   * Follow the build an answer names: for a pending chain its index task,
+   * or, when it names none, a wait for a place for one with the reason it
+   * gives; for a ready chain a part's build.
+   */
+  function followAnswer(key: TabKey, samples: ChainSamplesResponse): void {
+    if (samples.state === 'pending') {
+      followPending(key, samples.index_build, samples.index_build_refused);
+    } else {
+      follow(key, samples.index_build);
+    }
   }
 
   /**
@@ -719,10 +943,10 @@ export function createChainTabs(deps: ChainTabDeps) {
    * lines read between them, the tab stops and says why.
    */
   async function readAgainAfterChange(key: TabKey, chain: ChainResponse): Promise<void> {
-    const changes = (changesInARow.get(key) ?? 0) + 1;
-    changesInARow.set(key, changes);
-    if (changes > MAX_CHANGES_IN_A_ROW) {
-      changesInARow.delete(key);
+    const changes = changesInWindow(changeTimes.get(key) ?? [], Date.now());
+    changeTimes.set(key, changes);
+    if (changes.length > MAX_CHANGES_IN_WINDOW) {
+      changeTimes.delete(key);
       showError(
         key,
         new Error(`The files of ${chain.name} keep changing on disk; open the chain again later`),
@@ -915,6 +1139,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     } catch (error) {
       if (isAbortError(error)) return;
       deps.patchTab(key, () => ({ loading: false }));
+      if (error instanceof ChainBusyError) notifications.info(error.message, NOTICE_MS);
       console.error('Failed to load more lines of the log chain:', key, error);
       return;
     }
@@ -938,7 +1163,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       showError(key, error);
       return;
     }
-    follow(key, samples.index_build);
+    followAnswer(key, samples);
   }
 
   /**
@@ -1059,7 +1284,21 @@ export function createChainTabs(deps: ChainTabDeps) {
    * is not ready, leaves the tab as it was and says why; the backend is
    * asked nothing while the chain is not ready.
    */
-  async function jumpToTime(key: TabKey, query: TimeQuery): Promise<TimeJumpOutcome> {
+  function jumpToTime(key: TabKey, query: TimeQuery): Promise<TimeJumpOutcome> {
+    return jumpToTimeOnce(key, query, false);
+  }
+
+  /**
+   * One jump by time (`jumpToTime`). A jump cut short because the chain
+   * was read again in a new zone meanwhile is asked once more when that
+   * reading has ended (`isRetry`), in the zone the chain is read in now;
+   * cut short again, it says so.
+   */
+  async function jumpToTimeOnce(
+    key: TabKey,
+    query: TimeQuery,
+    isRetry: boolean,
+  ): Promise<TimeJumpOutcome> {
     const tab = deps.getTab(key);
     if (!tab?.chain) return { kind: 'refused', message: `${key} is not open` };
     deps.setActive(key);
@@ -1068,6 +1307,19 @@ export function createChainTabs(deps: ChainTabDeps) {
     const notReady = chainTimeRefusal(tab.name, tab.chain);
     if (notReady !== null) return { kind: 'refused', message: notReady };
 
+    const generation = reloadGenerations.get(key) ?? 0;
+    const afterCutShort = async (): Promise<TimeJumpOutcome> => {
+      if ((reloadGenerations.get(key) ?? 0) === generation) return { kind: 'superseded' };
+      if (isRetry) {
+        return {
+          kind: 'refused',
+          message: `${tab.name} was read again while the jump ran; ask for the time again`,
+        };
+      }
+      await runningReloads.get(key);
+      return jumpToTimeOnce(key, query, true);
+    };
+
     const { position, value } = timeQueryPosition(query);
     const request: ChainRequest = { timestamps: [value], context: JUMP_CONTEXT };
     deps.patchTab(key, () => ({ loading: true, error: null }));
@@ -1075,11 +1327,11 @@ export function createChainTabs(deps: ChainTabDeps) {
     try {
       answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
     } catch (error) {
-      if (isAbortError(error)) return { kind: 'superseded' };
+      if (isAbortError(error)) return afterCutShort();
       deps.patchTab(key, () => ({ loading: false }));
       return { kind: 'refused', message: messageOf(error) };
     }
-    if (answer === SUPERSEDED) return { kind: 'superseded' };
+    if (answer === SUPERSEDED) return afterCutShort();
     if (answer.kind === 'changed') {
       await readAgainAfterChange(key, answer.chain);
       return { kind: 'superseded' };
@@ -1122,9 +1374,25 @@ export function createChainTabs(deps: ChainTabDeps) {
     return { kind: 'found', line: found.line };
   }
 
-  /** Read the chain again, as its zone now asks, and show the anchor line. */
+  /**
+   * Read the chain again, as its zone now asks, and show the anchor line.
+   * A load still running for the tab (a jump by time in the old zone) is
+   * cancelled first, so its answer cannot land after this one.
+   */
   async function reload(key: TabKey): Promise<void> {
     if (!chainOf(key)) return;
+    deps.loads.forget(key);
+    reloadGenerations.set(key, (reloadGenerations.get(key) ?? 0) + 1);
+    const running = readAgainInZone(key);
+    runningReloads.set(key, running);
+    try {
+      await running;
+    } finally {
+      if (runningReloads.get(key) === running) runningReloads.delete(key);
+    }
+  }
+
+  async function readAgainInZone(key: TabKey): Promise<void> {
     deps.patchTab(key, (tab) => ({ chain: tab.chain && { ...tab.chain, description: null } }));
     const described = await describe(key);
     if (described === null || described.chain.state === 'invalid') {
@@ -1140,7 +1408,11 @@ export function createChainTabs(deps: ChainTabDeps) {
     stopFollow(key);
     goneTasks.delete(key);
     highlightGiven.delete(key);
-    changesInARow.delete(key);
+    changeTimes.delete(key);
+    pendingRounds.delete(key);
+    stopDescribeWait(key);
+    reloadGenerations.delete(key);
+    runningReloads.delete(key);
     chainTopLines.forget(key);
   }
 

@@ -863,6 +863,7 @@ function chainTabWith(anchor: ChainAnchor): ChainTab {
     anchor,
     indexTask: null,
     indexProblem: null,
+    buildRefused: null,
     invalidDetail: null,
   };
 }

@@ -98,6 +98,11 @@ describe('chainTimeRefusal', () => {
     );
   });
 
+  it('gives the reason the answer about one part gave for no index task', () => {
+    const tab = chainTabOf(chain({ state: 'pending' }), { buildRefused: 'no place yet' });
+    expect(chainTimeRefusal('agent.log', tab)).toBe('agent.log is not ready: no place yet');
+  });
+
   it('gives why the index task of a pending chain failed', () => {
     expect(chainTimeRefusal('agent.log', tabOf(chain({ state: 'pending' }), 'disk full'))).toBe(
       'agent.log is not ready: disk full',

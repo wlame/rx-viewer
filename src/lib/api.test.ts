@@ -503,6 +503,30 @@ describe('log chain routes', () => {
       stubFetch({ ok: false, status, statusText: 'x', text: async () => '{"detail":"no"}' });
       await expect(api.logSamples({ handle, lines: ['1'] })).rejects.toMatchObject({ status });
     });
+
+    // A pending chain whose index task has no place to start: the client
+    // waits as long as the backend asks before it asks again.
+    it('throws a 503 as an ApiError that keeps its Retry-After', async () => {
+      stubFetch({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: new Headers({ 'Retry-After': '5' }),
+        text: async () => '{"detail":"no place for the chain index task"}',
+      });
+      await expect(api.logSamples({ handle, lines: ['1'] })).rejects.toMatchObject({
+        status: 503,
+        retryAfter: '5',
+      });
+    });
+
+    it('gives no Retry-After for a refusal without the header', async () => {
+      stubFetch({ ok: false, status: 503, statusText: 'x', text: async () => '{"detail":"no"}' });
+      await expect(api.logSamples({ handle, lines: ['1'] })).rejects.toMatchObject({
+        status: 503,
+        retryAfter: null,
+      });
+    });
   });
 
   describe('logTrace', () => {

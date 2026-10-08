@@ -42,7 +42,8 @@ function abortError(): Error {
   return error;
 }
 
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
+/** Wait `ms`, or reject with an `AbortError` as soon as `signal` aborts. */
+export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(abortError());

@@ -59,6 +59,7 @@ function chainTab(description: Partial<ChainResponse>, fields: Partial<ChainTab>
     anchor: null,
     indexTask: null,
     indexProblem: null,
+    buildRefused: null,
     invalidDetail: null,
     ...fields,
   };
@@ -109,6 +110,14 @@ describe('ChainSummary', () => {
 
     expect(text).toContain('pending');
     expect(text).toContain('indexing 1/2 parts · 50%');
+  });
+
+  it('says a pending chain waits for an index task, with the backend reason in its tooltip', () => {
+    const chain = chainTab({ state: 'pending' }, { buildRefused: 'no place for its task' });
+    const text = mount(chain);
+
+    expect(text).toContain('waiting for an index task');
+    expect(document.querySelector('[title="no place for its task"]')).not.toBeNull();
   });
 
   it('names the gaps and the missing parts, and the reasons of an invalid chain', () => {

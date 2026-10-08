@@ -4,11 +4,16 @@
  * Every line reads `<time> LINE <global n> part=<name> local=<l>`, so a
  * wrong number shows without a second tool, and global line n has the
  * timestamp `T0_MS + n` seconds, plus the `shiftSeconds` of its part and
- * every part before it (a time gap). The chain is pending (no global
- * numbers; a request by global line or time answers 202 with the chain's
- * index task) until the test ends the task with `finishTask`, or ready
- * from the start. A search of the chain (`/v1/logs/trace`) finds its
- * lines by a JavaScript pattern. Requests are recorded for assertions.
+ * every part before it (a time gap). A part given its own `text` and
+ * `startSecond` keeps its lines' text and times through a rotation that
+ * renames it (`rotateTo`): its lines read `<time> <text> local=<l>`. The
+ * chain is pending (no global numbers; a request by global line or time
+ * answers 202 with the chain's index task) until the test ends the task
+ * with `finishTask`, or ready from the start. A search of the chain
+ * (`/v1/logs/trace`) finds its lines by a JavaScript pattern. Each part
+ * also reads as a file of its own (`/v1/samples`), with the same lines,
+ * and its directory lists it (`/v1/tree`) and the chain
+ * (`/v1/logs/chains`). Requests are recorded for assertions.
  */
 import { vi } from 'vitest';
 import type {
@@ -36,6 +41,17 @@ export interface FakePart {
   key?: string;
   /** Seconds added to the times of this part and every later one: a time gap before it. */
   shiftSeconds?: number;
+  /** Its modification time as the listing gives it; by default one minute apart per place. */
+  modifiedAt?: string;
+  /** Its size in bytes; by default 60 bytes a line. */
+  size?: number;
+  /**
+   * The words its lines read in place of `LINE <n> part=<name>`, which a
+   * rename changes: the same file keeps its text under any name.
+   */
+  text?: string;
+  /** The second after `T0_MS` of its first line, in place of its global number's. */
+  startSecond?: number;
 }
 
 export interface FakeChainOptions {
@@ -57,18 +73,25 @@ interface Answer {
   ok: boolean;
   status: number;
   statusText: string;
+  headers: Headers;
   json: () => Promise<unknown>;
   text: () => Promise<string>;
 }
 
-function answer(status: number, body: unknown): Answer {
+function answer(status: number, body: unknown, headers: Record<string, string> = {}): Answer {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: String(status),
+    headers: new Headers(headers),
     json: async () => body,
     text: async () => JSON.stringify(body),
   };
+}
+
+/** The modification time of the part at `place` when the test gives none: a minute apart each. */
+function defaultModifiedAt(place: number): string {
+  return new Date(T0_MS + place * 60_000).toISOString().replace('Z', '000Z');
 }
 
 /** The id of the chain's index task. */
@@ -85,9 +108,30 @@ const TIME_OF_DAY = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
 export class FakeChain {
   readonly dir: string;
   readonly name: string;
-  readonly parts: FakePart[];
+  /** The parts in the chain's order, oldest first; `rotateTo` replaces them. */
+  parts: FakePart[];
   state: 'pending' | 'ready' | 'invalid';
   fingerprint = '00000000000000a1';
+  /** Whether the handle names no chain any more: every chain route answers 404. */
+  isGone = false;
+  /**
+   * Requests by global line or time on a pending chain that answer 503,
+   * with `Retry-After: retryAfter` (left out when null), before they
+   * answer as before.
+   */
+  busyAnswers = 0;
+  retryAfter: string | null = '5';
+  /**
+   * Why a pending chain has no index task: while set, its description and
+   * the answers about one part name no task and give this reason.
+   */
+  refusedBuild: string | null = null;
+  /** Zones a description refuses with 400, as a backend without them in its zone database does. */
+  readonly refusedZones = new Set<string>();
+  /** While set, samples requests wait for it (or for their signal to abort) before they answer. */
+  private held: Promise<void> | null = null;
+  private release: () => void = () => {};
+  private rotations = 0;
   /** Whether the files change before every samples request, as a flapping writer would. */
   keepsChanging = false;
   /**
@@ -143,13 +187,24 @@ export class FakeChain {
 
   /** The timestamp of global line `n`, a line of part `i`. */
   timeOf(n: number, i: number): number {
+    const start = this.parts[i].startSecond;
+    if (start !== undefined) return T0_MS + (start + n - this.starts()[i]) * 1000;
     return T0_MS + (n + this.shiftOf(i)) * 1000;
   }
 
   /** The text of global line `n`, of part `i` and its local line `local`. */
-  private lineText(n: number, i: number, local: number): string {
+  lineText(n: number, i: number, local: number): string {
     const time = new Date(this.timeOf(n, i)).toISOString();
+    const text = this.parts[i].text;
+    if (text !== undefined) return `${time} ${text} local=${local}`;
     return `${time} LINE ${n} part=${this.parts[i].name} local=${local}`;
+  }
+
+  /** The text of line `local` of the part `name`, as the chain and the part as a file read it. */
+  partLineText(name: string, local: number): string {
+    const i = this.parts.findIndex((p) => p.name === name);
+    if (i < 0) throw new Error(`${name} is not a part`);
+    return this.lineText(this.starts()[i] + local - 1, i, local);
   }
 
   /**
@@ -166,6 +221,19 @@ export class FakeChain {
   /** A rotation: the files changed, so an old fingerprint answers 409. */
   rotate(): void {
     this.fingerprint = '00000000000000b2';
+  }
+
+  /**
+   * A rotation that leaves `parts` on disk: renamed, compressed, new and
+   * removed files, each keeping its `text` and `startSecond`. The chain
+   * is `state` after it (a numbered rotation leaves it pending until its
+   * renamed parts are indexed again).
+   */
+  rotateTo(parts: FakePart[], state: 'pending' | 'ready' | 'invalid' = this.state): void {
+    this.rotations += 1;
+    this.parts = parts;
+    this.state = state;
+    this.fingerprint = (0xb00 + this.rotations).toString(16).padStart(16, '0');
   }
 
   private isReady(): boolean {
@@ -200,8 +268,8 @@ export class FakeChain {
         is_active: part.isActive ?? false,
         key: part.isActive ? null : (part.key ?? String(this.parts.length - 1 - i)),
         compression_format: part.compression ?? null,
-        size: part.lines * 60,
-        modified_at: '2026-10-01T00:00:00.000000Z',
+        size: part.size ?? part.lines * 60,
+        modified_at: part.modifiedAt ?? defaultModifiedAt(i),
         is_indexed: isIndexed && part.lines > 0,
         line_count: known || (ready && part.isActive) ? part.lines : null,
         first_ms: part.lines > 0 && (known || ready) ? this.timeOf(first, i) : null,
@@ -231,8 +299,8 @@ export class FakeChain {
       last_ms: ready ? (timed.at(-1)?.last_ms ?? null) : null,
       frozen_line_count: ready ? frozen : null,
       line_count: ready ? this.totalLines : null,
-      index_build: this.state === 'pending' ? this.indexTask() : null,
-      index_build_refused: null,
+      index_build: this.state === 'pending' && this.refusedBuild === null ? this.indexTask() : null,
+      index_build_refused: this.state === 'pending' ? this.refusedBuild : null,
       cli_command: `rx logs show ${this.handle}`,
     };
   }
@@ -297,8 +365,8 @@ export class FakeChain {
       lines,
       timestamps,
       samples,
-      index_build: state === 'pending' ? this.indexTask() : null,
-      index_build_refused: null,
+      index_build: state === 'pending' && this.refusedBuild === null ? this.indexTask() : null,
+      index_build_refused: state === 'pending' ? this.refusedBuild : null,
       cli_command: `rx logs samples ${this.handle} ${flags}`,
     };
   }
@@ -307,6 +375,7 @@ export class FakeChain {
   private samples(query: URLSearchParams, prefer: string | null): Answer {
     this.samplesRequests.push(query);
     this.prefers.push(prefer);
+    if (this.isGone) return answer(404, { detail: 'not a log chain' });
     if (this.keepsChanging) {
       this.changes += 1;
       this.fingerprint = this.changes.toString(16).padStart(16, 'c');
@@ -329,6 +398,12 @@ export class FakeChain {
     if (partName !== null && spec !== null)
       return this.partSamples(query, partName, spec, before, after);
     if (!this.isReady()) {
+      if (this.busyAnswers > 0) {
+        this.busyAnswers -= 1;
+        const headers: Record<string, string> =
+          this.retryAfter === null ? {} : { 'Retry-After': this.retryAfter };
+        return answer(503, { detail: 'no place for the chain index task' }, headers);
+      }
       if (prefer === 'respond-async') return answer(202, this.indexTask());
       return answer(500, { detail: 'the fake waits for no task' });
     }
@@ -386,6 +461,106 @@ export class FakeChain {
       return starts[i] + Math.max(0, Math.ceil((ms - this.timeOf(starts[i], i)) / 1000));
     }
     return -1;
+  }
+
+  /**
+   * Answer `/v1/samples` for a part read as the file it is, as rx-go
+   * answers one file: its own line numbers, the same lines and times the
+   * chain gives them, a line with its context or a range, `-1` keyed by
+   * the last line, null for a window past the end.
+   */
+  private fileSamples(query: URLSearchParams): Answer {
+    const path = query.get('path') ?? '';
+    const i = this.parts.findIndex((p) => `${this.dir}/${p.name}` === path);
+    if (i < 0) return answer(404, { detail: `${path} not found` });
+    const part = this.parts[i];
+    const count = part.lines;
+    const start = this.starts()[i];
+    const spec = query.get('lines') ?? '1';
+    const context = Number(query.get('context') ?? 3);
+    const range = /^(\d+)-(\d+)$/.exec(spec);
+    let key = spec;
+    let first: number;
+    let last: number;
+    if (range) {
+      first = Number(range[1]);
+      last = Math.min(Number(range[2]), count);
+    } else {
+      const line = spec === '-1' ? count : Number(spec);
+      key = String(line);
+      first = Math.max(1, line - context);
+      last = Math.min(count, line + context);
+    }
+    const lines: string[] = [];
+    const times: number[] = [];
+    for (let local = first; local <= last; local++) {
+      lines.push(this.lineText(start + local - 1, i, local));
+      times.push(this.timeOf(start + local - 1, i));
+    }
+    return answer(200, {
+      path,
+      samples: { [key]: lines.length > 0 ? lines : null },
+      line_timestamps: { [key]: lines.length > 0 ? times : null },
+      before_context: context,
+      after_context: context,
+      lines: {},
+      offsets: {},
+      is_compressed: part.compression != null,
+      compression_format: part.compression ?? null,
+      cli_command: `rx samples ${path} --lines=${spec}`,
+    });
+  }
+
+  /** The chain's directory as `/v1/tree` lists it: its parts as files. */
+  private treeListing(query: URLSearchParams): Answer {
+    const path = query.get('path');
+    if (path !== null && path !== this.dir) return answer(404, { detail: 'not found' });
+    const entries = this.parts.map((part, i) => ({
+      name: part.name,
+      path: `${this.dir}/${part.name}`,
+      type: 'file',
+      size: part.size ?? part.lines * 60,
+      size_human: null,
+      modified_at: part.modifiedAt ?? defaultModifiedAt(i),
+      is_text: true,
+      is_compressed: part.compression != null,
+      compression_format: part.compression ?? null,
+      is_indexed: false,
+      line_count: null,
+      children_count: null,
+    }));
+    return answer(200, {
+      path: path ?? this.dir,
+      parent: null,
+      is_search_root: path === null || path === this.dir,
+      entries,
+      total_entries: entries.length,
+      total_size: null,
+      total_size_human: null,
+    });
+  }
+
+  /** The chain as `/v1/logs/chains` lists it in its directory. */
+  private chainListing(query: URLSearchParams): Answer {
+    if (query.get('path') !== this.dir) return answer(200, { path: query.get('path'), chains: [] });
+    const chains = this.isGone
+      ? []
+      : [
+          {
+            path: this.handle,
+            name: this.name,
+            parts: this.parts.map((part) => part.name),
+            has_active: this.parts.some((part) => part.isActive),
+            missing: this.options.missing ?? [],
+            missing_count: (this.options.missing ?? []).length,
+            size: this.parts.reduce((sum, part) => sum + (part.size ?? part.lines * 60), 0),
+            compression_formats: [],
+            is_indexed: this.isReady(),
+            unreadable: [],
+            too_many_parts: false,
+          },
+        ];
+    return answer(200, { path: this.dir, chains });
   }
 
   private timeSamples(query: URLSearchParams, value: string, before: number, after: number) {
@@ -542,6 +717,33 @@ export class FakeChain {
     return answer(200, body);
   }
 
+  /** Hold every samples request until `releaseSamples`, as a slow backend would. */
+  holdSamples(): void {
+    this.held = new Promise((resolve) => (this.release = resolve));
+  }
+
+  /** Answer the samples requests held since `holdSamples`, and hold no more. */
+  releaseSamples(): void {
+    this.held = null;
+    this.release();
+  }
+
+  /** Wait while samples requests are held; an aborted signal rejects as `fetch` does. */
+  private async waitWhileHeld(signal: AbortSignal | null | undefined): Promise<void> {
+    const held = this.held;
+    if (held === null) return;
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        const error = new Error('The request was aborted');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      if (signal?.aborted) abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      void held.then(resolve);
+    });
+  }
+
   /** Whether `finishTask` was called. */
   get hasFinished(): boolean {
     return this.isFinished;
@@ -560,7 +762,13 @@ export class FakeChain {
           features: this.options.features ?? ['log_chains', 'samples_index_build'],
         });
       case '/v1/logs/chain': {
-        if (query.get('path') !== this.handle) return answer(404, { detail: 'not a log chain' });
+        if (query.get('path') !== this.handle || this.isGone) {
+          return answer(404, { detail: 'not a log chain' });
+        }
+        const zone = query.get('file_tz');
+        if (zone !== null && this.refusedZones.has(zone)) {
+          return answer(400, { detail: `unknown time zone "${zone}"` });
+        }
         const fingerprint = query.get('fingerprint');
         if (fingerprint !== null && fingerprint !== this.fingerprint) {
           return answer(409, this.description(query.get('file_tz')));
@@ -568,9 +776,16 @@ export class FakeChain {
         return answer(200, this.description(query.get('file_tz')));
       }
       case '/v1/logs/samples':
+        await this.waitWhileHeld(init?.signal);
         return this.samples(query, prefer);
       case '/v1/logs/trace':
         return this.trace(query);
+      case '/v1/logs/chains':
+        return this.chainListing(query);
+      case '/v1/samples':
+        return this.fileSamples(query);
+      case '/v1/tree':
+        return this.treeListing(query);
       case `/v1/tasks/${CHAIN_TASK_ID}`:
         return this.taskStatus();
       default:

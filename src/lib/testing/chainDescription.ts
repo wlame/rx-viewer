@@ -94,6 +94,7 @@ export function chainTabOf(
     anchor: null,
     indexTask: null,
     indexProblem: null,
+    buildRefused: null,
     invalidDetail: null,
     ...fields,
   };

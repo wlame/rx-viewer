@@ -86,6 +86,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chain is read again in it, its times follow, and the tab stays on its
   line. On a chain's tab the bar and the stash need the backend to serve
   log chains, not time queries on single files.
+- A log chain's tab waits rather than fails while the backend is busy.
+  A request the backend answers 503 (no place for the chain's index
+  task) is asked again after the wait its `Retry-After` names (5 s
+  without one, from 1 s to a minute), up to three times, with a notice;
+  the tab keeps its lines, and after the third says the backend is still
+  busy. A pending chain with no index task shows "waiting for an index
+  task" with the backend's reason (`index_build_refused`, from its
+  description or from an answer about one part), which the timeline
+  gives too, and is described again after 5 s, then 10, 20, 40 and 60 s,
+  eight times at most. An index task that ends while the chain stays
+  pending is followed by the next one after 1 s, then 2, 4, 8 and 16 s;
+  after five the tab says so and stops. The tab stops reading a chain
+  whose files changed three times within a minute, whatever it read
+  between the changes.
+- A zone the backend refuses for a log chain is dropped with a notice,
+  and the chain is read as its lines write times, as for a file.
+  Choosing a zone while a jump by time on a chain runs cancels the jump
+  and asks it once more in the new zone; cut short again, the Go to time
+  box says so.
 - Search in chain mode. With chain mode on, the search panel searches
   the same roots as log chains (rx-go's `/v1/logs/trace`), and "Only
   opened files" names each open chain's tab by its handle beside the

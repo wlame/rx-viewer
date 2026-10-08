@@ -37,6 +37,7 @@ function chainTab(fields: Partial<ChainTab> = {}): ChainTab {
     anchor: { part: 'syslog.2', line: 7, timeMs: null },
     indexTask: null,
     indexProblem: null,
+    buildRefused: null,
     invalidDetail: null,
     ...fields,
   };
