@@ -346,7 +346,9 @@ describe('a pending chain tab', () => {
     expect(tab().chain?.numbering).toBe('local');
   });
 
-  it('shows an error and adds no line when a page numbers a piece with a fraction', async () => {
+  // The lines the editor shows stay shown: an error in the tab would
+  // replace the editor with it.
+  it('keeps the held lines and says why in a notice when a page numbers a piece with a fraction', async () => {
     await files.openChain(HANDLE);
     const held = tab().lines;
     chain.rewritePiece = (p) => ({ ...p, first_local_line: 1.5 });
@@ -354,8 +356,26 @@ describe('a pending chain tab', () => {
     await files.loadMore(KEY, 'after');
 
     expect(tab().lines).toBe(held);
-    expect(tab().error).toContain('not a whole number');
+    expect(tab().error).toBeNull();
     expect(tab().loading).toBe(false);
+    expect(get(notifications).map((n) => [n.type, n.message])).toContainEqual([
+      'error',
+      expect.stringContaining('not a whole number'),
+    ]);
+  });
+
+  // Every scroll at the edge would ask the refused page again.
+  it('pages no further that way after a refused page', async () => {
+    await files.openChain(HANDLE);
+    await files.loadMore(KEY, 'after');
+    chain.rewritePiece = (p) => ({ ...p, first_local_line: 1.5 });
+    await files.loadMore(KEY, 'after');
+    const requests = chain.samplesRequests.length;
+
+    await files.loadMore(KEY, 'after');
+
+    expect(chain.samplesRequests.length).toBe(requests);
+    expect(tab().reachedEnd).toBe(true);
   });
 
   it('goes to a line of a part before the chain is ready', async () => {

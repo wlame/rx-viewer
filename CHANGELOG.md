@@ -280,7 +280,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a whole number, as the editor writes it into its gutter as markup, and
   a part's first line only from 1 up. For an answer that numbers a part's
   lines with anything else, the tab shows an error and no line from it,
-  where it used to stay loading.
+  where it used to stay loading. A page that a scroll asks for and that
+  numbers its lines so keeps the lines on screen: a notice says why, and
+  the tab asks for no further page that way until a jump or a reload.
 - The line of text above each part of a log chain, and the one over a
   time gap, write their times in the zone chosen for the chain
   (`ftz=<zone>@chain:<handle>`) for a part whose lines write a zone too;

@@ -1347,11 +1347,27 @@ export function createChainTabs(deps: ChainTabDeps) {
       if (isGlobal) addGlobalPage(key, direction, samples);
       else addLocalPage(key, direction, edge.part ?? '', request, samples);
     } catch (error) {
-      // A page the tab cannot show, as in `show`: the held lines stay as they are.
-      showError(key, error);
+      refusePage(key, direction, error);
       return;
     }
     followAnswer(key, samples);
+  }
+
+  /**
+   * Refuse a page the tab cannot show, such as one whose piece numbers
+   * its lines with no whole number. The held lines stay on screen and a
+   * notice says why: an error in the tab would put itself in place of the
+   * editor. No further page is asked that way, which each scroll at the
+   * edge would do; a jump or a reload of the tab pages again.
+   */
+  function refusePage(key: TabKey, direction: 'before' | 'after', error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.patchTab(key, () => ({
+      loading: false,
+      ...(direction === 'before' ? { reachedStart: true } : { reachedEnd: true }),
+    }));
+    notifications.error(message);
+    console.error('A page of the log chain cannot be shown:', key, error);
   }
 
   /**
