@@ -29,45 +29,54 @@ export interface PartChanges {
   nameMap: ReadonlyMap<string, string>;
 }
 
-/** One rule that knows an old part in the new list: which new parts to try first, and the test. */
-interface SameFileRule {
+/**
+ * One rule that knows an old part in the new list by a key: each new part
+ * the rules before left alone is filed under its key, and an old part
+ * looks under its lookup keys for the first of them in the new list's
+ * order. A key lookup keeps each rule linear in the parts.
+ */
+interface KeyedRule {
   /** Whether the same name under this rule means the file did not change. */
   isUnchanged: boolean;
-  /** Try the newest new part first (the end of the list) rather than the oldest. */
-  isNewestFirst: boolean;
-  isSameFile: (before: ChainPart, after: ChainPart) => boolean;
+  /** The key a new part is filed under; null files it under none. */
+  fileKey: (part: ChainPart) => string | null;
+  /** The keys an old part looks under, given the compression formats of the new parts. */
+  lookups: (part: ChainPart, formats: readonly string[]) => string[];
 }
 
-/** The rules, in the order they pair parts. */
-const SAME_FILE_RULES: readonly SameFileRule[] = [
-  // A rename keeps the size and the modification time.
-  {
-    isUnchanged: true,
-    isNewestFirst: false,
-    isSameFile: (a, b) => a.size === b.size && a.modified_at === b.modified_at,
-  },
-  // A compression into another encoding keeps the modification time.
-  {
-    isUnchanged: false,
-    isNewestFirst: false,
-    isSameFile: (a, b) =>
-      a.modified_at === b.modified_at && a.compression_format !== b.compression_format,
-  },
-  // Both descriptions know the first timestamp, which no rename changes.
-  {
-    isUnchanged: false,
-    isNewestFirst: false,
-    isSameFile: (a, b) => a.first_ms !== null && a.first_ms === b.first_ms,
-  },
-  // The active file, renamed to the newest frozen part after it grew.
-  {
-    isUnchanged: false,
-    isNewestFirst: true,
-    isSameFile: (a, b) => a.is_active && !b.is_active && b.modified_at >= a.modified_at,
-  },
-  // A frozen part written in place keeps its name.
-  { isUnchanged: false, isNewestFirst: false, isSameFile: (a, b) => a.name === b.name },
-];
+/** A part's compression format as a key: the empty text for a plain part. */
+function formatKey(part: ChainPart): string {
+  return part.compression_format ?? '';
+}
+
+/** A rename keeps the size and the modification time. */
+const SAME_STAT: KeyedRule = {
+  isUnchanged: true,
+  fileKey: (part) => `${part.size}|${part.modified_at}`,
+  lookups: (part) => [`${part.size}|${part.modified_at}`],
+};
+
+/** A compression into another encoding keeps the modification time. */
+const COMPRESSED_COPY: KeyedRule = {
+  isUnchanged: false,
+  fileKey: (part) => `${part.modified_at}|${formatKey(part)}`,
+  lookups: (part, formats) =>
+    formats.filter((format) => format !== formatKey(part)).map((f) => `${part.modified_at}|${f}`),
+};
+
+/** Both descriptions know the first timestamp, which no rename changes. */
+const SAME_FIRST_TIME: KeyedRule = {
+  isUnchanged: false,
+  fileKey: (part) => (part.first_ms === null ? null : String(part.first_ms)),
+  lookups: (part) => (part.first_ms === null ? [] : [String(part.first_ms)]),
+};
+
+/** A frozen part written in place keeps its name. */
+const SAME_NAME: KeyedRule = {
+  isUnchanged: false,
+  fileKey: (part) => part.name,
+  lookups: (part) => [part.name],
+};
 
 /** An old part's pair in the new list, and whether the rule that paired them says it is unchanged. */
 interface Pair {
@@ -75,26 +84,102 @@ interface Pair {
   isUnchanged: boolean;
 }
 
+/** The pairs found so far, and the new parts they took. */
+interface Pairing {
+  pairs: Map<ChainPart, Pair>;
+  taken: Set<ChainPart>;
+}
+
+/** The new parts filed under one key, in the new list's order, from the first not taken yet. */
+interface Queue {
+  places: number[];
+  head: number;
+}
+
+/** Pair the old parts the rules before left alone by `rule`, each with one new part at most. */
+function pairByKey(
+  rule: KeyedRule,
+  before: readonly ChainPart[],
+  after: readonly ChainPart[],
+  { pairs, taken }: Pairing,
+): void {
+  const formats = [...new Set(after.map(formatKey))];
+  const queues = new Map<string, Queue>();
+  after.forEach((part, place) => {
+    const key = taken.has(part) ? null : rule.fileKey(part);
+    if (key === null) return;
+    const queue = queues.get(key) ?? { places: [], head: 0 };
+    queue.places.push(place);
+    queues.set(key, queue);
+  });
+  const firstFree = (queue: Queue): number | null => {
+    while (queue.head < queue.places.length && taken.has(after[queue.places[queue.head]])) {
+      queue.head += 1;
+    }
+    return queue.head < queue.places.length ? queue.places[queue.head] : null;
+  };
+  for (const old of before) {
+    if (pairs.has(old)) continue;
+    let found: number | null = null;
+    for (const key of rule.lookups(old, formats)) {
+      const queue = queues.get(key);
+      const place = queue ? firstFree(queue) : null;
+      if (place !== null && (found === null || place < found)) found = place;
+    }
+    if (found === null) continue;
+    pairs.set(old, { after: after[found], isUnchanged: rule.isUnchanged });
+    taken.add(after[found]);
+  }
+}
+
+/**
+ * Pair the active file the rules before left alone with the newest
+ * frozen part written no earlier than it: the rotation renamed it after
+ * it last grew. A description has one active part.
+ */
+function pairRenamedActive(
+  before: readonly ChainPart[],
+  after: readonly ChainPart[],
+  { pairs, taken }: Pairing,
+): void {
+  const active = before.find((part) => part.is_active && !pairs.has(part));
+  if (active === undefined) return;
+  for (let place = after.length - 1; place >= 0; place--) {
+    const part = after[place];
+    if (taken.has(part) || part.is_active) continue;
+    if (part.modified_at < active.modified_at) continue;
+    pairs.set(active, { after: part, isUnchanged: false });
+    taken.add(part);
+    return;
+  }
+}
+
+/** The passes that pair parts, in order: each pairs only parts the passes before left alone. */
+const SAME_FILE_PASSES: readonly ((
+  before: readonly ChainPart[],
+  after: readonly ChainPart[],
+  pairing: Pairing,
+) => void)[] = [
+  (before, after, pairing) => pairByKey(SAME_STAT, before, after, pairing),
+  (before, after, pairing) => pairByKey(COMPRESSED_COPY, before, after, pairing),
+  (before, after, pairing) => pairByKey(SAME_FIRST_TIME, before, after, pairing),
+  pairRenamedActive,
+  (before, after, pairing) => pairByKey(SAME_NAME, before, after, pairing),
+];
+
 /**
  * Compare the parts a tab held (`before`) with the parts the chain has
- * now (`after`). Each new part is paired with one old part at most.
+ * now (`after`). Each new part is paired with one old part at most. Each
+ * pass reads each list once, plus a lookup per old part and compression
+ * format of the new parts.
  */
 export function compareParts(
   before: readonly ChainPart[],
   after: readonly ChainPart[],
 ): PartChanges {
-  const pairs = new Map<ChainPart, Pair>();
-  const taken = new Set<ChainPart>();
-  for (const rule of SAME_FILE_RULES) {
-    const candidates = rule.isNewestFirst ? [...after].reverse() : after;
-    for (const old of before) {
-      if (pairs.has(old)) continue;
-      const found = candidates.find((part) => !taken.has(part) && rule.isSameFile(old, part));
-      if (found === undefined) continue;
-      pairs.set(old, { after: found, isUnchanged: rule.isUnchanged });
-      taken.add(found);
-    }
-  }
+  const pairing: Pairing = { pairs: new Map(), taken: new Set() };
+  for (const pass of SAME_FILE_PASSES) pass(before, after, pairing);
+  const { pairs, taken } = pairing;
 
   const changes: PartChanges = {
     renamed: [],

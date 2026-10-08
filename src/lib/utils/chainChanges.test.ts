@@ -109,6 +109,37 @@ describe('compareParts', () => {
   });
 });
 
+describe('compareParts on a chain of 10,000 parts', () => {
+  /** `count` parts named `agent.log.<n>`, each with its own size and time from `seed`. */
+  function manyParts(count: number, seed: number): ChainPart[] {
+    return Array.from({ length: count }, (_, i) =>
+      part(`agent.log.${i + 1}`, {
+        size: seed * 1_000_000 + i,
+        modified_at: new Date(Date.UTC(2026, 0, 1) + (seed * 100_000 + i) * 1000).toISOString(),
+        first_ms: seed * 1e9 + i,
+      }),
+    );
+  }
+
+  // Every part written in place: no rule but the last pairs them, so each
+  // rule meets every part. A scan of the new parts per old part per rule
+  // is 5 x 10^8 tests.
+  it('pairs 10,000 parts written in place within a bound', () => {
+    const before = manyParts(10_000, 1);
+    const after = manyParts(10_000, 2);
+    let fastest = Infinity;
+    let changes = compareParts(before, after);
+    for (let run = 0; run < 3; run++) {
+      const start = performance.now();
+      changes = compareParts(before, after);
+      fastest = Math.min(fastest, performance.now() - start);
+    }
+
+    expect(changes.changed).toHaveLength(10_000);
+    expect(fastest).toBeLessThan(100);
+  });
+});
+
 describe('changeNotice', () => {
   it('counts each kind of change the comparison found', () => {
     const changes = {

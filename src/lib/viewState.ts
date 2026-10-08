@@ -374,11 +374,15 @@ export async function loadView(view: ViewState): Promise<void> {
  */
 export async function restoreView(view: ViewState): Promise<void> {
   const generation = ++restoreGeneration;
-  // A link to a chain's tab is a view in chain mode; the open tabs follow the mode.
-  await switchChainMode(view.chains || view.chain !== null);
+  // A link to a chain's tab is a view in chain mode. The switch sets the
+  // mode before its first wait, so the search below runs in that mode;
+  // the open tabs turn over to it before the file is restored.
+  const switching = switchChainMode(view.chains || view.chain !== null);
   chainPartsShown.set(view.chainParts);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);
+  await switching;
+  if (generation !== restoreGeneration) return;
   await restoreFile(view, () => generation === restoreGeneration);
 }

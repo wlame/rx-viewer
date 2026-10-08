@@ -1036,6 +1036,20 @@ describe('the chain mode switch in the URL', () => {
     expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.1']);
   });
 
+  // The older restore waits for the chain listing while the newer one sets its stores.
+  it('leaves the stores of a newer restore as they are when an older one turning tabs over ends after it', async () => {
+    stubWindow();
+    await health.check();
+    await files.openFile('/l/app.log.1', { scrollToLine: 20 });
+    const view = { ...DEFAULT_VIEW, chains: true, file: '/l/app.log.1', line: 20 };
+
+    const older = restoreView({ ...view, tab: 'search' });
+    const newer = restoreView({ ...view, tab: 'tree' });
+    await Promise.all([older, newer]);
+
+    expect(get(sidebarTab)).toBe('tree');
+  });
+
   it('turns the open file tabs of a chain into its tab when a view in chain mode is restored', async () => {
     stubWindow();
     await health.check();
