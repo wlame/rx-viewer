@@ -13,6 +13,7 @@ import {
   chainPositionOf,
   chainTabMatches,
   isChainSearchAnswer,
+  noChainLineTitle,
   opensChainTab,
   type ChainMatchPlace,
 } from './chainSearch';
@@ -245,5 +246,37 @@ describe('matchedTabLines', () => {
     const tab = { lines, chain: { numbering: 'global' as const } };
 
     expect(matchedTabLines(tab, marks)).toEqual([3002]);
+  });
+});
+
+describe('noChainLineTitle', () => {
+  const place = (state: ChainMatchPlace['state']): ChainMatchPlace => ({
+    handle: '/logs/app.log',
+    name: 'app.log',
+    state,
+    chainLine: null,
+    part: 'app.log.1',
+  });
+
+  it.each([
+    {
+      state: 'pending',
+      expected:
+        'app.log.1, a part of the log chain app.log: no line in the chain while its parts are being indexed',
+    },
+    // A ready chain numbers every match the search numbered; this one the
+    // search left without a line number (a capped scan of a part).
+    {
+      state: 'ready',
+      expected:
+        'app.log.1, a part of the log chain app.log: the search gave this match no line number, so it has no line in the chain',
+    },
+    {
+      state: 'invalid',
+      expected:
+        'app.log.1, a part of the log chain app.log: no line in the chain, which is invalid',
+    },
+  ] as const)('says why a match of a $state chain has no chain line', ({ state, expected }) => {
+    expect(noChainLineTitle(place(state))).toBe(expected);
   });
 });

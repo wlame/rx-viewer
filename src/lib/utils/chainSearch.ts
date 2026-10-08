@@ -66,6 +66,19 @@ export function chainPlaceOf(match: SearchMatch, response: SearchResponse): Chai
   };
 }
 
+/** Why a match of a chain in each state has no line in the chain. */
+const NO_CHAIN_LINE: Record<ChainState, string> = {
+  pending: 'no line in the chain while its parts are being indexed',
+  // A ready chain gives a line to every match the search numbered.
+  ready: 'the search gave this match no line number, so it has no line in the chain',
+  invalid: 'no line in the chain, which is invalid',
+};
+
+/** The tooltip of a chain match's part when the answer gives the match no chain line. */
+export function noChainLineTitle(place: ChainMatchPlace): string {
+  return `${place.part}, a part of the log chain ${place.name}: ${NO_CHAIN_LINE[place.state]}`;
+}
+
 /**
  * Whether a click on a match opens its chain's tab. It does while chain
  * mode is on and the chain can be read. Otherwise the match's part opens

@@ -327,6 +327,9 @@ describe('SearchResults of a chain search', () => {
     const target = await mountWith(answer);
 
     expect(rowTexts(target)).toEqual([`app.log.1 :321 (@${OFFSET})`]);
+    expect(row(target, 0).querySelector('[title]')?.getAttribute('title')).toContain(
+      'the search gave this match no line number',
+    );
     row(target, 0).click();
     await settle();
 

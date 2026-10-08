@@ -18,6 +18,7 @@
     chainPlaceOf,
     chainPositionOf,
     chainTabMatches,
+    noChainLineTitle,
     opensChainTab,
     type ChainMatchPlace,
   } from '$lib/utils/chainSearch';
@@ -150,12 +151,6 @@
     await openFileAtLine(filePath, line);
   }
 
-  /** Why a chain's part has no line in its chain, for its tooltip. */
-  function partTitle(place: ChainMatchPlace): string {
-    const why = place.state === 'pending' ? 'its parts are being indexed' : `it is ${place.state}`;
-    return `${place.part}, a part of the log chain ${place.name}: no line in the chain while ${why}`;
-  }
-
   // Get file path from file ID
   function getFilePath(fileId: string): string {
     return $trace.response?.files[fileId] || fileId;
@@ -269,7 +264,7 @@
                 {:else}
                   <span
                     class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate"
-                    title={place ? partTitle(place) : undefined}
+                    title={place ? noChainLineTitle(place) : undefined}
                   >
                     {filePath.split('/').pop()}
                   </span>
