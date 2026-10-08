@@ -1517,6 +1517,8 @@ export function createChainTabs(deps: ChainTabDeps) {
     } catch (error) {
       if (isAbortError(error)) return afterCutShort();
       deps.patchTab(key, () => ({ loading: false }));
+      // The handle names no chain any more: the tab becomes its part's file tab.
+      if (isNoChain(error)) await closeAsNoChain(key);
       return { kind: 'refused', message: messageOf(error) };
     }
     if (answer === SUPERSEDED) return afterCutShort();

@@ -71,10 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   word wrap, invisible characters and search marks; the active tab stays
   active, and the switch rewrites the history entry rather than adding
   one. A link with `chains=1` and a `file=` that names a part of a valid
-  chain opens the
-  chain's tab at that part and line (at the link's time when it names a
-  time and no line), and Back or Forward to an entry in the other mode
-  turns the open tabs over the same way.
+  chain opens the chain's tab at that part and line (at the link's time
+  when it names a time and no line), and Back or Forward to an entry in
+  the other mode turns the open tabs over the same way.
 - Jumps by time on a log chain's tab. The timeline bar, the Go to time
   box and the timestamps stash move a ready chain's tab to the first
   line, in the chain's order, at or after a time, the line

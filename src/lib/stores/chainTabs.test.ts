@@ -1028,6 +1028,21 @@ describe('a rotation while a chain tab is open', () => {
     expect(get(notifications).some((n) => n.message.includes('app.log.1 is gone'))).toBe(true);
   });
 
+  it('becomes the file tab of its part when a jump by time finds the handle names no chain', async () => {
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log', line: 20 } });
+    const before = anchorText();
+    chain.rotateTo([C]);
+    chain.isGone = true;
+
+    const outcome = await files.jumpToTime(KEY, T0_MS + 4469_000);
+
+    expect(outcome.kind).toBe('refused');
+    await vi.waitFor(() => expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log']));
+    await vi.waitFor(() => expect(get(files).openFiles[0].loading).toBe(false));
+    const shown = get(files).openFiles[0];
+    expect(shown.lines[shown.anchorLine - shown.startLine]?.content).toBe(before);
+  });
+
   it('asks a jump by time once more after the files changed, at the time asked', async () => {
     await files.openChain(HANDLE);
     chain.rotateTo(ROTATED, 'ready');
