@@ -1,16 +1,27 @@
 <script lang="ts">
   import type { TreeNode as TreeNodeType } from '$lib/types';
   import { tree, notifications } from '$lib/stores';
+  import { chainModeOn, chainPartsShown } from '$lib/stores/chainMode';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { openTreeFile } from '$lib/fileOpening';
+  import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
   import { formatSize } from '$lib/utils/format';
   import { isShortcut } from '$lib/utils/shortcuts';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import AnalyzeDialog from './AnalyzeDialog.svelte';
+  import ChainTreeNode from './ChainTreeNode.svelte';
+  import TreeContextMenu from './TreeContextMenu.svelte';
 
   export let node: TreeNodeType;
+
+  // In chain mode a folder shows one row per log chain in place of its
+  // parts; the node keeps every entry, so the mode changes no state.
+  $: rows =
+    node.type === 'directory'
+      ? shownChildren(node, { chainModeOn: $chainModeOn, showParts: $chainPartsShown })
+      : [];
 
   $: isSelected = $tree.selectedPath === node.path;
   $: indentPx = node.level * 16;
@@ -147,37 +158,27 @@
   </div>
 
   <!-- Children -->
-  {#if node.type === 'directory' && node.expanded && node.children.length > 0}
+  {#if node.type === 'directory' && node.expanded && rows.length > 0}
     <div role="group">
-      {#each node.children as child (child.path)}
-        <svelte:self node={child} />
+      {#each rows as child (rowKey(child))}
+        {#if isChainRow(child)}
+          <ChainTreeNode row={child} />
+        {:else}
+          <svelte:self node={child} />
+        {/if}
       {/each}
     </div>
   {/if}
 </div>
 
-<!-- Context Menu -->
 {#if showContextMenu}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div
-    class="fixed inset-0 z-40"
-    on:click={closeContextMenu}
-    on:contextmenu|preventDefault={closeContextMenu}
+  <TreeContextMenu
+    items={menuItems}
+    x={contextMenuX}
+    y={contextMenuY}
+    on:choose={(e) => MENU_HANDLERS[e.detail]()}
+    on:close={closeContextMenu}
   />
-  <div
-    class="fixed z-50 bg-gh-canvas-default dark:bg-gh-canvas-dark-subtle border border-gh-border-default dark:border-gh-border-dark-default rounded-lg shadow-xl py-1 min-w-40"
-    style="left: {contextMenuX}px; top: {contextMenuY}px;"
-  >
-    {#each menuItems as item (item.action)}
-      <button
-        class="w-full text-left px-3 py-2 text-sm text-gh-fg-default dark:text-gh-fg-dark-default hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-inset"
-        on:click={MENU_HANDLERS[item.action]}
-      >
-        {item.label}
-      </button>
-    {/each}
-  </div>
 {/if}
 
 {#if showAnalyzePopup}

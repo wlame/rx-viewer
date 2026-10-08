@@ -1,7 +1,18 @@
 // @vitest-environment jsdom
 import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { tree } from '$lib/stores';
+import { tick } from 'svelte';
+import { health, tree } from '$lib/stores';
+import { chainMode, chainPartsShown } from '$lib/stores/chainMode';
+import {
+  CHAIN_NAMES,
+  LOG_DIR,
+  LogDirBackend,
+  logDirChains,
+  logDirEntries,
+  serveLogDir,
+  treeEntry,
+} from '$lib/testing/fakeLogDir';
 import type { TreeNode as TreeNodeType } from '$lib/types';
 import TreeNode from './TreeNode.svelte';
 
@@ -62,4 +73,82 @@ describe('TreeNode keys', () => {
       expect(event.defaultPrevented).toBe(false);
     },
   );
+});
+
+describe('TreeNode of a folder in chain mode', () => {
+  /** The log folder, loaded and expanded, with its chains listed. */
+  function logFolder(): TreeNodeType {
+    return {
+      ...treeEntry(LOG_DIR, 'directory'),
+      expanded: true,
+      loading: false,
+      level: 0,
+      children: logDirEntries().map((entry) => ({
+        ...entry,
+        expanded: false,
+        loading: false,
+        children: [],
+        level: 1,
+      })),
+      chains: logDirChains(),
+    };
+  }
+
+  async function mountFolder(mode: boolean) {
+    serveLogDir(new LogDirBackend());
+    await health.check();
+    chainMode.set(mode);
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    row = new TreeNode({ target, props: { node: logFolder() } });
+    await tick();
+    const items = () => [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    const chains = () =>
+      [...target.querySelectorAll<HTMLElement>('[data-chain]')].map((c) => c.dataset.chain);
+    return { target, items, chains };
+  }
+
+  afterEach(() => {
+    chainMode.set(false);
+    chainPartsShown.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('shows each chain in place of its parts, and every other entry', async () => {
+    const { items, chains } = await mountFolder(true);
+
+    // The folder's own row, then its 26 rows.
+    expect(items()).toHaveLength(27);
+    expect(chains()).toEqual(CHAIN_NAMES);
+    const shownText = items().map((item) => item.textContent ?? '');
+    expect(shownText.some((text) => text.includes('pkg.log.11.gz'))).toBe(false);
+    expect(shownText.some((text) => text.includes('sessions.1'))).toBe(true);
+  });
+
+  it('shows every entry the folder lists with the mode off', async () => {
+    const { items, chains } = await mountFolder(false);
+
+    expect(items()).toHaveLength(71);
+    expect(chains()).toEqual([]);
+  });
+
+  it('shows the parts again when the mode turns off, and the chains when it turns on', async () => {
+    const { items, chains } = await mountFolder(true);
+
+    chainMode.set(false);
+    await tick();
+    expect(items()).toHaveLength(71);
+
+    chainMode.set(true);
+    await tick();
+    expect(chains()).toEqual(CHAIN_NAMES);
+  });
+
+  it('lists the parts under each chain with chain_parts', async () => {
+    chainPartsShown.set(true);
+    const { target } = await mountFolder(true);
+
+    const parts = [...target.querySelectorAll<HTMLElement>('[data-chain-part]')];
+    expect(parts).toHaveLength(logDirChains().flatMap((c) => c.parts).length);
+  });
 });

@@ -45,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status bar's equivalent command is the `rx logs samples` command of
   the lines shown. "Per part" opens the recent commands, where the
   `rx samples PART --lines=A-B` of each part follows under the command.
+- Chain mode in the files panel. A "Group rotated logs" switch in the
+  panel's header, shown when the backend serves log chains, shows the
+  files of each rotated log (`app.log`, `app.log.1`, `app.log.2.gz`, …)
+  as one row. The link holds the mode as `chains=1`; a link that does not
+  name it opens in the mode last chosen with the switch. A chain's row
+  shows its name, `chain · N` (its parts), its size, `idx` once every
+  part but the active file is indexed, how many parts are missing (the
+  tooltip names them), parts that cannot be read, a chain of more than
+  10,000 parts, and `invalid` with the reasons once its tab found it
+  so. A click or Enter opens the chain's tab, and its menu indexes or
+  re-indexes every part. Only the files the backend names as parts of a
+  chain give way to its row: every other file stays listed, another
+  encoding of a part included. Turning the mode off or on keeps the
+  folders open as they were. A link with `chain_parts=1` lists each
+  chain's parts under its row.
 
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed
