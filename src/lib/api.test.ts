@@ -326,6 +326,7 @@ describe('log chain routes', () => {
     frozen_line_count: null,
     line_count: null,
     index_build: null,
+    index_build_refused: null,
     cli_command: 'rx logs show /var/log/app.log',
   };
   const task = {

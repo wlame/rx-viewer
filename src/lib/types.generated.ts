@@ -418,7 +418,7 @@ export interface components {
             is_active: boolean;
             /** @description Whether a current line index of the part is stored. */
             is_indexed: boolean;
-            /** @description The number or date in the part's name as the name writes it (3, 20261001-1790812801, 2026-10-01.3); null for the active file. */
+            /** @description The number or date in the part's name as the name writes it (3, 20260401-1775001601, 2026-10-01.3); null for the active file. */
             key: string | null;
             /**
              * Format: int64
@@ -580,6 +580,8 @@ export interface components {
             fingerprint: string;
             /** @description The background index build this answer started or joined, to follow at GET /v1/tasks/{task_id}: for a pending chain, its index task (operation chain_index), as GET /v1/logs/chain starts it; for a ready chain, the build of a part whose piece came from the head of its text (the active file, as GET /v1/samples starts one). Null when there is none. It says how the answer was produced; the lines are the same without it. */
             index_build: components["schemas"]["SamplesIndexBuild"];
+            /** @description Why a pending chain has no index task (index_build is null), in words, as GET /v1/logs/chain gives it: as many log chain index tasks as the server runs at once (128) are running or waiting, so none could start for this chain. A request after one of them has ended starts it. Null otherwise: for a ready chain, and for a pending chain whose task runs or was started or joined, that waits for no part, or whose last task failed for the same files (index_build names that task). rx logs samples gives null. */
+            index_build_refused: string | null;
             /** @description Each line or range of a lines request, as asked, mapped to the global line it names: the line itself (a line counted back from the end, -N, is keyed by the line it names), or a range's first line; -1 when the chain has no such line, and before the chain is ready. Empty for a timestamps request. */
             lines: {
                 [key: string]: number;

@@ -289,6 +289,7 @@ export class FakeChain {
       timestamps,
       samples,
       index_build: state === 'pending' ? this.indexTask() : null,
+      index_build_refused: null,
       cli_command: `rx logs samples ${this.handle} ${flags}`,
     };
   }
