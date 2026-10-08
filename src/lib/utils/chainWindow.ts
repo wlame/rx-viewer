@@ -14,7 +14,7 @@
  *
  * Everything here is pure, so it is tested without a backend.
  */
-import type { ChainPart, ChainPiece, ChainSamplesResponse, FileLine } from '../types';
+import type { ChainAnchor, ChainPart, ChainPiece, ChainSamplesResponse, FileLine } from '../types';
 import { neighbourPartWithLines } from './chainParts';
 import { keySpan, type SampleWindow } from './sampleWindow';
 import { LINES_PER_PAGE, STREAM_LINES_PER_PAGE } from './slidingWindow';
@@ -295,4 +295,22 @@ export function pendingEnds(
       lastCount !== undefined &&
       (last.localLine ?? 0) >= lastCount,
   };
+}
+
+/**
+ * The anchor the URL names for the held line at `position`: its part, its
+ * line in it and its timestamp; null when the window does not hold it.
+ * The held lines are one apart, so the line is found by its offset from
+ * the first.
+ */
+export function anchorAt(
+  lines: readonly FileLine[],
+  startLine: number,
+  position: number,
+): ChainAnchor | null {
+  const line = lines[position - startLine];
+  if (line?.lineNumber !== position || line.part === undefined || line.localLine === undefined) {
+    return null;
+  }
+  return { part: line.part, line: line.localLine, timeMs: line.timestampMs ?? null };
 }

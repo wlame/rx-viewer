@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chainHandleOf, chainKey, isChainKey } from './tabKey';
+import { chainHandleOf, chainKey, fileKeys, isChainKey } from './tabKey';
 
 describe('chainKey', () => {
   it('prefixes the handle with chain:', () => {
@@ -36,5 +36,14 @@ describe('chainHandleOf', () => {
 
   it('gives null for a file key', () => {
     expect(chainHandleOf('/var/log/syslog')).toBeNull();
+  });
+});
+
+describe('fileKeys', () => {
+  it('keeps the files of the open tabs and leaves the chains out', () => {
+    expect(fileKeys(['/l/a.log', chainKey('/l/syslog'), '/l/syslog'])).toEqual([
+      '/l/a.log',
+      '/l/syslog',
+    ]);
   });
 });

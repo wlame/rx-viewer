@@ -16,7 +16,8 @@ import {
   type SearchState,
   type ViewState,
 } from './utils/urlState';
-import { chainHandleOf } from './utils/tabKey';
+import { chainHandleOf, chainKey } from './utils/tabKey';
+import type { ChainPosition } from './stores/chainTabs';
 import type { OpenFile, TreeNode } from './types';
 
 /**
@@ -70,14 +71,37 @@ type TabView = FileView & Pick<ViewState, 'chain' | 'part'>;
 /**
  * What the URL says about the active tab. A file's tab is its
  * `fileViewOf`, with no chain. A chain's tab names the chain by its
- * handle, never as a file, with the time a jump by time put it at; it
- * names no part, so no line in one.
+ * handle, never as a file, and its anchor line by the part that holds
+ * it, its line in that part (left out at line 1) and its timestamp,
+ * which finds the line again when the part is gone.
  */
 export function tabViewOf(tab: OpenFile | undefined): TabView {
   const view = fileViewOf(tab);
   const handle = tab ? chainHandleOf(tab.path) : null;
   if (handle === null) return { ...view, chain: null, part: null };
-  return { ...view, file: null, chain: handle, part: null, line: null };
+  const anchor = tab?.chain?.anchor ?? null;
+  return {
+    ...view,
+    file: null,
+    chain: handle,
+    part: anchor?.part ?? null,
+    line: anchor !== null && anchor.line > 1 ? anchor.line : null,
+    time: anchor?.timeMs ?? null,
+  };
+}
+
+/**
+ * Where a link puts a chain's tab: at a part's line (line 1 without a
+ * line), found again by the time when the part is gone; at a time; at a
+ * global line; or at its start.
+ */
+export function chainPositionOf(view: Pick<ViewState, 'part' | 'line' | 'time'>): ChainPosition {
+  if (view.part !== null) {
+    return { kind: 'local', part: view.part, line: view.line ?? 1, timeMs: view.time };
+  }
+  if (view.time !== null) return { kind: 'time', ms: view.time };
+  if (view.line !== null) return { kind: 'global', line: view.line };
+  return { kind: 'start' };
 }
 
 /** The view the stores describe now. */
@@ -208,15 +232,53 @@ async function showFile(
   return { loaded: Promise.all([loaded, jumpToViewTime(path, time)]).then(() => undefined) };
 }
 
+/** Whether a chain's tab is on the position a view names. */
+function isOnPosition(tab: OpenFile, position: ChainPosition): boolean {
+  const anchor = tab.chain?.anchor ?? null;
+  if (position.kind === 'local') {
+    return anchor !== null && anchor.part === position.part && anchor.line === position.line;
+  }
+  if (position.kind === 'global')
+    return tab.chain?.numbering === 'global' && tab.anchorLine === position.line;
+  return false;
+}
+
+/**
+ * Open the chain a view names, or bring its tab forward, at the view's
+ * part and line (by its time when the part is gone), with its
+ * highlighting and filter. The tab is in the store when this resolves;
+ * the returned load resolves when its lines arrive.
+ */
+async function showChain(handle: string, view: ViewState): Promise<void> {
+  const key = chainKey(handle);
+  const position = chainPositionOf(view);
+  const open = get(files).openFiles.find((f) => f.path === key);
+  if (open) {
+    files.setActiveFile(key);
+    if (view.highlight !== null) files.setSyntaxHighlighting(key, view.highlight);
+    files.setRegexFilter(key, view.filter);
+    if (!isOnPosition(open, position)) await files.goToChainLine(key, position);
+    return;
+  }
+  const loaded = files.openChain(handle, {
+    position,
+    syntaxHighlighting: view.highlight ?? undefined,
+  });
+  files.setRegexFilter(key, view.filter);
+  await loaded;
+}
+
 /**
  * Bring the open files to the view: its file active, with its filter and
  * category. A time in the view (and no line) jumps that file there and
  * sets the time cursor; no other file moves. A view that names a chain
- * leaves the open tabs as they are: a chain's tab does not open from a
- * link.
+ * opens that chain's tab at its part and line.
  */
 async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<void> {
-  if (view.chain !== null) return;
+  if (view.chain !== null) {
+    await showChain(view.chain, view);
+    return;
+  }
   const path = view.file;
   if (path === null) {
     for (const file of get(files).openFiles) files.closeFile(file.path);
@@ -251,7 +313,8 @@ export async function loadView(view: ViewState): Promise<void> {
  */
 export async function restoreView(view: ViewState): Promise<void> {
   const generation = ++restoreGeneration;
-  chainMode.set(view.chains);
+  // A link to a chain's tab is a view in chain mode.
+  chainMode.set(view.chains || view.chain !== null);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);

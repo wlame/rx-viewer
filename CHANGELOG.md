@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A log chain's tab: the files of one rotated log (`app.log`,
+  `app.log.1`, `app.log.2.gz`, …) read as one text, on a backend that
+  serves log chains (rx-go's `/v1/logs` routes). A link with
+  `chain=<handle>` opens it and turns chain mode on (`chains=1`). A ready
+  chain numbers its lines by the chain's global line numbers. While its
+  parts are still being indexed, the tab shows each part's own lines,
+  continues into the next or previous part at a part's edge, and follows
+  the chain's index task; when the task ends, the tab stays on the same
+  line and switches to global numbers. A page is 5,000 lines when it
+  touches a gzip, bzip2, xz or zstd part, and 1,000 otherwise. The link
+  keeps the line the tab is anchored on as `part=` (the part that holds
+  it), `line=` (its line in that part) and `time=` (its timestamp); a
+  link whose part is gone opens at that time. An invalid chain shows no
+  lines. A chain whose files changed on disk (a rotation) is read again
+  at the anchor line's time, with a notice.
+
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed
   until clicked.
@@ -105,6 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a reload. A time picked with the arrow keys in one file no longer
   carries over to the next.
 - The time cursor's chip no longer takes room from the timeline bar.
+- "Only opened files" searches the open files and leaves out the tabs
+  of log chains, whose keys are no file path.
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.

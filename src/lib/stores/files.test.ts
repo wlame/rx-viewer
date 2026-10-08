@@ -12,6 +12,8 @@ import { DEFAULT_PANE, recallPane, rememberPane } from './paneMemory';
 import { timeCursor } from './timeCursor';
 import { tree } from './tree';
 import { chainKey } from '../utils/tabKey';
+import { FakeChain } from '../testing/fakeChain';
+import { chainMode } from './chainMode';
 
 /** The store reads no URL; a stub keeps any stray write off the real one. */
 function setLocation(search: string) {
@@ -1588,15 +1590,32 @@ describe('a file and the log chain at its path', () => {
     for (const file of get(files).openFiles) files.closeFile(file.path);
     files.clearMatches();
     fileZones.replace([]);
+    chainMode.set(false);
     vi.unstubAllGlobals();
   });
 
+  /** The file `/l/syslog` of 500 lines, and the chain at its handle, opened at once. */
   async function openBoth() {
-    serveFileOf(500);
-    await Promise.all([
-      files.openFile(path, { isIndexed: false }),
-      files.openFile(chain, { isIndexed: false }),
-    ]);
+    const chainBackend = new FakeChain({
+      dir: '/l',
+      name: 'syslog',
+      parts: [
+        { name: 'syslog.1', lines: 300 },
+        { name: 'syslog', lines: 200, isActive: true },
+      ],
+    });
+    const serveFile = serveFileOf(500).getMockImplementation()!;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) =>
+        url.startsWith('/v1/logs/') || url.startsWith('/health')
+          ? chainBackend.fetch(url, init)
+          : serveFile(url),
+      ),
+    );
+    await health.check();
+    chainMode.set(true);
+    await Promise.all([files.openFile(path, { isIndexed: false }), files.openChain(path)]);
   }
 
   // One request slot per key: the second load would cancel the first if

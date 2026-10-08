@@ -8,10 +8,12 @@ import { LatestRequestMap, SUPERSEDED, isAbortError } from '../utils/latestReque
 import { clampAnchor } from '../utils/anchorLine';
 import type { FilterState } from '../utils/urlState';
 import { readSamplesAnswer, readTimeAnswer, type SampleWindow } from '../utils/sampleWindow';
+import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import { taskPolls } from '../utils/taskPolling';
-import type { TabKey } from '../utils/tabKey';
+import { isChainKey, type TabKey } from '../utils/tabKey';
+import { anchorAt } from '../utils/chainWindow';
 import type {
   OpenFile,
   FileMatch,
@@ -20,6 +22,7 @@ import type {
   SamplesResponse,
   TimeRangeResponse,
 } from '../types';
+import { createChainTabs, type ChainPosition, type OpenChainOptions } from './chainTabs';
 import { commandLog } from './commands';
 import { fileZones, requestZoneOf } from './fileZones';
 import { backendHas } from './health';
@@ -151,16 +154,7 @@ export function activeOpenFile(state: Pick<FilesState, 'openFiles' | 'activeFile
   return state.openFiles.find((f) => f.path === state.activeFilePath) ?? state.openFiles.at(-1);
 }
 
-/** Files this size and larger open with syntax highlighting off. */
-const HIGHLIGHT_SIZE_LIMIT = 1024 * 1024;
-
-/**
- * Whether a file opens with syntax highlighting: on below 1 MB, off from
- * 1 MB up, on when the size is unknown.
- */
-export function defaultSyntaxHighlighting(fileSize: number | null | undefined): boolean {
-  return fileSize === null || fileSize === undefined || fileSize < HIGHLIGHT_SIZE_LIMIT;
-}
+export { defaultSyntaxHighlighting };
 
 /** A filter pattern compiled the way the editor applies it, or the reason it does not compile. */
 function compileFilterPattern(pattern: string): {
@@ -180,6 +174,22 @@ function createFilesStore() {
     openFiles: [],
     matches: new Map(),
     activeFilePath: null,
+  });
+
+  /** The tabs of log chains, built on this store's tabs and request slots. */
+  const chains = createChainTabs({
+    getTab: (key) => get({ subscribe }).openFiles.find((f) => f.path === key),
+    addTab: (tab) =>
+      update((s) => ({ ...s, openFiles: [...s.openFiles, tab], activeFilePath: tab.path })),
+    patchTab: (key, fields) =>
+      update((s) => ({
+        ...s,
+        openFiles: s.openFiles.map((f) => (f.path === key ? { ...f, ...fields(f) } : f)),
+      })),
+    closeTab: (key) => closeFile(key),
+    setActive: (key) => setActiveFile(key),
+    loads: fileLoads,
+    openFileAt: (path, line) => openFile(path, { scrollToLine: line }),
   });
 
   /**
@@ -294,6 +304,7 @@ function createFilesStore() {
    * line and is no longer where a jump by time put it.
    */
   async function readAgainInItsZone(path: string) {
+    if (isChainKey(path)) return chains.reload(path);
     const file = get({ subscribe }).openFiles.find((f) => f.path === path);
     if (!file) return;
     const line = file.anchorLine;
@@ -358,6 +369,8 @@ function createFilesStore() {
    * front, moved to `scrollToLine` when one is given.
    */
   async function openFile(path: string, options: OpenFileOptions = {}) {
+    // A chain's key never names a file: the chain opens with openChain.
+    if (isChainKey(path)) throw new Error(`${path} is a log chain's key, not a file`);
     const { scrollToLine, fileSize, isIndexed, lineCount, compressionFormat = null } = options;
     const state = get({ subscribe });
 
@@ -648,6 +661,7 @@ function createFilesStore() {
    * Load more lines (before or after current content)
    */
   async function loadMore(path: string, direction: 'before' | 'after') {
+    if (isChainKey(path)) return chains.loadMore(path, direction);
     const state = get({ subscribe });
     const file = state.openFiles.find((f) => f.path === path);
     if (!file || file.loading || file.lines.length === 0) return;
@@ -731,6 +745,7 @@ function createFilesStore() {
    * (`JUMP_CONTEXT` on each side) when the window does not hold it
    */
   async function jumpToLine(path: string, lineNumber: number) {
+    if (isChainKey(path)) return chains.jumpToPosition(path, lineNumber);
     const state = get({ subscribe });
     const file = state.openFiles.find((f) => f.path === path);
 
@@ -770,6 +785,7 @@ function createFilesStore() {
    * This fetches the last N lines and discovers the total line count
    */
   async function jumpToEnd(path: string) {
+    if (isChainKey(path)) return chains.jumpToEnd(path);
     const state = get({ subscribe });
     const file = state.openFiles.find((f) => f.path === path);
 
@@ -852,6 +868,8 @@ function createFilesStore() {
    * mistyped value never moves the cursor. No other file moves.
    */
   async function jumpToTime(path: string, query: TimeQuery): Promise<TimeJumpOutcome> {
+    // A chain's tab does not move by time yet.
+    if (isChainKey(path)) return { kind: 'unsupported' };
     if (!get({ subscribe }).openFiles.some((f) => f.path === path)) {
       return { kind: 'refused', message: `${path} is not open` };
     }
@@ -925,6 +943,7 @@ function createFilesStore() {
   function closeFile(key: TabKey) {
     // Cancel anything still loading for this file and drop its slot.
     fileLoads.forget(key);
+    if (isChainKey(key)) chains.forget(key);
     timeRangeLoads.forget(key);
     indexFollows.stop(key);
     forgetPane(key);
@@ -990,15 +1009,31 @@ function createFilesStore() {
   /**
    * Set the line the URL names for a file; the editor reports it after a
    * scroll. A different line is a move by line, which ends the time jump.
+   * A chain's tab also keeps the line's part, its line in it and its time.
    */
   function setAnchorLine(key: TabKey, line: number) {
     update((s) => ({
       ...s,
       openFiles: s.openFiles.map((f) => {
         if (f.path !== key || line === f.anchorLine) return f;
-        return { ...f, anchorLine: line, timeJump: null };
+        const anchor = f.chain ? anchorAt(f.lines, f.startLine, line) : null;
+        const chain = f.chain && anchor ? { ...f.chain, anchor } : f.chain;
+        return { ...f, anchorLine: line, timeJump: null, ...(chain ? { chain } : {}) };
       }),
     }));
+  }
+
+  /**
+   * Open the tab of the log chain `handle` (`stores/chainTabs.ts`), or
+   * bring it forward at `options.position`.
+   */
+  function openChain(handle: string, options: OpenChainOptions = {}): Promise<void> {
+    return chains.openChain(handle, options);
+  }
+
+  /** Move a chain's tab to a position: a global line, a part's line, its start or end. */
+  function goToChainLine(key: TabKey, position: ChainPosition): Promise<void> {
+    return chains.moveTo(key, position);
   }
 
   /**
@@ -1174,6 +1209,8 @@ function createFilesStore() {
   return {
     subscribe,
     openFile,
+    openChain,
+    goToChainLine,
     applyIndex,
     closeFile,
     loadMore,

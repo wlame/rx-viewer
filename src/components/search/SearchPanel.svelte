@@ -12,6 +12,7 @@
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
   import { DEFAULT_MAX_RESULTS, type SearchState } from '$lib/utils/urlState';
+  import { fileKeys } from '$lib/utils/tabKey';
   import Spinner from '../common/Spinner.svelte';
   import SearchResults from './SearchResults.svelte';
   import SearchToggles from './SearchToggles.svelte';
@@ -72,7 +73,9 @@
     handleSearch();
   }
 
-  $: pathsKnown = onlyOpenedFiles ? $files.openFiles.length > 0 : hasRoots;
+  // A search of the open tabs reads their files: a chain's tab is no file.
+  $: openFilePaths = fileKeys($files.openFiles.map((f) => f.path));
+  $: pathsKnown = onlyOpenedFiles ? openFilePaths.length > 0 : hasRoots;
   $: if (restorePending && !$health.loading && pathsKnown) runRestoredSearch();
 
   function addPattern() {
@@ -97,7 +100,7 @@
     let pathsToSearch: string[];
     if (onlyOpenedFiles) {
       // Search only in currently opened files
-      pathsToSearch = $files.openFiles.map((f) => f.path);
+      pathsToSearch = openFilePaths;
       if (pathsToSearch.length === 0) {
         return; // No files open, nothing to search
       }
@@ -179,7 +182,7 @@
         disabled={$trace.searching ||
           searchPatterns.every((p) => !p.trim()) ||
           (!hasRoots && !onlyOpenedFiles) ||
-          (onlyOpenedFiles && $files.openFiles.length === 0)}
+          (onlyOpenedFiles && openFilePaths.length === 0)}
       >
         {#if $trace.searching}
           <Spinner size="sm" />
@@ -230,8 +233,8 @@
             class="text-gh-fg-muted dark:text-gh-fg-dark-muted cursor-pointer"
           >
             Only opened files
-            {#if onlyOpenedFiles && $files.openFiles.length > 0}
-              <span class="text-xs">({$files.openFiles.length})</span>
+            {#if onlyOpenedFiles && openFilePaths.length > 0}
+              <span class="text-xs">({openFilePaths.length})</span>
             {/if}
           </label>
         </div>
@@ -242,7 +245,7 @@
       <p class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mt-2">
         No search roots available. Configure search roots or enable "Only opened files" to search.
       </p>
-    {:else if onlyOpenedFiles && $files.openFiles.length === 0}
+    {:else if onlyOpenedFiles && openFilePaths.length === 0}
       <p class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted mt-2">
         No files currently opened. Open some files to search in them.
       </p>

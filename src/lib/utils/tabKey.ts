@@ -31,3 +31,11 @@ export function isChainKey(key: TabKey): boolean {
 export function chainHandleOf(key: TabKey): string | null {
   return isChainKey(key) ? key.slice(CHAIN_KEY_PREFIX.length) : null;
 }
+
+/**
+ * The files among the tab keys `keys`, by path: what a search of the
+ * open files can name, since a single-file route takes no chain's key.
+ */
+export function fileKeys(keys: readonly TabKey[]): string[] {
+  return keys.filter((key) => !isChainKey(key));
+}

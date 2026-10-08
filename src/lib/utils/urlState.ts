@@ -137,10 +137,10 @@ interface ParamCodec<T> {
   serialize(value: T, view: ViewState): Param[];
   /**
    * Whether changing the value from `previous` to `next` is a step the
-   * user expects Back to undo. A key without it never is: its changes
-   * rewrite the current entry.
+   * user expects Back to undo, in the view it changes to. A key without
+   * it never is: its changes rewrite the current entry.
    */
-  isStep?: (previous: T, next: T) => boolean;
+  isStep?: (previous: T, next: T, nextView: ViewState) => boolean;
 }
 
 /** A boolean URL parameter is on when it reads `1` or `true`. */
@@ -334,8 +334,11 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     names: ['time'],
     parse: (params) => urlInstant(params.get('time')),
     serialize: (time) => (time === null ? [] : [['time', new Date(time).toISOString()]]),
-    // A jump by time is a step; moving by line afterwards drops it, and is not.
-    isStep: (previous, next) => next !== null && next !== previous,
+    // A jump by time is a step; moving by line afterwards drops it, and is
+    // not. A chain's tab names the time of its anchor line, which every
+    // scroll may change, so its time is no step.
+    isStep: (previous, next, nextView) =>
+      nextView.chain === null && next !== null && next !== previous,
   },
   highlight: {
     names: ['highlight'],
@@ -461,7 +464,7 @@ function isStepKey<K extends keyof ViewState>(
   previous: ViewState,
   next: ViewState,
 ): boolean {
-  return CODECS[key].isStep?.(previous[key], next[key]) ?? false;
+  return CODECS[key].isStep?.(previous[key], next[key], next) ?? false;
 }
 
 /**

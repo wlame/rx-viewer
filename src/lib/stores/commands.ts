@@ -16,6 +16,12 @@ export type CommandAction = 'search' | 'file' | 'index' | 'analysis';
 export interface CommandEntry {
   command: string;
   action: CommandAction;
+  /**
+   * Commands that give the same answer piece by piece: for the lines of a
+   * log chain, the `rx samples PART --lines=A-B` of each part they come
+   * from. Absent for an answer of one command.
+   */
+  details?: readonly string[];
   /** When the answer arrived, in milliseconds since the epoch. */
   at: number;
 }
@@ -26,12 +32,19 @@ export const RECENT_COMMANDS_LIMIT = 20;
 function createCommandLog() {
   const { subscribe, set, update } = writable<CommandEntry[]>([]);
 
-  /** Add the command of an answer; a repeated command moves to the top. */
-  function record(command: string | null | undefined, action: CommandAction) {
+  /**
+   * Add the command of an answer, with the commands of its pieces; a
+   * repeated command moves to the top.
+   */
+  function record(
+    command: string | null | undefined,
+    action: CommandAction,
+    details: readonly string[] = [],
+  ) {
     if (!command || command.trim() === '') return;
     update((entries) =>
       [
-        { command, action, at: Date.now() },
+        { command, action, ...(details.length > 0 ? { details } : {}), at: Date.now() },
         ...entries.filter((entry) => entry.command !== command),
       ].slice(0, RECENT_COMMANDS_LIMIT),
     );

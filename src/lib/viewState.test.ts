@@ -17,7 +17,8 @@ import {
   type SearchState,
   type ViewState,
 } from './utils/urlState';
-import type { OpenFile } from './types';
+import type { ChainAnchor, ChainTab, OpenFile } from './types';
+import { FakeChain, T0_MS, serveChain } from './testing/fakeChain';
 
 const ONE_MB = 1024 * 1024;
 
@@ -826,6 +827,124 @@ describe('tabViewOf', () => {
 
   it('writes no chain when no tab is open', () => {
     expect(tabViewOf(undefined)).toEqual({ ...fileViewOf(undefined), chain: null, part: null });
+  });
+
+  it('writes the part, the local line and the time of a chain tab anchor', () => {
+    const tab = openFile({ path: chainKey('/logs/app.log'), anchorLine: 3500 });
+    tab.chain = chainTabWith({ part: 'app.log.1', line: 500, timeMs: 1_790_000_000_123 });
+
+    expect(tabViewOf(tab)).toMatchObject({
+      chain: '/logs/app.log',
+      file: null,
+      part: 'app.log.1',
+      line: 500,
+      time: 1_790_000_000_123,
+    });
+  });
+
+  it('writes no line for an anchor on line 1 of its part, and keeps the part', () => {
+    const tab = openFile({ path: chainKey('/logs/app.log') });
+    tab.chain = chainTabWith({ part: 'app.log.1', line: 1, timeMs: null });
+
+    expect(tabViewOf(tab)).toMatchObject({ part: 'app.log.1', line: null, time: null });
+  });
+});
+
+/** The chain fields of a tab anchored on `anchor`. */
+function chainTabWith(anchor: ChainAnchor): ChainTab {
+  return {
+    handle: '/logs/app.log',
+    description: null,
+    numbering: 'global',
+    bases: new Map(),
+    counts: new Map(),
+    anchor,
+    indexTask: null,
+    indexProblem: null,
+    invalidDetail: null,
+  };
+}
+
+describe('a chain tab in the URL', () => {
+  let stopSync: () => void = () => {};
+  let chain: FakeChain;
+
+  beforeEach(() => {
+    chain = new FakeChain({
+      dir: '/l',
+      name: 'app.log',
+      parts: [
+        { name: 'app.log.2.gz', lines: 3000, compression: 'gzip' },
+        { name: 'app.log.1', lines: 1500 },
+        { name: 'app.log', lines: 2000, isActive: true },
+      ],
+    });
+    serveChain(chain);
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  function chainTab(): OpenFile {
+    const found = get(files).openFiles.find((f) => f.path === chainKey('/l/app.log'));
+    if (!found) throw new Error('the chain tab is not open');
+    return found;
+  }
+
+  it('opens the chain at the part and line of a link, in chain mode, and keeps them', async () => {
+    const calls = stubWindow('?chain=%2Fl%2Fapp.log&part=app.log.1&line=20');
+    await health.check();
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(chainMode)).toBe(true);
+    expect(chainTab().anchorLine).toBe(3020);
+    expect(chain.samplesRequests[0].get('part')).toBe('app.log.1');
+    expect(chain.samplesRequests[0].get('lines')).toBe('20');
+    expect(urlParams().get('chain')).toBe('/l/app.log');
+    expect(urlParams().get('part')).toBe('app.log.1');
+    expect(urlParams().get('line')).toBe('20');
+    expect(urlParams().get('time')).toBe(new Date(T0_MS + 3020_000).toISOString());
+    expect(urlParams().get('chains')).toBe('1');
+    expect(urlParams().has('file')).toBe(false);
+    expect(calls.filter((call) => call.mode === 'push')).toEqual([]);
+  });
+
+  it('finds the line by its time when the part of a link is gone', async () => {
+    const time = new Date(T0_MS + 3500_000).toISOString();
+    stubWindow(
+      `?chains=1&chain=%2Fl%2Fapp.log&part=app.log.9&line=5&time=${encodeURIComponent(time)}`,
+    );
+    await health.check();
+
+    await loadView(readViewState());
+
+    expect(chain.samplesRequests[0].getAll('timestamps')).toEqual([time]);
+    expect(chain.samplesRequests[0].has('part')).toBe(false);
+    expect(chainTab().anchorLine).toBe(3500);
+    expect(chainTab().chain?.anchor).toMatchObject({ part: 'app.log.1', line: 500 });
+  });
+
+  it('rewrites the entry as the anchor moves through the parts, and adds none', async () => {
+    const calls = stubWindow('?chains=1');
+    await health.check();
+    await loadView(readViewState());
+    stopSync = startViewSync();
+    await files.openChain('/l/app.log');
+    const pushes = calls.filter((call) => call.mode === 'push').length;
+
+    files.setAnchorLine(chainKey('/l/app.log'), 3001);
+    files.setAnchorLine(chainKey('/l/app.log'), 2999);
+
+    expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
+    expect(urlParams().get('part')).toBe('app.log.2.gz');
+    expect(urlParams().get('line')).toBe('2999');
   });
 });
 
