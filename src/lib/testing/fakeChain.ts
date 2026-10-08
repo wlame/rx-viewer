@@ -7,10 +7,19 @@
  * every part before it (a time gap). The chain is pending (no global
  * numbers; a request by global line or time answers 202 with the chain's
  * index task) until the test ends the task with `finishTask`, or ready
- * from the start. Requests are recorded for assertions.
+ * from the start. A search of the chain (`/v1/logs/trace`) finds its
+ * lines by a JavaScript pattern. Requests are recorded for assertions.
  */
 import { vi } from 'vitest';
-import type { ChainPart, ChainPiece, ChainReason, ChainResponse, TaskStatus } from '../types';
+import type {
+  ChainMatch,
+  ChainPart,
+  ChainPiece,
+  ChainReason,
+  ChainResponse,
+  ChainTraceResponse,
+  TaskStatus,
+} from '../types';
 
 /** The timestamp of global line 0; line n is n seconds later. */
 export const T0_MS = Date.UTC(2026, 9, 1, 0, 0, 0);
@@ -461,6 +470,78 @@ export class FakeChain {
     };
   }
 
+  /**
+   * A search of the chain, by its handle or its directory, as rx-go
+   * answers `/v1/logs/trace`: its parts are the files `f1`, `f2`, … in the
+   * chain's order, and each line that `regexp` (read as a JavaScript
+   * pattern) finds is a match with its part's own line, byte offset and,
+   * once the chain is ready, its global line.
+   */
+  private trace(query: URLSearchParams): Answer {
+    const paths = query.getAll('path');
+    if (!paths.every((path) => path === this.handle || path === this.dir)) {
+      return answer(404, { detail: 'not found' });
+    }
+    const pattern = new RegExp(query.get('regexp') ?? '');
+    const ready = this.isReady();
+    const starts = this.starts();
+    const files: Record<string, string> = {};
+    const matches: ChainMatch[] = [];
+    this.parts.forEach((part, i) => {
+      const file = `f${i + 1}`;
+      files[file] = `${this.dir}/${part.name}`;
+      let offset = 0;
+      for (let local = 1; local <= part.lines; local++) {
+        const global = starts[i] + local - 1;
+        const text = this.lineText(global, i, local);
+        if (pattern.test(text)) {
+          matches.push({
+            pattern: 'p1',
+            file,
+            offset,
+            relative_line_number: local,
+            absolute_line_number: local,
+            line_text: text,
+            submatches: [],
+            line_text_truncated: false,
+            submatches_truncated: false,
+            chain: 'c1',
+            chain_line: ready ? global : -1,
+          });
+        }
+        offset += text.length + 1;
+      }
+    });
+    const body: ChainTraceResponse = {
+      request_id: 'fake',
+      path: paths,
+      patterns: { p1: query.get('regexp') ?? '' },
+      files,
+      matches,
+      chains: {
+        c1: {
+          path: this.handle,
+          name: this.name,
+          parts: Object.keys(files),
+          fingerprint: this.fingerprint,
+          state: this.state,
+          reasons: this.state === 'invalid' ? (this.options.reasons ?? []) : [],
+        },
+      },
+      scanned_files: [],
+      skipped_files: [],
+      skip_reasons: [],
+      max_results: null,
+      file_chunks: Object.fromEntries(Object.keys(files).map((file) => [file, 1])),
+      context_lines: {},
+      before_context: null,
+      after_context: null,
+      time: 0.01,
+      cli_command: `rx logs trace ${paths.join(' ')} --regexp=${query.get('regexp')}`,
+    };
+    return answer(200, body);
+  }
+
   /** Whether `finishTask` was called. */
   get hasFinished(): boolean {
     return this.isFinished;
@@ -488,6 +569,8 @@ export class FakeChain {
       }
       case '/v1/logs/samples':
         return this.samples(query, prefer);
+      case '/v1/logs/trace':
+        return this.trace(query);
       case `/v1/tasks/${CHAIN_TASK_ID}`:
         return this.taskStatus();
       default:

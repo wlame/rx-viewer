@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { chainMode } from './stores/chainMode';
 import { files } from './stores/files';
+import { health } from './stores/health';
 import { notifications } from './stores/notifications';
-import { openFileAtLine, openTreeFile } from './fileOpening';
-import type { TreeNode } from './types';
+import { trace } from './stores/trace';
+import { FakeChain, serveChain, type FakePart } from './testing/fakeChain';
+import { openChainAt, openFileAtLine, openTreeFile } from './fileOpening';
+import {
+  chainMatchedLines,
+  chainPlaceOf,
+  chainPositionOf,
+  chainTabMatches,
+  isChainSearchAnswer,
+} from './utils/chainSearch';
+import { chainKey } from './utils/tabKey';
+import type { ChainTraceResponse, OpenFile, TreeNode } from './types';
 
 /** A file entry as the tree lists it. */
 function treeFile(path: string, fields: Partial<TreeNode> = {}): TreeNode {
@@ -173,5 +185,127 @@ describe('openFileAtLine', () => {
 
     expect(treeRequests().length).toBe(before);
     expect(get(files).openFiles.find((f) => f.path === '/logs/big.log')?.anchorLine).toBe(5);
+  });
+});
+
+describe('openChainAt', () => {
+  /** global 1-3000 in a gzip part, 3001-4500 in a plain one, 4501-6500 in the active file. */
+  const PARTS: FakePart[] = [
+    { name: 'app.log.2.gz', lines: 3000, compression: 'gzip' },
+    { name: 'app.log.1', lines: 1500 },
+    { name: 'app.log', lines: 2000, isActive: true },
+  ];
+  const KEY = chainKey('/l/app.log');
+  /** Line 500 of app.log.1, global line 3500, and line 7 of the active file, global 4507. */
+  const PATTERN = 'part=app\\.log(\\.1 local=500| local=7)$';
+
+  async function serve(state: 'ready' | 'pending'): Promise<FakeChain> {
+    const chain = new FakeChain({ name: 'app.log', parts: PARTS, state });
+    serveChain(chain);
+    await health.check();
+    chainMode.set(true);
+    return chain;
+  }
+
+  async function searchChain(): Promise<ChainTraceResponse> {
+    const answer = await trace.searchChains(['/l/app.log'], [PATTERN]);
+    if (!answer || !isChainSearchAnswer(answer)) throw new Error('no chain search answer');
+    return answer;
+  }
+
+  /** Open the chain's tab at the first match of `answer`, marking every match, as a click does. */
+  async function openFirstMatch(answer: ChainTraceResponse): Promise<void> {
+    const match = answer.matches[0];
+    const place = chainPlaceOf(match, answer);
+    if (!place) throw new Error('the match is in no chain');
+    const marks = chainTabMatches(answer, place.handle, (m) => m.absolute_line_number);
+    await openChainAt(place.handle, chainPositionOf(place, match.absolute_line_number), marks);
+  }
+
+  function tab(): OpenFile {
+    const found = get(files).openFiles.find((f) => f.path === KEY);
+    if (!found) throw new Error('the chain tab is not open');
+    return found;
+  }
+
+  /** The texts of the held lines the search marks. */
+  function markedTexts(): string[] {
+    const held = tab();
+    const marks = get(files).matches.get(KEY) ?? [];
+    return chainMatchedLines(held.lines, marks).map(
+      (position) => held.lines[position - held.startLine].content,
+    );
+  }
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    trace.clear();
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a ready chain's tab at the match's global line and marks the matched lines", async () => {
+    await serve('ready');
+    const answer = await searchChain();
+    expect(answer.matches.map((m) => m.chain_line)).toEqual([3500, 4507]);
+
+    await openFirstMatch(answer);
+
+    expect(tab().chain?.numbering).toBe('global');
+    expect(tab().anchorLine).toBe(3500);
+    expect(tab().scrollToLine).toBe(3500);
+    expect(tab().lines[3500 - tab().startLine].content).toContain(
+      'LINE 3500 part=app.log.1 local=500',
+    );
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.1', line: 500 });
+    expect(get(files).matches.get(KEY)).toEqual([
+      { lineNumber: 500, part: 'app.log.1', patternId: 'p1', pattern: PATTERN },
+      { lineNumber: 7, part: 'app.log', patternId: 'p1', pattern: PATTERN },
+    ]);
+    // The window around 3500 holds 3400-3600: the second match is not held.
+    expect(markedTexts()).toEqual([expect.stringContaining('LINE 3500 part=app.log.1 local=500')]);
+  });
+
+  it("opens a pending chain's tab at the part's own line, and keeps the mark on it once ready", async () => {
+    const chain = await serve('pending');
+    const answer = await searchChain();
+    expect(answer.matches.map((m) => m.chain_line)).toEqual([-1, -1]);
+
+    await openFirstMatch(answer);
+
+    expect(tab().chain?.numbering).toBe('local');
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log.1', line: 500 });
+    expect(tab().lines[tab().anchorLine - tab().startLine].content).toContain(
+      'part=app.log.1 local=500',
+    );
+    expect(markedTexts()).toContainEqual(
+      expect.stringContaining('LINE 3500 part=app.log.1 local=500'),
+    );
+
+    chain.finishTask();
+    await vi.waitFor(() => expect(tab().chain?.numbering).toBe('global'));
+    await vi.waitFor(() => expect(tab().loading).toBe(false));
+
+    expect(tab().anchorLine).toBe(3500);
+    expect(markedTexts()).toContainEqual(
+      expect.stringContaining('LINE 3500 part=app.log.1 local=500'),
+    );
+  });
+
+  it('moves an open chain tab to the next match, in the same tab', async () => {
+    await serve('ready');
+    const answer = await searchChain();
+    await openFirstMatch(answer);
+
+    const second = answer.matches[1];
+    const place = chainPlaceOf(second, answer);
+    if (!place) throw new Error('the match is in no chain');
+    await openChainAt(place.handle, chainPositionOf(place, second.absolute_line_number), []);
+
+    expect(get(files).openFiles.filter((f) => f.path === KEY)).toHaveLength(1);
+    expect(tab().anchorLine).toBe(4507);
+    expect(tab().chain?.anchor).toMatchObject({ part: 'app.log', line: 7 });
+    expect(tab().lines[4507 - tab().startLine].content).toContain('LINE 4507 part=app.log local=7');
   });
 });

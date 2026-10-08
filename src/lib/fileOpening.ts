@@ -7,8 +7,10 @@ import { get } from 'svelte/store';
 import { api } from './api';
 import { files } from './stores/files';
 import { notifications } from './stores/notifications';
+import type { ChainPosition } from './stores/chainTabs';
 import { tree } from './stores/tree';
-import type { TreeEntry } from './types';
+import type { FileMatch, TreeEntry } from './types';
+import { chainKey } from './utils/tabKey';
 
 /** How long the refusal of a binary file stays on screen. */
 const BINARY_NOTICE_MS = 5000;
@@ -79,4 +81,19 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
     lineCount: entry?.line_count ?? undefined,
     compressionFormat: entry?.compression_format ?? null,
   });
+}
+
+/**
+ * Show a log chain's tab at a position, for a search result in one of its
+ * parts: the open tab moves there, or the tab opens there. The tab marks
+ * `marks`, the search's matches in the chain by part and line in it, so
+ * the marks stay on their lines however the tab numbers them.
+ */
+export async function openChainAt(
+  handle: string,
+  position: ChainPosition,
+  marks: FileMatch[],
+): Promise<void> {
+  files.setMatches(chainKey(handle), marks);
+  await files.openChain(handle, { position });
 }

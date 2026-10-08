@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { api } from '../api';
 import { LatestRequest, SUPERSEDED, isAbortError } from '../utils/latestRequest';
-import type { TraceMatchingFlags, TraceResponse } from '../types';
+import type { SearchResponse, TraceMatchingFlags } from '../types';
 import type { SearchState } from '../utils/urlState';
 import { commandLog } from './commands';
 import { files } from './files';
@@ -21,7 +21,8 @@ export interface SearchQuery {
 
 interface TraceState {
   searching: boolean;
-  response: TraceResponse | null;
+  /** The last answer: a trace's, or a chain search's (`utils/chainSearch.ts`). */
+  response: SearchResponse | null;
   error: string | null;
 }
 
@@ -37,9 +38,11 @@ function createTraceStore() {
   // screen, which is not necessarily the one the user asked for.
   const latestSearch = new LatestRequest();
 
-  async function search(paths: string[], patterns: string[], query: SearchQuery = {}) {
-    if (patterns.length === 0) return;
-
+  /**
+   * Run one search, `request`, as the newest: the store shows its answer
+   * or its failure, and a search started after it supersedes it.
+   */
+  async function run(request: (signal: AbortSignal) => Promise<SearchResponse>) {
     // The editor's match highlights belong to the previous search.
     files.clearMatches();
     update((s) => ({
@@ -50,9 +53,7 @@ function createTraceStore() {
     }));
 
     try {
-      const response = await latestSearch.run((signal) =>
-        api.trace(paths, patterns, query, { signal }),
-      );
+      const response = await latestSearch.run(request);
 
       // A newer search is already running; leave the store to it rather
       // than flashing this query's results on the way past.
@@ -79,6 +80,22 @@ function createTraceStore() {
     }
   }
 
+  /** Search files and directories (`/v1/trace`). */
+  async function search(paths: string[], patterns: string[], query: SearchQuery = {}) {
+    if (patterns.length === 0) return;
+    return run((signal) => api.trace(paths, patterns, query, { signal }));
+  }
+
+  /**
+   * Search in chain mode (`/v1/logs/trace`): a directory's rotated logs
+   * and each handle are searched as log chains, each chain's parts in its
+   * order, and each match names its chain and its line in it.
+   */
+  async function searchChains(paths: string[], patterns: string[], query: SearchQuery = {}) {
+    if (patterns.length === 0) return;
+    return run((signal) => api.logTrace(paths, patterns, query, { signal }));
+  }
+
   function clear() {
     latestSearch.abort();
     files.clearMatches();
@@ -92,6 +109,7 @@ function createTraceStore() {
   return {
     subscribe,
     search,
+    searchChains,
     clear,
   };
 }
