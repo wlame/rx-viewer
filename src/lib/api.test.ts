@@ -301,3 +301,304 @@ describe('samples answers', () => {
     });
   });
 });
+
+/**
+ * The log chain routes. A chain request expects three answers besides
+ * 200, and each comes back as a value the stores branch on, never as a
+ * thrown error: 202 names the index task a samples request waits for,
+ * 409 carries the chain's current description (its files changed on
+ * disk), and 422 says why a chain cannot be read as one text.
+ */
+describe('log chain routes', () => {
+  const handle = '/var/log/app.log';
+  const description = {
+    path: handle,
+    name: 'app.log',
+    state: 'ready',
+    reasons: [],
+    fingerprint: '0123456789abcdef',
+    parts: [],
+    missing: [],
+    missing_count: 0,
+    gaps: [],
+    first_ms: null,
+    last_ms: null,
+    frozen_line_count: null,
+    line_count: null,
+    index_build: null,
+    cli_command: 'rx logs show /var/log/app.log',
+  };
+  const task = {
+    task_id: 't1',
+    status: 'running',
+    message: 'Indexing 3 parts of the log chain /var/log/app.log',
+    path: handle,
+    started_at: '2026-10-08T00:00:00.000000Z',
+  };
+  const samples = { path: handle, name: 'app.log', state: 'ready', samples: {} };
+
+  const queryOf = (spy: ReturnType<typeof stubFetch>) =>
+    new URL(spy.mock.calls[0][0], 'http://x').searchParams;
+
+  const conflict = () =>
+    stubFetch({
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      text: async () => JSON.stringify(description),
+    });
+
+  describe('logChains', () => {
+    it('lists the chains of a directory', async () => {
+      const listing = { path: '/var/log', chains: [] };
+      const spy = stubFetch({ json: async () => listing });
+
+      await expect(api.logChains('/var/log')).resolves.toEqual(listing);
+      expect(spy.mock.calls[0][0]).toBe('/v1/logs/chains?path=%2Fvar%2Flog');
+    });
+
+    it('throws a refusal as an ApiError', async () => {
+      stubFetch({ ok: false, status: 403, statusText: 'Forbidden', text: async () => '' });
+      await expect(api.logChains('/etc')).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
+  describe('logChain', () => {
+    it('reads a 200 as the description', async () => {
+      stubFetch({ json: async () => description });
+      await expect(api.logChain(handle)).resolves.toEqual({ kind: 'chain', chain: description });
+    });
+
+    it('sends the zone and the fingerprint it is given, and nothing else', async () => {
+      const spy = stubFetch({ json: async () => description });
+
+      await api.logChain(handle, { fileTz: 'Europe/Berlin', fingerprint: '0123456789abcdef' });
+      await api.logChain(handle);
+
+      const query = queryOf(spy);
+      expect(spy.mock.calls[0][0]).toMatch(/^\/v1\/logs\/chain\?/);
+      expect(query.get('path')).toBe(handle);
+      expect(query.get('file_tz')).toBe('Europe/Berlin');
+      expect(query.get('fingerprint')).toBe('0123456789abcdef');
+      const bare = new URL(spy.mock.calls[1][0], 'http://x').searchParams;
+      expect([...bare.keys()]).toEqual(['path']);
+    });
+
+    it('reads a 409 as the changed chain with its current description', async () => {
+      conflict();
+      await expect(api.logChain(handle, { fingerprint: 'ffffffffffffffff' })).resolves.toEqual({
+        kind: 'changed',
+        chain: description,
+      });
+    });
+
+    it('throws a 409 whose body is not a description', async () => {
+      stubFetch({ ok: false, status: 409, statusText: 'Conflict', text: async () => 'busy' });
+      await expect(api.logChain(handle)).rejects.toBeInstanceOf(ApiError);
+    });
+
+    it.each([404, 422, 500])('throws a %i as an ApiError', async (status) => {
+      stubFetch({ ok: false, status, statusText: 'x', text: async () => '{"detail":"no"}' });
+      await expect(api.logChain(handle)).rejects.toMatchObject({ status, message: 'no' });
+    });
+  });
+
+  describe('logSamples', () => {
+    it('sends global lines with their context', async () => {
+      const spy = stubFetch({ json: async () => samples });
+
+      await api.logSamples({ handle, lines: ['123456', '100-200'], context: 10 });
+
+      const query = queryOf(spy);
+      expect(spy.mock.calls[0][0]).toMatch(/^\/v1\/logs\/samples\?/);
+      expect(query.get('path')).toBe(handle);
+      expect(query.get('lines')).toBe('123456,100-200');
+      expect(query.get('context')).toBe('10');
+      expect(query.has('part')).toBe(false);
+      expect(query.has('timestamps')).toBe(false);
+    });
+
+    it('sends a part with its own lines and the context on each side', async () => {
+      const spy = stubFetch({ json: async () => samples });
+
+      await api.logSamples(
+        { handle, part: 'app.log.3.gz', lines: ['500'], beforeContext: 2, afterContext: 7 },
+        { fingerprint: '0123456789abcdef' },
+      );
+
+      const query = queryOf(spy);
+      expect(query.get('part')).toBe('app.log.3.gz');
+      expect(query.get('lines')).toBe('500');
+      expect(query.get('before_context')).toBe('2');
+      expect(query.get('after_context')).toBe('7');
+      expect(query.get('fingerprint')).toBe('0123456789abcdef');
+      expect(query.has('context')).toBe(false);
+    });
+
+    it('repeats timestamps for each time and sends the zone', async () => {
+      const spy = stubFetch({ json: async () => samples });
+
+      await api.logSamples(
+        { handle, timestamps: ['2026-10-03T14:00:00.000Z', '2026-10-03T14:00..2026-10-03T15:00'] },
+        { fileTz: 'UTC' },
+      );
+
+      const query = queryOf(spy);
+      expect(query.getAll('timestamps')).toEqual([
+        '2026-10-03T14:00:00.000Z',
+        '2026-10-03T14:00..2026-10-03T15:00',
+      ]);
+      expect(query.get('file_tz')).toBe('UTC');
+      expect(query.has('lines')).toBe(false);
+    });
+
+    it.each([
+      [true, 'respond-async'],
+      [false, undefined],
+    ])('sends Prefer when respondAsync is %s', async (respondAsync, prefer) => {
+      const spy = stubFetch({ json: async () => samples });
+      await api.logSamples({ handle, lines: ['1'] }, { respondAsync });
+      expect(spy.mock.calls[0][1].headers.Prefer).toBe(prefer);
+    });
+
+    it('reads a 200 as the pieces', async () => {
+      stubFetch({ json: async () => samples });
+      await expect(api.logSamples({ handle, lines: ['1'] })).resolves.toEqual({
+        kind: 'samples',
+        samples,
+      });
+    });
+
+    it('reads a 202 as the index task the request waits for', async () => {
+      stubFetch({ status: 202, statusText: 'Accepted', json: async () => task });
+      await expect(
+        api.logSamples({ handle, lines: ['1'] }, { respondAsync: true }),
+      ).resolves.toEqual({ kind: 'building', task });
+    });
+
+    it('reads a 409 as the changed chain', async () => {
+      conflict();
+      await expect(api.logSamples({ handle, lines: ['1'] })).resolves.toEqual({
+        kind: 'changed',
+        chain: description,
+      });
+    });
+
+    it('reads a 422 as an invalid chain with its reasons', async () => {
+      stubFetch({
+        ok: false,
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        text: async () =>
+          '{"$schema":"http://x/schemas/ApiError.json","detail":"log chain is invalid: overlap"}',
+      });
+      await expect(api.logSamples({ handle, lines: ['1'] })).resolves.toEqual({
+        kind: 'invalid',
+        detail: 'log chain is invalid: overlap',
+      });
+    });
+
+    it.each([400, 404, 500])('throws a %i as an ApiError', async (status) => {
+      stubFetch({ ok: false, status, statusText: 'x', text: async () => '{"detail":"no"}' });
+      await expect(api.logSamples({ handle, lines: ['1'] })).rejects.toMatchObject({ status });
+    });
+  });
+
+  describe('logTrace', () => {
+    it('repeats path and regexp and sends the cap and the flags that are on', async () => {
+      const spy = stubFetch({ json: async () => ({}) });
+
+      await api.logTrace(['/var/log', handle], ['err', 'warn'], {
+        maxResults: 100,
+        flags: { ignore_case: true, pcre2: false },
+      });
+
+      const query = queryOf(spy);
+      expect(spy.mock.calls[0][0]).toMatch(/^\/v1\/logs\/trace\?/);
+      expect(query.getAll('path')).toEqual(['/var/log', handle]);
+      expect(query.getAll('regexp')).toEqual(['err', 'warn']);
+      expect(query.get('max_results')).toBe('100');
+      expect(query.get('ignore_case')).toBe('true');
+      expect(query.has('pcre2')).toBe(false);
+    });
+
+    // A 409 from a search carries no description (one search may reach
+    // several chains): the request is sent again, as for any refusal.
+    it('throws a 409 as an ApiError', async () => {
+      stubFetch({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        text: async () => '{"detail":"a part of a log chain changed while it was read"}',
+      });
+      await expect(api.logTrace([handle], ['err'])).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  describe('logIndex', () => {
+    it('posts the handle in the query, with no body', async () => {
+      const spy = stubFetch({ json: async () => task });
+
+      await expect(api.logIndex(handle)).resolves.toEqual({ kind: 'task', task });
+
+      const query = queryOf(spy);
+      expect(spy.mock.calls[0][0]).toMatch(/^\/v1\/logs\/index\?/);
+      expect(spy.mock.calls[0][1].method).toBe('POST');
+      expect(spy.mock.calls[0][1].body).toBeUndefined();
+      expect([...query.keys()]).toEqual(['path']);
+      expect(query.get('path')).toBe(handle);
+    });
+
+    it('sends force and the fingerprint when given', async () => {
+      const spy = stubFetch({ json: async () => task });
+
+      await api.logIndex(handle, { force: true, fingerprint: '0123456789abcdef' });
+
+      const query = queryOf(spy);
+      expect(query.get('force')).toBe('true');
+      expect(query.get('fingerprint')).toBe('0123456789abcdef');
+    });
+
+    it('reads a 409 as the changed chain', async () => {
+      conflict();
+      await expect(api.logIndex(handle, { fingerprint: 'ffffffffffffffff' })).resolves.toEqual({
+        kind: 'changed',
+        chain: description,
+      });
+    });
+  });
+
+  // Handles and part names are file names: spaces, brackets, `#`, `&`,
+  // `%`, `+` and any script reach the backend exactly as written.
+  it.each([
+    ['/var/log/my app (1).log', 'my app (1).log.2.gz'],
+    ['/srv/a#b&c%d+e.log', 'a#b&c%d+e.log.1'],
+    ['/var/log/журнал.log', 'журнал.log.3.gz'],
+  ])('sends the handle %s and the part %s as written', async (name, part) => {
+    const spy = stubFetch({ json: async () => samples });
+
+    await api.logSamples({ handle: name, part, lines: ['1'] });
+    await api.logChain(name);
+    await api.logIndex(name);
+    await api.logChains(name);
+
+    for (const call of spy.mock.calls) {
+      const query = new URL(call[0], 'http://x').searchParams;
+      expect(query.get('path')).toBe(name);
+    }
+    expect(queryOf(spy).get('part')).toBe(part);
+  });
+
+  it.each([
+    ['logChains', (o: object) => api.logChains('/var/log', o)],
+    ['logChain', (o: object) => api.logChain(handle, o)],
+    ['logSamples', (o: object) => api.logSamples({ handle, lines: ['1'] }, o)],
+    ['logTrace', (o: object) => api.logTrace([handle], ['e'], {}, o)],
+    ['logIndex', (o: object) => api.logIndex(handle, o)],
+  ])('%s forwards the signal', async (_name, call) => {
+    const spy = stubFetch({ json: async () => description });
+    const controller = new AbortController();
+    await call({ signal: controller.signal });
+    expect(spy.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+});

@@ -9,6 +9,10 @@ import type {
   IndexTaskResponse,
   DetectorsResponse,
   TimeRangeResponse,
+  ChainsResponse,
+  ChainResponse,
+  ChainSamplesResponse,
+  ChainTraceResponse,
 } from './types';
 import { parseSandboxError, describeSandboxError } from './utils/sandboxError';
 import { getApiToken, tokenRequired } from './utils/apiToken';
@@ -118,17 +122,172 @@ function withFileTz(params: URLSearchParams, fileTz: string | undefined): URLSea
   return params;
 }
 
-async function fetchSamples(
+/**
+ * A samples request's answer, the lines (`T`) or the index build it
+ * waits for (202). `Prefer: respond-async` goes only with `respondAsync`.
+ */
+async function fetchSamplesAnswer<T>(
   url: string,
-  options: SamplesRequestOptions = {},
-): Promise<SamplesAnswer> {
+  options: SamplesRequestOptions,
+): Promise<{ kind: 'samples'; samples: T } | { kind: 'building'; task: IndexTaskResponse }> {
   const { respondAsync, fileTz: _fileTz, ...request } = options;
-  const { status, body } = await fetchJsonAnswer<SamplesResponse | IndexTaskResponse>(url, {
+  const { status, body } = await fetchJsonAnswer<T | IndexTaskResponse>(url, {
     ...request,
     ...(respondAsync ? { headers: { Prefer: 'respond-async' } } : {}),
   });
   if (status === HTTP_ACCEPTED) return { kind: 'building', task: body as IndexTaskResponse };
-  return { kind: 'samples', samples: body as SamplesResponse };
+  return { kind: 'samples', samples: body as T };
+}
+
+function fetchSamples(url: string, options: SamplesRequestOptions = {}): Promise<SamplesAnswer> {
+  return fetchSamplesAnswer<SamplesResponse>(url, options);
+}
+
+/** The status of a chain request whose fingerprint no longer matches the chain's files. */
+const HTTP_CONFLICT = 409;
+
+/** The status of a samples request on a chain that cannot be read as one text. */
+const HTTP_UNPROCESSABLE = 422;
+
+/**
+ * A chain changed on disk since the client described it (a rotation
+ * renamed, compressed or removed a part, or added one): the backend
+ * answers 409 with the chain's current description.
+ */
+export interface ChainChanged {
+  kind: 'changed';
+  chain: ChainResponse;
+}
+
+/** What `/v1/logs/chain` answered: the description, or the changed chain's new one. */
+export type LogChainAnswer = { kind: 'chain'; chain: ChainResponse } | ChainChanged;
+
+/**
+ * What `/v1/logs/samples` answered: the pieces; the index task a request
+ * by global line or time waits for (a 202, only with `respondAsync`); the
+ * changed chain's new description; or, for an invalid chain, the reasons
+ * as the backend words them.
+ */
+export type LogSamplesAnswer =
+  | { kind: 'samples'; samples: ChainSamplesResponse }
+  | { kind: 'building'; task: IndexTaskResponse }
+  | ChainChanged
+  | { kind: 'invalid'; detail: string };
+
+/** What `/v1/logs/index` answered: the chain's index task, started or joined, or the changed chain. */
+export type LogIndexAnswer = { kind: 'task'; task: IndexTaskResponse } | ChainChanged;
+
+/** Options of a request about one chain. */
+export interface ChainRequestOptions extends FileZoneRequestOptions {
+  /**
+   * The fingerprint of the description the client holds (16 hex digits).
+   * When the chain's files changed since, the answer is the changed chain.
+   */
+  fingerprint?: string;
+}
+
+/** Options of a chain samples request: a chain request that may answer 202. */
+export interface LogSamplesOptions extends SamplesRequestOptions {
+  fingerprint?: string;
+}
+
+/** What a chain samples request reads, whatever its addressing. */
+interface LogSamplesWindow {
+  /** The chain's handle: its directory joined with its name. */
+  handle: string;
+  /** Lines before and after each single line or time; the backend's default without it. */
+  context?: number;
+  /** Override `context` before each single line or time. */
+  beforeContext?: number;
+  /** Override `context` after each single line or time. */
+  afterContext?: number;
+}
+
+/**
+ * A chain samples request: global lines or ranges (`-N` counts back from
+ * the chain's end); a part's own lines with `part` (the only addressing
+ * of a chain that is not ready yet); or times and time ranges as
+ * `--timestamps` reads them.
+ */
+export type LogSamplesParams = LogSamplesWindow &
+  ({ lines: string[]; part?: string } | { timestamps: string[] });
+
+/** The query of a chain samples request. */
+function logSamplesQuery(params: LogSamplesParams, options: LogSamplesOptions): URLSearchParams {
+  const query = new URLSearchParams({ path: params.handle });
+  if ('timestamps' in params) {
+    for (const value of params.timestamps) query.append('timestamps', value);
+  } else {
+    query.set('lines', params.lines.join(','));
+    if (params.part !== undefined) query.set('part', params.part);
+  }
+  const contexts: [string, number | undefined][] = [
+    ['context', params.context],
+    ['before_context', params.beforeContext],
+    ['after_context', params.afterContext],
+  ];
+  for (const [name, value] of contexts) {
+    if (value !== undefined) query.set(name, String(value));
+  }
+  withFileTz(query, options.fileTz);
+  return withFingerprint(query, options.fingerprint);
+}
+
+/** Add `fingerprint` to `params` when one is given. */
+function withFingerprint(params: URLSearchParams, fingerprint: string | undefined) {
+  if (fingerprint) params.set('fingerprint', fingerprint);
+  return params;
+}
+
+/** Whether a parsed body has the fields every chain description has. */
+function isChainDescription(body: unknown): body is ChainResponse {
+  if (body === null || typeof body !== 'object') return false;
+  const { path, fingerprint, parts } = body as Record<string, unknown>;
+  return typeof path === 'string' && typeof fingerprint === 'string' && Array.isArray(parts);
+}
+
+/**
+ * The current description a chain route's 409 carries, or null for any
+ * other refusal and for a 409 whose body is not a description (a proxy's
+ * page, say), which stays an error.
+ */
+function changedChainOf(error: unknown): ChainChanged | null {
+  if (!(error instanceof ApiError) || error.status !== HTTP_CONFLICT) return null;
+  try {
+    const body: unknown = JSON.parse(error.body);
+    return isChainDescription(body) ? { kind: 'changed', chain: body } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Run a chain request; a 409 with the chain's current description is its answer, not an error. */
+async function orChanged<T>(request: Promise<T>): Promise<T | ChainChanged> {
+  try {
+    return await request;
+  } catch (error) {
+    const changed = changedChainOf(error);
+    if (changed === null) throw error;
+    return changed;
+  }
+}
+
+/** The query of a search: repeated paths and patterns, the cap and the flags that are on. */
+function traceQuery(
+  paths: string[],
+  patterns: string[],
+  query: { maxResults?: number; flags?: TraceMatchingFlags },
+): URLSearchParams {
+  const params = new URLSearchParams();
+  paths.forEach((p) => params.append('path', p));
+  patterns.forEach((r) => params.append('regexp', r));
+  if (query.maxResults !== undefined) {
+    params.set('max_results', query.maxResults.toString());
+  }
+  for (const [name, on] of Object.entries(query.flags ?? {})) {
+    if (on) params.set(name, 'true');
+  }
+  return params;
 }
 
 async function fetchJsonAnswer<T>(url: string, options?: RequestInit): Promise<JsonAnswer<T>> {
@@ -280,15 +439,7 @@ export const api = {
     query: { maxResults?: number; flags?: TraceMatchingFlags } = {},
     options?: RequestOptions,
   ): Promise<TraceResponse> {
-    const params = new URLSearchParams();
-    paths.forEach((p) => params.append('path', p));
-    patterns.forEach((r) => params.append('regexp', r));
-    if (query.maxResults !== undefined) {
-      params.set('max_results', query.maxResults.toString());
-    }
-    for (const [name, on] of Object.entries(query.flags ?? {})) {
-      if (on) params.set(name, 'true');
-    }
+    const params = traceQuery(paths, patterns, query);
     return fetchJson<TraceResponse>(`${API_BASE}/trace?${params}`, options);
   },
 
@@ -339,6 +490,97 @@ export const api = {
    */
   async getDetectors(): Promise<DetectorsResponse> {
     return fetchJson<DetectorsResponse>(`${API_BASE}/detectors`);
+  },
+
+  /**
+   * The log chains of one directory, found from its files' names alone.
+   * Check `backendHas('log_chains')` first, as for every chain route.
+   * @param dir - Directory path
+   */
+  async logChains(dir: string, options?: RequestOptions): Promise<ChainsResponse> {
+    const params = new URLSearchParams({ path: dir });
+    return fetchJson<ChainsResponse>(`${API_BASE}/logs/chains?${params}`, options);
+  },
+
+  /**
+   * Describe one chain: its parts in time order, its state and the index
+   * task a pending chain waits for, which this request starts or joins.
+   * With `fingerprint`, a chain whose files changed since answers as
+   * changed, with its current description.
+   * @param handle - The chain's handle, as a listing gives it in `path`
+   */
+  async logChain(handle: string, options: ChainRequestOptions = {}): Promise<LogChainAnswer> {
+    const { fileTz, fingerprint, ...request } = options;
+    const params = withFingerprint(
+      withFileTz(new URLSearchParams({ path: handle }), fileTz),
+      fingerprint,
+    );
+    return orChanged(
+      fetchJson<ChainResponse>(`${API_BASE}/logs/chain?${params}`, request).then(
+        (chain) => ({ kind: 'chain', chain }) as const,
+      ),
+    );
+  },
+
+  /**
+   * Lines of a chain by global line, by a part's own line or by time,
+   * each key's lines as pieces, one per part they come from. A request
+   * by global line or time on a pending chain may answer with the
+   * chain's index task (`respondAsync`); a 409 answers the changed
+   * chain, and a 422 the reasons an invalid chain cannot be read.
+   */
+  async logSamples(
+    params: LogSamplesParams,
+    options: LogSamplesOptions = {},
+  ): Promise<LogSamplesAnswer> {
+    const { fingerprint: _fingerprint, ...request } = options;
+    const query = logSamplesQuery(params, options);
+    try {
+      return await orChanged(
+        fetchSamplesAnswer<ChainSamplesResponse>(`${API_BASE}/logs/samples?${query}`, request),
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === HTTP_UNPROCESSABLE) {
+        return { kind: 'invalid', detail: error.message };
+      }
+      throw error;
+    }
+  },
+
+  /**
+   * Search chains, directories and files, each chain's parts in its
+   * order, with each part's match placed in its chain. The parameters
+   * are `trace`'s. A 409 (a part changed while it was read) is an error:
+   * one search may reach several chains, so it carries no description.
+   */
+  async logTrace(
+    paths: string[],
+    patterns: string[],
+    query: { maxResults?: number; flags?: TraceMatchingFlags } = {},
+    options?: RequestOptions,
+  ): Promise<ChainTraceResponse> {
+    const params = traceQuery(paths, patterns, query);
+    return fetchJson<ChainTraceResponse>(`${API_BASE}/logs/trace?${params}`, options);
+  },
+
+  /**
+   * Start or join the index task of a chain, which builds every part's
+   * line index (every part again with `force`). The handle goes in the
+   * query; the request has no body.
+   */
+  async logIndex(
+    handle: string,
+    options: RequestOptions & { force?: boolean; fingerprint?: string } = {},
+  ): Promise<LogIndexAnswer> {
+    const { force = false, fingerprint, ...request } = options;
+    const params = withFingerprint(new URLSearchParams({ path: handle }), fingerprint);
+    if (force) params.set('force', 'true');
+    return orChanged(
+      fetchJson<IndexTaskResponse>(`${API_BASE}/logs/index?${params}`, {
+        ...request,
+        method: 'POST',
+      }).then((task) => ({ kind: 'task', task }) as const),
+    );
   },
 };
 
