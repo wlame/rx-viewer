@@ -9,8 +9,9 @@
  * chain's tab at the same line; the tabs of one chain become one. A chain
  * that is not valid keeps its parts as file tabs, since its tab would show
  * no line. A tab that turns into another keeps its place in the tab row,
- * its zone, highlighting, filter, word wrap, invisible characters and
- * search marks, and the active tab stays active.
+ * its zone, the highlighting chosen for it, its filter, word wrap,
+ * invisible characters and search marks, and the active tab stays
+ * active.
  *
  * The switch in the files panel and Back and Forward (`viewState.ts`)
  * both switch through here. While tabs turn over, the view's URL
@@ -30,6 +31,7 @@ import {
   planChainMerges,
   type ChainMerge,
 } from '../utils/chainSwitch';
+import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
 import { chainMode } from './chainMode';
 import type { ChainPosition } from './chainTabs';
@@ -137,6 +139,16 @@ function moveTo(key: TabKey, place: number): void {
   if (from >= 0 && place >= 0 && from !== place) files.reorderFiles(from, place);
 }
 
+/**
+ * The highlighting chosen for a tab, which the tab it turns into keeps;
+ * undefined while the tab has its size's default, so the other tab takes
+ * the default of its own size.
+ */
+function chosenHighlighting(tab: OpenFile): boolean | undefined {
+  const isDefault = tab.syntaxHighlighting === defaultSyntaxHighlighting(tab.fileSize);
+  return isDefault ? undefined : tab.syntaxHighlighting;
+}
+
 /** Give the tab `to` the filter, word wrap and invisible characters of the tab `from`. */
 function carryViewOptions(from: OpenFile, to: TabKey): void {
   const filter = from.regexFilter;
@@ -211,7 +223,7 @@ function turnChainIntoFile(
   loads.push(
     files.openFile(path, {
       scrollToLine: line,
-      syntaxHighlighting: tab.syntaxHighlighting,
+      syntaxHighlighting: chosenHighlighting(tab),
       fileSize: part?.size ?? null,
       isIndexed: part?.is_indexed,
       lineCount: part?.line_count ?? undefined,
@@ -307,7 +319,7 @@ function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void 
     carryZone(lead.path, key);
     // openChain puts the tab in the store before its first await.
     loads.push(
-      files.openChain(merge.handle, { position, syntaxHighlighting: lead.syntaxHighlighting }),
+      files.openChain(merge.handle, { position, syntaxHighlighting: chosenHighlighting(lead) }),
     );
     moveTo(key, place);
     carryViewOptions(lead, key);

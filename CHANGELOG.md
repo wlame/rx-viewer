@@ -67,10 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chain become one tab, at the active tab's line when it is one of them,
   else at the first one's. A chain that is not valid keeps its parts as
   file tabs, with a notice. A tab that turns into another keeps its place
-  in the tab row, its zone, highlighting, filter, word wrap, invisible
-  characters and search marks; the active tab stays active, and the
-  switch rewrites the history entry rather than adding one. A link with
-  `chains=1` and a `file=` that names a part of a valid chain opens the
+  in the tab row, its zone, the highlighting chosen for it, its filter,
+  word wrap, invisible characters and search marks; the active tab stays
+  active, and the switch rewrites the history entry rather than adding
+  one. A link with `chains=1` and a `file=` that names a part of a valid
+  chain opens the
   chain's tab at that part and line (at the link's time when it names a
   time and no line), and Back or Forward to an entry in the other mode
   turns the open tabs over the same way.

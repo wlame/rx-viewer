@@ -121,6 +121,22 @@ describe('switching chain mode off and on', () => {
     ]);
   });
 
+  // The chain is over 1 MB (highlighting off), its part below (on).
+  it('leaves each tab its own highlighting default when none was chosen', async () => {
+    await serve({
+      parts: PARTS.map((part, i) => ({ ...part, size: i === 0 ? 900_000 : 200_000 })),
+    });
+    chainMode.set(true);
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 750 } });
+    expect(openTab(KEY).syntaxHighlighting).toBe(false);
+
+    await switchChainMode(false);
+    expect(openTab('/l/app.log.1').syntaxHighlighting).toBe(true);
+
+    await switchChainMode(true);
+    expect(openTab(KEY).syntaxHighlighting).toBe(false);
+  });
+
   it('keeps the place of each tab in the row, and the active tab', async () => {
     await serve();
     chainMode.set(true);
