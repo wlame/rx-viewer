@@ -14,6 +14,8 @@
   } from '$lib/utils/monacoLogLanguage';
   import { editorLineAfterMove } from '$lib/utils/slidingWindow';
   import { editorThemeFor } from '$lib/utils/appSettings';
+  import type { EditorViewZone } from '$lib/utils/chainZones';
+  import { replaceViewZones } from './viewZones';
 
   // Props
   export let content: string = '';
@@ -24,6 +26,14 @@
   export let lineNumbersStart: number = 1;
   export let wordWrap: boolean = false;
   export let showInvisibleChars: boolean = false;
+  /**
+   * The gutter label of each editor line, from line 1, in place of the
+   * numbers counted from `lineNumbersStart`: a log chain's part-local
+   * numbers. Null for the counted numbers.
+   */
+  export let lineLabels: readonly string[] | null = null;
+  /** Lines of text between editor lines that are no lines: a log chain's part edges. */
+  export let viewZones: readonly EditorViewZone[] = [];
 
   const dispatch = createEventDispatcher<{
     scroll: { scrollTop: number; scrollHeight: number; clientHeight: number };
@@ -219,9 +229,22 @@
 
   $: effectiveTheme = editorThemeFor(monacoTheme, theme);
 
-  // Custom line numbers function - maps Monaco line 1 to lineNumbersStart
+  // Custom line numbers function - maps Monaco line 1 to lineNumbersStart,
+  // or reads the label given for the line.
   function getLineNumber(lineNumber: number): string {
+    if (lineLabels) return lineLabels[lineNumber - 1] ?? '';
     return (lineNumber + lineNumbersStart - 1).toString();
+  }
+
+  // The ids of the view zones shown, and the specs they were built from.
+  let zoneIds: string[] = [];
+  let shownZones: readonly EditorViewZone[] | null = null;
+
+  /** Show `zones` in place of the zones shown; the same specs again change nothing. */
+  function applyViewZones(zones: readonly EditorViewZone[]) {
+    if (!editor || zones === shownZones) return;
+    zoneIds = replaceViewZones(editor, zoneIds, zones);
+    shownZones = zones;
   }
 
   onMount(() => {
@@ -313,7 +336,10 @@
     if (!editor) return;
 
     const currentValue = editor.getValue();
-    if (currentValue === newContent) return;
+    if (currentValue === newContent) {
+      previousLineNumbersStart = lineNumbersStart;
+      return;
+    }
 
     const scrollTop = editor.getScrollTop();
     const scrollLeft = editor.getScrollLeft();
@@ -321,6 +347,8 @@
     const offsetInTopLine = topLine === null ? 0 : scrollTop - editor.getTopForLineNumber(topLine);
 
     editor.setValue(newContent);
+    // The zones go in before the scroll is kept, which counts their height.
+    applyViewZones(viewZones);
 
     const lineCount = editor.getModel()?.getLineCount() ?? 0;
     const keptLine =
@@ -340,6 +368,17 @@
 
   // Reactive statement that triggers on content changes
   $: updateEditorContent(content);
+
+  // Zones that change without the content (a description that arrives).
+  $: if (editor) applyViewZones(viewZones);
+
+  // A new function makes Monaco draw the gutter again: new labels, or a
+  // window that starts elsewhere, may come with the same text.
+  $: if (editor) {
+    void lineLabels;
+    void lineNumbersStart;
+    editor.updateOptions({ lineNumbers: (lineNumber) => getLineNumber(lineNumber) });
+  }
 
   // Update theme when it changes
   $: if (editor) {

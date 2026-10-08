@@ -24,6 +24,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   link whose part is gone opens at that time. An invalid chain shows no
   lines. A chain whose files changed on disk (a rotation) is read again
   at the anchor line's time, with a notice.
+- What a chain's tab shows. The gutter shows global numbers once the
+  chain is ready; before that it shows each part's own numbers, muted.
+  Every second part's numbers are in a second colour, in light and dark
+  editor themes. A line of text between two parts, which is no line and
+  moves no line number, mark or jump, names the part below it with its
+  first and highest time and its lines. It also says "no lines from X to
+  Y" before a part that follows a time gap, and "missing: NAME" where a
+  missing numbered part would be. The tab's caption is `syslog [3/12]`,
+  where 3 is the part of the top line on screen; its tooltip is
+  `syslog.3.gz : 500`. The header shows the chain's state, its lines
+  (the frozen parts' lines and `…` while the active file is not
+  counted), its time range, `idx` once every frozen part with lines is
+  indexed, `indexing 5/12 parts · 40%` while the index task runs, its
+  gaps and missing parts, and why it is invalid. A list of its parts
+  gives each one's name, compression, global lines and index; a click
+  goes to its first line, and Escape closes the list. The go-to box (`:`
+  or Cmd/Ctrl+G) takes a global line (`123456`) or a part's line
+  (`syslog.3.gz:500`), and says why it refuses any other text. The
+  status bar's equivalent command is the `rx logs samples` command of
+  the lines shown. "Per part" opens the recent commands, where the
+  `rx samples PART --lines=A-B` of each part follows under the command.
 
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed

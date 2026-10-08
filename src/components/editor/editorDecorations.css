@@ -65,3 +65,57 @@
   min-width: 4px !important;
   max-width: 4px !important;
 }
+
+/* A log chain's gutter: every second part's line numbers in a second
+   colour, and the part-local numbers of a chain that is not ready muted.
+   Monaco puts its theme's base (vs, vs-dark) on .monaco-editor. */
+.monaco-editor .line-numbers.chain-gutter-alt {
+  color: #8250df !important;
+}
+
+.monaco-editor.vs-dark .line-numbers.chain-gutter-alt {
+  color: #d2a8ff !important;
+}
+
+.monaco-editor .line-numbers.chain-gutter-local {
+  font-style: italic;
+  opacity: 0.65;
+}
+
+/* View zones at a log chain's part edges, time gaps and missing parts:
+   one editor line of text that is not a line. */
+.chain-zone {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #57606a;
+  background-color: #f6f8fa;
+  border-top: 1px solid #d0d7de;
+}
+
+.monaco-editor.vs-dark .chain-zone {
+  color: #8b949e;
+  background-color: #161b22;
+  border-top-color: #30363d;
+}
+
+.chain-zone-gap {
+  color: #9a6700;
+}
+
+.monaco-editor.vs-dark .chain-zone-gap {
+  color: #d29922;
+}
+
+.chain-zone-missing {
+  color: #cf222e;
+}
+
+.monaco-editor.vs-dark .chain-zone-missing {
+  color: #f85149;
+}

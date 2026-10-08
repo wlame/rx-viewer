@@ -6,6 +6,8 @@
   import { notifications } from '$lib/stores/notifications';
   import { timeCursor } from '$lib/stores/timeCursor';
   import { timeStash } from '$lib/stores/timeStash';
+  import { chainTopLines } from '$lib/stores/chainTopLines';
+  import { chainTabCaption } from '$lib/utils/chainPane';
   import { FILE_ZONES_FULL, fileZoneOf } from '$lib/utils/fileZones';
   import { STASH_ADD_LABEL, STASH_REFUSALS, stashAddRefusal } from '$lib/utils/timeStash';
   import EditorPane from '../editor/EditorPane.svelte';
@@ -181,9 +183,21 @@
             on:drop={(e) => handleDrop(e, index)}
             on:dragend={handleDragEnd}
           >
-            <span class="font-medium truncate max-w-[200px]" title={file.path}>
-              {file.name}
-            </span>
+            {#if file.chain}
+              <!-- A chain's caption names the part of its top line: syslog [3/12]. -->
+              {@const shown = chainTabCaption(
+                file.name,
+                file.chain,
+                $chainTopLines.get(file.path) ?? null,
+              )}
+              <span class="font-medium truncate max-w-[240px]" title={shown.title}>
+                {shown.caption}
+              </span>
+            {:else}
+              <span class="font-medium truncate max-w-[200px]" title={file.path}>
+                {file.name}
+              </span>
+            {/if}
             <FileBadges
               isCompressed={file.isCompressed}
               compressionFormat={file.compressionFormat}

@@ -64,7 +64,8 @@ export type ShortcutId =
   | 'zoneChoose'
   | 'zoneClose'
   | 'closeHistory'
-  | 'closeAnalysis';
+  | 'closeAnalysis'
+  | 'closeChainParts';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -293,6 +294,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     id: 'closeAnalysis',
     scope: 'openPanel',
     description: 'Close the analysis dialog',
+    chord: { key: 'Escape' },
+  },
+  {
+    id: 'closeChainParts',
+    scope: 'openPanel',
+    description: "Close the list of a log chain's parts",
     chord: { key: 'Escape' },
   },
 ];

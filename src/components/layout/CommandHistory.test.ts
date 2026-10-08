@@ -52,3 +52,27 @@ describe('CommandHistory keys', () => {
     expect(close).not.toHaveBeenCalled();
   });
 });
+
+describe('CommandHistory per-part commands', () => {
+  it('lists the commands of an answer pieces under it, each with its copy button', () => {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    const details = ['rx samples /l/app.log.1 --lines=1-20', 'rx samples /l/app.log --lines=1-80'];
+    panel = new CommandHistory({
+      target,
+      props: {
+        entries: [
+          { action: 'file', command: 'rx logs samples /l/app.log --lines=1-100', details, at: 0 },
+        ],
+      },
+    });
+    const copy = vi.fn();
+    panel.$on('copy', (event) => copy(event.detail));
+
+    const pieces = [...target.querySelectorAll('ul[aria-label] code')].map((c) => c.textContent);
+    target.querySelector<HTMLButtonElement>(`button[aria-label="Copy ${details[1]}"]`)?.click();
+
+    expect(pieces).toEqual(details);
+    expect(copy).toHaveBeenCalledWith(details[1]);
+  });
+});

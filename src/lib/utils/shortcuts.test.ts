@@ -136,8 +136,8 @@ describe('isShortcut', () => {
 });
 
 describe('panel and tree keys', () => {
-  it('matches Escape as the key that closes the recent commands and the analysis', () => {
-    for (const id of ['closeHistory', 'closeAnalysis'] as const) {
+  it('matches Escape as the key that closes the recent commands, the analysis and a chain part list', () => {
+    for (const id of ['closeHistory', 'closeAnalysis', 'closeChainParts'] as const) {
       expect(isShortcut(id, press('Escape'))).toBe(true);
       expect(isShortcut(id, press('Enter'))).toBe(false);
     }
@@ -197,7 +197,12 @@ describe('the shortcut list', () => {
 
   it.each([
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
-    ['openPanel', 'While a panel is open', ['closeHistory', 'closeAnalysis'], ['Esc', 'Esc']],
+    [
+      'openPanel',
+      'While a panel is open',
+      ['closeHistory', 'closeAnalysis', 'closeChainParts'],
+      ['Esc', 'Esc', 'Esc'],
+    ],
     [
       'timeline',
       'On the timeline bar',

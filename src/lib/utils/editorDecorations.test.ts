@@ -195,6 +195,20 @@ describe('paneDecorations', () => {
     expect(decorations.map((d) => d.range.startLineNumber)).toEqual([2, 3, 5]);
   });
 
+  it('gives a log chain run of gutter lines its line number class', () => {
+    const decorations = paneDecorations({
+      ...nothingShown,
+      gutterRuns: [{ first: 2, last: 3, className: 'chain-gutter-alt' }],
+    });
+
+    expect(decorations).toEqual([
+      {
+        range: { startLineNumber: 2, startColumn: 1, endLineNumber: 3, endColumn: 1 },
+        options: { isWholeLine: true, lineNumberClassName: 'chain-gutter-alt' },
+      },
+    ]);
+  });
+
   it('marks no anomaly while no category is selected', () => {
     expect(paneDecorations({ ...nothingShown, anomalies: [anomaly] })).toEqual([]);
   });

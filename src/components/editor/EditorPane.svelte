@@ -20,6 +20,10 @@
   import { isShortcut } from '$lib/utils/shortcuts';
   import { indexBuildLabel } from '$lib/samplesWait';
   import { categoryStyle, installPaletteStyles } from '$lib/utils/categoryStyle';
+  import { chainGutterRuns, chainViewZones } from '$lib/utils/chainZones';
+  import { chainLineLabels, topLineOf } from '$lib/utils/chainPane';
+  import { chainTopLines } from '$lib/stores/chainTopLines';
+  import ChainInvalid from './ChainInvalid.svelte';
   import './editorDecorations.css';
   import type * as Monaco from 'monaco-editor';
 
@@ -79,6 +83,16 @@
     file.showInvisibleChars,
   ));
 
+  // A log chain's tab: its description, the zones at its part edges, the
+  // part-local gutter labels while it is pending, and why it cannot be
+  // read when it is invalid.
+  $: chainDescription = file.chain?.description ?? null;
+  $: chainZones = chainDescription ? chainViewZones(file.lines, chainDescription) : [];
+  $: lineLabels = file.chain ? chainLineLabels(file.lines, file.chain.numbering) : null;
+  $: isChainInvalid = Boolean(
+    file.chain && (chainDescription?.state === 'invalid' || file.chain.invalidDetail),
+  );
+
   // The selected category's color is its place in the detector list,
   // which can arrive after the anomalies.
   $: selectedCategoryStyle = file.selectedAnomalyCategory
@@ -98,6 +112,10 @@
     filter: file.regexFilter,
     text: monacoEditor?.getModel() ?? null,
     hiddenContent: hiddenContentMap,
+    gutterRuns:
+      file.chain && chainDescription
+        ? chainGutterRuns(file.lines, chainDescription.parts, file.chain.numbering)
+        : [],
   } satisfies PaneView;
   $: if (monacoEditor) updateDecorations(paneView);
 
@@ -187,6 +205,16 @@
     await tick();
     revealFileLine(targetLine);
     files.clearScrollPosition(file.path);
+    reportTopLine();
+  }
+
+  /** Tell the tab row which part's line is at the top of a chain's view, for its caption. */
+  function reportTopLine() {
+    const parts = chainDescription?.parts;
+    const top = monacoEditor?.getVisibleRanges()[0]?.startLineNumber;
+    if (!parts || top === undefined) return;
+    const line = topLineOf(file.lines, top, parts);
+    if (line) chainTopLines.set(file.path, line);
   }
 
   /** The file lines on screen, or null when the editor shows none. */
@@ -257,6 +285,7 @@
     const { scrollTop, scrollHeight, clientHeight } = e.detail;
 
     updateAnchorOnScroll();
+    reportTopLine();
 
     const direction = pagingDirection({
       isNavigationPending: file.scrollToLine !== undefined,
@@ -401,6 +430,11 @@
           <p class="text-sm mt-1 opacity-75">{file.error}</p>
         </div>
       </div>
+    {:else if isChainInvalid}
+      <ChainInvalid
+        reasons={chainDescription?.reasons ?? []}
+        detail={file.chain?.invalidDetail ?? null}
+      />
     {:else if file.lines.length === 0}
       <div
         class="flex items-center justify-center h-full text-gh-fg-muted dark:text-gh-fg-dark-muted"
@@ -428,6 +462,8 @@
         {theme}
         {monacoTheme}
         lineNumbersStart={file.startLine}
+        {lineLabels}
+        viewZones={chainZones}
         wordWrap={file.wordWrap}
         showInvisibleChars={file.showInvisibleChars}
         on:scroll={handleMonacoScroll}

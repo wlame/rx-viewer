@@ -13,6 +13,7 @@
 import type * as Monaco from 'monaco-editor';
 import type { AnomalyRangeResult, RegexFilter } from '../types';
 import type { CategoryStyle } from './categoryStyle';
+import type { GutterRun } from './chainZones';
 import { HIDDEN_MARKER } from './processContent';
 import { matchedSpans } from './regexMatches';
 
@@ -211,6 +212,16 @@ export interface PaneView {
   text: LineSource | null;
   /** What the hide/show filter replaced, as processContent built it. */
   hiddenContent: ReadonlyMap<string, string>;
+  /** A log chain's gutter classes, in runs of editor lines; none for a file. */
+  gutterRuns?: readonly GutterRun[];
+}
+
+/** The line numbers of each run of editor lines in the run's class. */
+export function gutterDecorations(runs: readonly GutterRun[]): Decoration[] {
+  return runs.map((run) => ({
+    range: { startLineNumber: run.first, startColumn: 1, endLineNumber: run.last, endColumn: 1 },
+    options: { isWholeLine: true, lineNumberClassName: run.className },
+  }));
 }
 
 /** The decorations of each filter mode, over the editor's text. */
@@ -225,8 +236,9 @@ const FILTER_DECORATIONS: Record<
 
 /**
  * Every decoration of the pane: matched lines, the highlighted range,
- * the selected category's anomalies, and what an active filter does. A
- * filter is active when it is enabled and its pattern compiled.
+ * the selected category's anomalies, what an active filter does, and a
+ * log chain's gutter classes. A filter is active when it is enabled and
+ * its pattern compiled.
  */
 export function paneDecorations(view: PaneView): Decoration[] {
   const { editorWindow, filter, text, selectedCategory } = view;
@@ -245,5 +257,6 @@ export function paneDecorations(view: PaneView): Decoration[] {
     ...(filter && isFilterActive && text
       ? FILTER_DECORATIONS[filter.mode](filter.pattern, text, view.hiddenContent)
       : []),
+    ...gutterDecorations(view.gutterRuns ?? []),
   ];
 }

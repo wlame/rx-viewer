@@ -2,7 +2,10 @@
   /**
    * The status bar's equivalent command: the `rx` command line that gives
    * the last answer, with a copy button, and a toggle for the panel of
-   * recent commands. Every command is the backend's `cli_command`.
+   * recent commands. Every command is the backend's `cli_command`. An
+   * answer given piece by piece (a log chain's lines from several parts)
+   * has the commands of its pieces under it, in the panel; a button says
+   * how many and opens it.
    */
   import { notifications } from '$lib/stores';
   import { commandLog, lastCommand } from '$lib/stores/commands';
@@ -36,6 +39,18 @@
     >
       Copy
     </button>
+    {#if $lastCommand.details && $lastCommand.details.length > 0}
+      <button
+        type="button"
+        class="shrink-0 hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg"
+        title={$lastCommand.details.join('\n')}
+        aria-expanded={isHistoryShown}
+        aria-controls="command-history"
+        on:click={() => (isHistoryShown = true)}
+      >
+        Per part ({$lastCommand.details.length})
+      </button>
+    {/if}
     <button
       type="button"
       class="shrink-0 hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg"

@@ -49,6 +49,7 @@ import { addPage, maxHeldLines } from '../utils/slidingWindow';
 import { chainHandleOf, chainKey, type TabKey } from '../utils/tabKey';
 import { watchTask } from '../utils/taskPolling';
 import { chainMode, isChainModeOn } from './chainMode';
+import { chainTopLines } from './chainTopLines';
 import { commandLog } from './commands';
 import { requestZoneOf } from './fileZones';
 import { health } from './health';
@@ -975,6 +976,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     stopFollow(key);
     goneTasks.delete(key);
     highlightGiven.delete(key);
+    chainTopLines.forget(key);
   }
 
   return {

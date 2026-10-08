@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
    * The editor pane's header: the file's name and badges, the line
-   * readout with its go-to box, the anomaly chips and the toolbar.
+   * readout with its go-to box, the anomaly chips and the toolbar; for a
+   * log chain, the chain's summary and its parts, and a go-to box that
+   * takes a global line or `part:line`.
    *
    * What changes only the file's state in the store happens here. What
    * moves the pane's view, or the filter bar the pane owns, is reported
@@ -12,6 +14,9 @@
   import type { MonacoTheme, OpenFile } from '$lib/types';
   import { files } from '$lib/stores';
   import FileBadges from '../common/FileBadges.svelte';
+  import { parseChainLineTarget } from '$lib/utils/chainParts';
+  import { chainRangeLabels } from '$lib/utils/chainPane';
+  import ChainSummary from './ChainSummary.svelte';
   import AnomalyCategoryNav from './AnomalyCategoryNav.svelte';
   import EditorToolbar from './EditorToolbar.svelte';
   import LineRangeNav from './LineRangeNav.svelte';
@@ -20,6 +25,12 @@
   export let monacoTheme: MonacoTheme;
   /** The line readout, for the pane's go-to shortcut; unset while the file shows no lines. */
   export let lineRangeNav: LineRangeNav | undefined = undefined;
+
+  $: chainDescription = file.chain?.description ?? null;
+  $: readChainTarget = chainDescription
+    ? (text: string) => parseChainLineTarget(text, chainDescription)
+    : null;
+  $: rangeLabels = file.chain ? chainRangeLabels(file.lines, file.chain.numbering) : null;
 
   const dispatch = createEventDispatcher<{
     jump: { line: number };
@@ -34,7 +45,7 @@
          border-b border-gh-border-default dark:border-gh-border-dark-default"
 >
   <div class="flex items-center gap-3 min-w-0">
-    <span class="text-base font-medium truncate" title={file.path}>
+    <span class="text-base font-medium truncate" title={file.chain?.handle ?? file.path}>
       {file.name}
     </span>
     <FileBadges
@@ -48,10 +59,16 @@
         startLine={file.startLine}
         endLine={file.endLine}
         totalLines={file.totalLines}
+        labels={rangeLabels}
+        {readChainTarget}
         on:jump={(e) => dispatch('jump', { line: e.detail.line })}
         on:goto={(e) => files.jumpToLine(file.path, e.detail.line)}
+        on:gotoChain={(e) => files.goToChainLine(file.path, e.detail)}
         on:jumpToEnd={() => files.jumpToEnd(file.path)}
       />
+    {/if}
+    {#if file.chain}
+      <ChainSummary chain={file.chain} on:goto={(e) => files.goToChainLine(file.path, e.detail)} />
     {/if}
   </div>
 

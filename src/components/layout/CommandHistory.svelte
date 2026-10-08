@@ -2,7 +2,9 @@
   /**
    * The recent commands panel above the status bar, newest first. Each
    * row names what the user did, when the answer came, and the `rx`
-   * command that gives it, with a copy button. Escape closes it.
+   * command that gives it, with a copy button; under it, the commands that
+   * give the same answer piece by piece (the `rx samples PART` of each
+   * part of a log chain's lines). Escape closes it.
    */
   import { createEventDispatcher } from 'svelte';
   import type { CommandAction, CommandEntry } from '$lib/stores/commands';
@@ -52,22 +54,45 @@
   </header>
   <ul class="divide-y divide-gh-border-default dark:divide-gh-border-dark-default">
     {#each entries as entry (entry.command)}
-      <li class="flex items-center gap-3 px-3 py-1">
-        <span class="w-16 shrink-0">{ACTION_LABELS[entry.action]}</span>
-        <span class="w-20 shrink-0">{timeOf(entry.at)}</span>
-        <code
-          class="flex-1 min-w-0 truncate font-mono select-all
+      <li class="px-3 py-1">
+        <div class="flex items-center gap-3">
+          <span class="w-16 shrink-0">{ACTION_LABELS[entry.action]}</span>
+          <span class="w-20 shrink-0">{timeOf(entry.at)}</span>
+          <code
+            class="flex-1 min-w-0 truncate font-mono select-all
                  text-gh-fg-default dark:text-gh-fg-dark-default"
-          title={entry.command}>{entry.command}</code
-        >
-        <button
-          type="button"
-          class="shrink-0 hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg"
-          aria-label="Copy {entry.command}"
-          on:click={() => dispatch('copy', entry.command)}
-        >
-          Copy
-        </button>
+            title={entry.command}>{entry.command}</code
+          >
+          <button
+            type="button"
+            class="shrink-0 hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg"
+            aria-label="Copy {entry.command}"
+            on:click={() => dispatch('copy', entry.command)}
+          >
+            Copy
+          </button>
+        </div>
+        {#if entry.details && entry.details.length > 0}
+          <ul aria-label="The same answer, part by part" class="pl-[9.75rem]">
+            {#each entry.details as detail, index (index)}
+              <li class="flex items-center gap-3">
+                <code
+                  class="flex-1 min-w-0 truncate font-mono select-all
+                         text-gh-fg-default dark:text-gh-fg-dark-default"
+                  title={detail}>{detail}</code
+                >
+                <button
+                  type="button"
+                  class="shrink-0 hover:text-gh-accent-fg dark:hover:text-gh-accent-dark-fg"
+                  aria-label="Copy {detail}"
+                  on:click={() => dispatch('copy', detail)}
+                >
+                  Copy
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </li>
     {/each}
   </ul>
