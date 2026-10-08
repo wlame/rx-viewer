@@ -42,9 +42,10 @@ function positionOf(piece: ChainPiece, index: number, numbering: PieceNumbering)
 const LINE_NUMBER_FIELDS = ['first_local_line', 'first_global_line'] as const;
 
 /**
- * Refuse a piece whose first local or global line is not a safe integer.
- * The editor writes a line's number into its gutter as markup, so only
- * digits (and the `-` of a global line that is not computed) may reach it.
+ * Refuse a piece whose first local or global line is not a safe integer,
+ * or whose first local line is below 1. The editor writes a line's number
+ * into its gutter as markup, so only digits (and the `-` of a global line
+ * that is not computed) may reach it; a part numbers its lines from 1.
  */
 function checkLineNumbers(piece: ChainPiece): void {
   for (const field of LINE_NUMBER_FIELDS) {
@@ -54,12 +55,17 @@ function checkLineNumbers(piece: ChainPiece): void {
       );
     }
   }
+  if (piece.first_local_line < 1) {
+    throw new Error(
+      `The samples answer numbers the lines of ${piece.part} from a first_local_line below 1`,
+    );
+  }
 }
 
 /**
  * The lines of `pieces`, in order, each with its part, its line in it and
  * its timestamp. Throws, and gives no line, when a piece's first local or
- * global line is not a safe integer.
+ * global line is not a safe integer, or its first local line is below 1.
  */
 export function flattenPieces(
   pieces: readonly ChainPiece[],

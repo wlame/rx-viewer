@@ -126,6 +126,16 @@ describe('flattenPieces', () => {
     }
   });
 
+  // A part's lines are numbered from 1, as rx samples numbers them.
+  it.each([0, -1])('refuses a piece whose first local line is %d', (value) => {
+    const bad = { ...piece('a.1', 1, 2, 1), first_local_line: value };
+    for (const numbering of numberings) {
+      expect(() => flattenPieces([bad], numbering)).toThrow(
+        'The samples answer numbers the lines of a.1 from a first_local_line below 1',
+      );
+    }
+  });
+
   it.each(notWholeNumbers)('refuses a piece whose first global line is %s', (_, value) => {
     const bad = { ...piece('a.1', 1, 2, 1), first_global_line: value as number };
     for (const numbering of numberings) {

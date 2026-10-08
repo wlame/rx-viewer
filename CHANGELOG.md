@@ -271,9 +271,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each time. It places the missing parts with one pass over the parts
   for each missing name.
 - A log chain's tab takes a line number from the backend only when it is
-  a whole number, as the editor writes it into its gutter as markup. For
-  an answer that numbers a part's lines with anything else, the tab shows
-  an error and no line from it, where it used to stay loading.
+  a whole number, as the editor writes it into its gutter as markup, and
+  a part's first line only from 1 up. For an answer that numbers a part's
+  lines with anything else, the tab shows an error and no line from it,
+  where it used to stay loading.
 - The line of text above each part of a log chain, and the one over a
   time gap, write their times in the zone chosen for the chain
   (`ftz=<zone>@chain:<handle>`) for a part whose lines write a zone too;
