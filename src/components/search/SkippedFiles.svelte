@@ -22,7 +22,7 @@
       {formatCount(total, 'file')} skipped
     </summary>
     <ul class="mt-1 space-y-1">
-      {#each skipped.shown as entry}
+      {#each skipped.shown as entry (entry.path)}
         <li class="break-all">
           <span class="font-mono text-gh-fg-default dark:text-gh-fg-dark-default" title={entry.path}
             >{pathInSearch(entry.path, searched)}</span

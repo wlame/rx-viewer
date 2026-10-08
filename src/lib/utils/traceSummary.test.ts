@@ -74,6 +74,19 @@ describe('skippedFiles', () => {
     });
   });
 
+  // The list is keyed by path, so a path the answer names twice is one row.
+  it('lists a path the answer names twice once, and counts it once', () => {
+    const response = makeResponse({
+      skipped_files: ['/var/log/login.bin', '/var/log/login.bin', '/var/log/core.bin'],
+      skip_reasons: [{ path: '/var/log/login.bin', reason: 'binary file' }],
+    });
+
+    expect(skippedFiles(response, 1)).toEqual({
+      shown: [{ path: '/var/log/login.bin', reason: 'binary file' }],
+      more: 1,
+    });
+  });
+
   it('gives a path no reason when the answer gives it none', () => {
     const response = makeResponse({ skipped_files: ['/var/log/login.bin'], skip_reasons: [] });
 

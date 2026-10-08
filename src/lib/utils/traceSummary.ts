@@ -21,17 +21,18 @@ export interface SkippedEntry {
 }
 
 /**
- * The files a search left out, in the answer's order, at most `limit` of
- * them, and how many more there are. `skip_reasons` gives one reason per
- * path of `skipped_files`, in the same order: a trace's reasons (a binary
- * file, a file that cannot be read) and, in a chain search,
- * `duplicate_part` for another encoding of a part the chain reads.
+ * The files a search left out, in the answer's order, each path once, at
+ * most `limit` of them, and how many more there are. `skip_reasons`
+ * gives one reason per path of `skipped_files`, in the same order: a
+ * trace's reasons (a binary file, a file that cannot be read) and, in a
+ * chain search, `duplicate_part` for another encoding of a part the
+ * chain reads.
  */
 export function skippedFiles(
   response: TraceResponse,
   limit: number = SKIPPED_FILES_SHOWN,
 ): { shown: SkippedEntry[]; more: number } {
-  const paths = response.skipped_files ?? [];
+  const paths = [...new Set(response.skipped_files ?? [])];
   const reasons = new Map((response.skip_reasons ?? []).map((entry) => [entry.path, entry.reason]));
   const shown = paths.slice(0, limit).map((path) => ({ path, reason: reasons.get(path) ?? null }));
   return { shown, more: paths.length - shown.length };

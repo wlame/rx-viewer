@@ -154,8 +154,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   start, an open tab stays where it is, no line is marked, and a notice
   says "The chain app.log changed since the search; search again".
 - The files a search skipped are listed under its summary, closed until
-  opened ("N files skipped"), each by its path under the searched folder
-  (the full path in its tooltip) with the backend's reason: a binary
+  opened ("N files skipped"), each once, by its path under the searched
+  folder (the full path in its tooltip) with the backend's reason: a binary
   file, a file that cannot be read and, in chain mode, another encoding
   of a chain's part (`duplicate_part`). At most 100 are listed, followed
   by how many more there are.
