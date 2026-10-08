@@ -59,6 +59,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encoding of a part included. Turning the mode off or on keeps the
   folders open as they were. A link with `chain_parts=1` lists each
   chain's parts under its row.
+- Switching chain mode keeps the line in view. Turning the mode off
+  makes each log chain's tab the file tab of the part that holds its
+  line, at that line of the part, and the files panel reveals and
+  selects that part. Turning it on makes each file tab of a chain's part
+  the chain's tab at the same line; the tabs of several parts of one
+  chain become one tab, at the active tab's line when it is one of them,
+  else at the first one's. A chain that is not valid keeps its parts as
+  file tabs, with a notice. A tab that turns into another keeps its place
+  in the tab row, its zone, highlighting, filter, word wrap, invisible
+  characters and search marks; the active tab stays active, and the
+  switch rewrites the history entry rather than adding one. A link with
+  `chains=1` and a `file=` that names a part of a valid chain opens the
+  chain's tab at that part and line (at the link's time when it names a
+  time and no line), and Back or Forward to an entry in the other mode
+  turns the open tabs over the same way.
 - Jumps by time on a log chain's tab. The timeline bar, the Go to time
   box and the timestamps stash move a ready chain's tab to the first
   line, in the chain's order, at or after a time, the line

@@ -511,10 +511,35 @@ export class FakeChain {
     });
   }
 
-  /** The chain's directory as `/v1/tree` lists it: its parts as files. */
+  /** The chain's directory as `/v1/tree` lists it: its parts as files; the root lists the directory. */
   private treeListing(query: URLSearchParams): Answer {
     const path = query.get('path');
-    if (path !== null && path !== this.dir) return answer(404, { detail: 'not found' });
+    if (path === null) {
+      const root = {
+        name: this.dir.slice(this.dir.lastIndexOf('/') + 1),
+        path: this.dir,
+        type: 'directory',
+        size: null,
+        size_human: null,
+        modified_at: null,
+        is_text: null,
+        is_compressed: null,
+        compression_format: null,
+        is_indexed: null,
+        line_count: null,
+        children_count: this.parts.length,
+      };
+      return answer(200, {
+        path: '/',
+        parent: null,
+        is_search_root: false,
+        entries: [root],
+        total_entries: 1,
+        total_size: null,
+        total_size_human: null,
+      });
+    }
+    if (path !== this.dir) return answer(404, { detail: 'not found' });
     const entries = this.parts.map((part, i) => ({
       name: part.name,
       path: `${this.dir}/${part.name}`,
@@ -530,9 +555,9 @@ export class FakeChain {
       children_count: null,
     }));
     return answer(200, {
-      path: path ?? this.dir,
+      path,
       parent: null,
-      is_search_root: path === null || path === this.dir,
+      is_search_root: true,
       entries,
       total_entries: entries.length,
       total_size: null,

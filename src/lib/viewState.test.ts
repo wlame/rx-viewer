@@ -11,6 +11,7 @@ import { chainMode, chainPartsShown } from './stores/chainMode';
 import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
 import { fileViewOf, linkView, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
+import { switchChainMode } from './stores/chainModeSwitch';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_VIEW,
@@ -948,6 +949,102 @@ describe('a chain tab in the URL', () => {
     expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
     expect(urlParams().get('part')).toBe('app.log.2.gz');
     expect(urlParams().get('line')).toBe('2999');
+  });
+});
+
+describe('the chain mode switch in the URL', () => {
+  let stopSync: () => void = () => {};
+  let chain: FakeChain;
+
+  beforeEach(() => {
+    chain = new FakeChain({
+      dir: '/l',
+      name: 'app.log',
+      parts: [
+        { name: 'app.log.2.gz', lines: 3000, compression: 'gzip' },
+        { name: 'app.log.1', lines: 1500 },
+        { name: 'app.log', lines: 2000, isActive: true },
+      ],
+    });
+    serveChain(chain);
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    chainMode.set(false);
+    vi.unstubAllGlobals();
+  });
+
+  async function settled(key: string): Promise<void> {
+    await vi.waitFor(() =>
+      expect(get(files).openFiles.find((f) => f.path === key)?.loading).toBe(false),
+    );
+  }
+
+  it('rewrites the entry with the part and its line when the mode turns off, and with the chain when it turns on', async () => {
+    const calls = stubWindow('?chains=1&chain=%2Fl%2Fapp.log&part=app.log.1&line=750');
+    await health.check();
+    await loadView(readViewState());
+    stopSync = startViewSync();
+    const pushes = calls.filter((call) => call.mode === 'push').length;
+
+    await switchChainMode(false);
+    await settled('/l/app.log.1');
+
+    expect(urlParams().get('file')).toBe('/l/app.log.1');
+    expect(urlParams().get('line')).toBe('750');
+    expect(urlParams().has('chain')).toBe(false);
+    expect(urlParams().has('chains')).toBe(false);
+
+    await switchChainMode(true);
+    await settled(chainKey('/l/app.log'));
+
+    expect(urlParams().get('chain')).toBe('/l/app.log');
+    expect(urlParams().get('part')).toBe('app.log.1');
+    expect(urlParams().get('line')).toBe('750');
+    expect(urlParams().get('chains')).toBe('1');
+    expect(urlParams().has('file')).toBe(false);
+    expect(calls.filter((call) => call.mode === 'push')).toHaveLength(pushes);
+  });
+
+  it("opens the chain's tab for a link with chains=1 and a file that is one of its parts", async () => {
+    stubWindow('?chains=1&file=%2Fl%2Fapp.log.1&line=20');
+    await health.check();
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual([chainKey('/l/app.log')]);
+    const tab = get(files).openFiles[0];
+    expect(tab.chain?.anchor).toMatchObject({ part: 'app.log.1', line: 20 });
+    expect(tab.lines[tab.anchorLine - tab.startLine]?.content).toBe(
+      chain.partLineText('app.log.1', 20),
+    );
+    expect(urlParams().get('chain')).toBe('/l/app.log');
+    expect(urlParams().get('part')).toBe('app.log.1');
+    expect(urlParams().has('file')).toBe(false);
+  });
+
+  it('opens the file of a link without chains=1 as a file', async () => {
+    stubWindow('?file=%2Fl%2Fapp.log.1&line=20');
+    await health.check();
+
+    await loadView(linkView(window.location.search, false));
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.1']);
+  });
+
+  it('turns the open file tabs of a chain into its tab when a view in chain mode is restored', async () => {
+    stubWindow();
+    await health.check();
+    await files.openFile('/l/app.log.1', { scrollToLine: 20 });
+
+    await restoreView({ ...DEFAULT_VIEW, chains: true, file: '/l/app.log.1', line: 20 });
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual([chainKey('/l/app.log')]);
+    expect(get(files).openFiles[0].chain?.anchor).toMatchObject({ part: 'app.log.1', line: 20 });
   });
 });
 

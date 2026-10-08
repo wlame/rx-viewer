@@ -1,5 +1,6 @@
 import { derived, get } from 'svelte/store';
 import { chainMode, chainPartsShown } from './stores/chainMode';
+import { carryZone, chainOfFile, isTurningTabs, switchChainMode } from './stores/chainModeSwitch';
 import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files';
 import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
@@ -19,6 +20,7 @@ import {
   type SearchState,
   type ViewState,
 } from './utils/urlState';
+import { nameOf } from './utils/chainSwitch';
 import { chainHandleOf, chainKey } from './utils/tabKey';
 import type { ChainPosition } from './stores/chainTabs';
 import type { OpenFile, TreeNode } from './types';
@@ -144,8 +146,10 @@ let restoreGeneration = 0;
  * function that stops all three.
  */
 export function startViewSync(): () => void {
+  // A restore and a chain mode switch turning tabs over rewrite the entry.
   const stopWriting = currentView.subscribe((view) => {
-    const mode = runningRestores > 0 ? 'replace' : historyModeFor(readViewState(), view);
+    const isRewrite = runningRestores > 0 || isTurningTabs();
+    const mode = isRewrite ? 'replace' : historyModeFor(readViewState(), view);
     writeViewState(view, mode);
   });
 
@@ -269,13 +273,15 @@ function isOnPosition(tab: OpenFile, position: ChainPosition): boolean {
 
 /**
  * Open the chain a view names, or bring its tab forward, at the view's
- * part and line (by its time when the part is gone), with its
- * highlighting and filter. The tab is in the store when this resolves;
- * the returned load resolves when its lines arrive.
+ * part and line (by its time when the part is gone), or at `position`,
+ * with its highlighting and filter. Resolves when its lines arrive.
  */
-async function showChain(handle: string, view: ViewState): Promise<void> {
+async function showChain(
+  handle: string,
+  view: ViewState,
+  position: ChainPosition = chainPositionOf(view),
+): Promise<void> {
   const key = chainKey(handle);
-  const position = chainPositionOf(view);
   const open = get(files).openFiles.find((f) => f.path === key);
   if (open) {
     files.setActiveFile(key);
@@ -293,10 +299,21 @@ async function showChain(handle: string, view: ViewState): Promise<void> {
 }
 
 /**
+ * Where a chain's tab goes for a view that names one of its parts as a
+ * file: the file's line in that part, or the time the view jumped the
+ * file to.
+ */
+function partPosition(path: string, view: ViewState): ChainPosition {
+  if (view.line === null && view.time !== null) return { kind: 'time', ms: view.time };
+  return { kind: 'local', part: nameOf(path), line: view.line ?? 1, timeMs: null };
+}
+
+/**
  * Bring the open files to the view: its file active, with its filter and
  * category. A time in the view (and no line) jumps that file there and
  * sets the time cursor; no other file moves. A view that names a chain
- * opens that chain's tab at its part and line.
+ * opens that chain's tab at its part and line; so does a view in chain
+ * mode that names a part of a valid chain as a file.
  */
 async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<void> {
   if (view.chain !== null) {
@@ -307,6 +324,15 @@ async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<v
   if (path === null) {
     for (const file of get(files).openFiles) files.closeFile(file.path);
     return;
+  }
+  if (view.chains) {
+    const handle = await chainOfFile(path);
+    if (!isCurrent()) return;
+    if (handle !== null) {
+      carryZone(path, chainKey(handle));
+      await showChain(handle, view, partPosition(path, view));
+      return;
+    }
   }
 
   const shown = await showFile(path, view, isCurrent);
@@ -339,17 +365,17 @@ export async function loadView(view: ViewState): Promise<void> {
 }
 
 /**
- * Bring the app to the view a URL describes: chain mode and the chain
- * parts flag, the results switch, the search, the sidebar tab and the
- * file. The stash and the
+ * Bring the app to the view a URL describes: chain mode (the open tabs
+ * turned over to it, `stores/chainModeSwitch.ts`) and the chain parts
+ * flag, the results switch, the search, the sidebar tab and the file. The stash and the
  * file zones stay as they are. Resolves when the file's lines are
  * loaded. A later restore supersedes this one: Back pressed twice ends
  * on the second entry even when the first one's file is slower.
  */
 export async function restoreView(view: ViewState): Promise<void> {
   const generation = ++restoreGeneration;
-  // A link to a chain's tab is a view in chain mode.
-  chainMode.set(view.chains || view.chain !== null);
+  // A link to a chain's tab is a view in chain mode; the open tabs follow the mode.
+  await switchChainMode(view.chains || view.chain !== null);
   chainPartsShown.set(view.chainParts);
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);

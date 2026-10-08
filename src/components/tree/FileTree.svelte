@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { backendHas, health, tree } from '$lib/stores';
   import { chainMode } from '$lib/stores/chainMode';
+  import { switchChainMode } from '$lib/stores/chainModeSwitch';
   import TreeNode from './TreeNode.svelte';
   import Spinner from '../common/Spinner.svelte';
 
@@ -35,7 +36,7 @@
           aria-label="Group rotated logs"
           aria-checked={$chainMode}
           checked={$chainMode}
-          on:change={(e) => chainMode.set(e.currentTarget.checked)}
+          on:change={(e) => void switchChainMode(e.currentTarget.checked)}
         />
         Group rotated logs
       </label>
