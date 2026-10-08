@@ -203,8 +203,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a reload. A time picked with the arrow keys in one file no longer
   carries over to the next.
 - The time cursor's chip no longer takes room from the timeline bar.
-- "Only opened files" searches the open files and leaves out the tabs
-  of log chains, whose keys are no file path.
+- With chain mode off, "Only opened files" searches the open files and
+  leaves out the tabs of log chains, whose keys are no file path.
 - A link whose `file=` is not an absolute path, or is the key of a log
   chain's tab (`chain:` and a path), opens no file; nor does a `chain=`
   that is not an absolute path.
