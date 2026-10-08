@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { FileLine, TimeRangeResponse } from '../types';
+import { CHAIN_T0, HOUR_MS, chainDescription, chainTabOf } from '../testing/chainDescription';
+import type { ChainResponse, FileLine, TimeRangeResponse } from '../types';
 import {
   effectiveTimeAt,
   fractionOf,
+  hasTimeFormat,
   instantAt,
   isPointAxis,
   pendingIndexReason,
@@ -218,5 +220,38 @@ describe('pendingIndexReason', () => {
 
   it('names nothing without a file', () => {
     expect(pendingIndexReason(undefined)).toBeNull();
+  });
+});
+
+describe('the time helpers on a chain tab', () => {
+  function chainTab(description: ChainResponse | null) {
+    return {
+      name: 'agent.log',
+      pendingIndex: null,
+      timeRange: null,
+      chain: chainTabOf(description),
+    };
+  }
+  const ready = chainTab(chainDescription());
+
+  it("spans a ready chain from the chain's first to its last time", () => {
+    expect(timelineAxis(ready)).toEqual({ startMs: CHAIN_T0, endMs: CHAIN_T0 + 2 * HOUR_MS });
+  });
+
+  it('has no axis and no format before the chain is described', () => {
+    expect(timelineAxis(chainTab(null))).toBeNull();
+    expect(hasTimeFormat(chainTab(null))).toBe(false);
+  });
+
+  it("writes an instant the way the chain's first part writes a time", () => {
+    expect(hasTimeFormat(ready)).toBe(true);
+    expect(timeLabelFor(CHAIN_T0 + 1_500, ready)).toBe('2026-10-01 00:00:01.500');
+  });
+
+  it('says why a pending chain cannot jump by time, and names nothing once it is ready', () => {
+    expect(pendingIndexReason(chainTab(chainDescription({ state: 'pending' })))).toBe(
+      'agent.log is not ready: the line indexes of its parts are being built',
+    );
+    expect(pendingIndexReason(ready)).toBeNull();
   });
 });

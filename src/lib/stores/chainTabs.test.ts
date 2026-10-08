@@ -6,11 +6,14 @@ import { LOCAL_NUMBERING_BASE } from '../utils/chainWindow';
 import { chainViewZones, chainZonesMemo, type EditorViewZone } from '../utils/chainZones';
 import { LINES_PER_PAGE, STREAM_LINES_PER_PAGE } from '../utils/slidingWindow';
 import { chainKey } from '../utils/tabKey';
+import { timeLayoutOf } from '../utils/timeline';
 import { chainMode } from './chainMode';
 import { commandLog } from './commands';
+import { fileZones } from './fileZones';
 import { files } from './files';
 import { health } from './health';
 import { notifications } from './notifications';
+import { timeCursor } from './timeCursor';
 import { tree } from './tree';
 
 /** global 1-3000 in a gzip part, 3001-4500 in a plain one, 4501-6500 in the active file. */
@@ -490,5 +493,150 @@ describe('opening a chain tab', () => {
 
     await expect(files.openFile(KEY)).rejects.toThrow('chain');
     expect(get(files).openFiles).toEqual([]);
+  });
+});
+
+describe('a jump by time on a chain tab', () => {
+  /** app.log.2.gz 1–3000, an hour with no lines, app.log.1 3001–4500, app.log 4501–6500. */
+  const GAP_PARTS: FakePart[] = [
+    { name: 'app.log.2.gz', lines: 3000, compression: 'gzip' },
+    { name: 'app.log.1', lines: 1500, isIndexed: true, shiftSeconds: 3600 },
+    { name: 'app.log', lines: 2000, isActive: true },
+  ];
+  /** The first time of app.log.1, after the gap. */
+  const AFTER_GAP_MS = T0_MS + 6601_000;
+
+  let chain: FakeChain;
+  beforeEach(async () => {
+    chain = await serve({ state: 'ready', parts: GAP_PARTS });
+    await files.openChain(HANDLE);
+  });
+
+  afterEach(() => timeCursor.clear());
+
+  function timeQueries(): string[] {
+    return chain.samplesRequests.flatMap((q) => q.getAll('timestamps'));
+  }
+
+  it("lands a time in a gap on the next part's first line, the line the backend names", async () => {
+    const inGap = T0_MS + 5000_000;
+
+    const outcome = await files.jumpToTime(KEY, inGap);
+
+    expect(outcome).toEqual({ kind: 'found', line: 3001 });
+    expect(timeQueries()).toEqual([new Date(inGap).toISOString()]);
+    expect(tab().anchorLine).toBe(3001);
+    expect(tab().scrollToLine).toBe(3001);
+    expect(tab().chain?.anchor).toEqual({ part: 'app.log.1', line: 1, timeMs: AFTER_GAP_MS });
+    expect(heldLinesAgree('global')).toBe(true);
+    expect(get(timeCursor)).toBe(inGap);
+    expect(get(files).activeFilePath).toBe(KEY);
+  });
+
+  it('lands a time before the chain on its first line', async () => {
+    const outcome = await files.jumpToTime(KEY, T0_MS - 3600_000);
+
+    expect(outcome).toEqual({ kind: 'found', line: 1 });
+    expect(tab().anchorLine).toBe(1);
+    expect(tab().chain?.anchor?.part).toBe('app.log.2.gz');
+  });
+
+  it('shows the end with a notice for a time after the chain, and makes it the time cursor', async () => {
+    const after = T0_MS + 20_000_000;
+
+    const outcome = await files.jumpToTime(KEY, after);
+
+    expect(outcome).toEqual({ kind: 'none' });
+    expect(tab().endLine).toBe(6500);
+    expect(tab().reachedEnd).toBe(true);
+    expect(tab().anchorLine).toBe(6500);
+    expect(get(notifications).some((n) => n.message.startsWith('No line at or after'))).toBe(true);
+    expect(get(timeCursor)).toBe(after);
+  });
+
+  it('sends a typed time as typed, and makes the found line its time cursor', async () => {
+    const outcome = await files.jumpToTime(KEY, '2026-10-01T00:50:00');
+
+    expect(outcome).toEqual({ kind: 'found', line: 3000 });
+    expect(timeQueries()).toEqual(['2026-10-01T00:50:00']);
+    expect(get(timeCursor)).toBe(T0_MS + 3000_000);
+  });
+
+  it('refuses a time of day on a chain of several days and leaves the tab where it was', async () => {
+    files.closeFile(KEY);
+    chain = await serve({
+      state: 'ready',
+      parts: [GAP_PARTS[0], { ...GAP_PARTS[1], shiftSeconds: 2 * 86_400 }, GAP_PARTS[2]],
+    });
+    await files.openChain(HANDLE);
+    const before = tab();
+
+    const outcome = await files.jumpToTime(KEY, '00:30');
+
+    expect(outcome.kind).toBe('refused');
+    expect(outcome.kind === 'refused' && outcome.message).toContain('on one day');
+    expect(tab().lines).toBe(before.lines);
+    expect(tab().anchorLine).toBe(before.anchorLine);
+    expect(tab().error).toBeNull();
+    expect(tab().loading).toBe(false);
+    expect(get(timeCursor)).toBeNull();
+  });
+
+  it('refuses a jump on a pending chain, saying why, and asks the backend nothing', async () => {
+    files.closeFile(KEY);
+    chain = await serve({ state: 'pending', parts: GAP_PARTS });
+    await files.openChain(HANDLE);
+    const sent = chain.samplesRequests.length;
+
+    const outcome = await files.jumpToTime(KEY, T0_MS + 5000_000);
+
+    expect(outcome).toEqual({
+      kind: 'refused',
+      message: 'app.log is not ready: the line indexes of its parts are being built',
+    });
+    expect(chain.samplesRequests.length).toBe(sent);
+  });
+});
+
+describe('the zone of a chain tab', () => {
+  /** Features of a backend that reads a file in a chosen zone. */
+  const FEATURES = ['log_chains', 'samples_index_build', 'file_tz', 'time_range'];
+
+  afterEach(() => {
+    fileZones.clear(KEY);
+    fileZones.clear(HANDLE);
+  });
+
+  function zonesOf(chain: FakeChain, route: string): (string | null)[] {
+    return chain.requests
+      .filter((request) => request.startsWith(route))
+      .map((request) => new URL(request, 'http://localhost').searchParams.get('file_tz'));
+  }
+
+  it('keeps apart from the zone of the file at its handle, in every request of each', async () => {
+    const chain = await serve({ state: 'ready', features: FEATURES });
+    await files.openChain(HANDLE);
+    await files.openFile(HANDLE);
+    chain.requests.length = 0;
+
+    await files.setFileZone(KEY, '+02:00');
+    await files.setFileZone(HANDLE, '-05:00');
+    await vi.waitFor(() => expect(zonesOf(chain, '/v1/time-range')).toEqual(['-05:00']));
+
+    expect(zonesOf(chain, '/v1/logs/chain')).toEqual(['+02:00']);
+    expect(zonesOf(chain, '/v1/logs/samples')).toEqual(['+02:00']);
+    expect(zonesOf(chain, '/v1/samples')).toEqual(['-05:00']);
+    expect(fileZones.zoneOf(KEY)).toBe('+02:00');
+    expect(fileZones.zoneOf(HANDLE)).toBe('-05:00');
+  });
+
+  it('writes the times of its timeline in the zone chosen for it, on the same line', async () => {
+    await serve({ state: 'ready', features: FEATURES });
+    await files.openChain(HANDLE, { position: { kind: 'global', line: 3500 } });
+
+    await files.setFileZone(KEY, '+02:00');
+
+    expect(timeLayoutOf(tab())?.display_zone).toBe('+02:00');
+    expect(tab().anchorLine).toBe(3500);
   });
 });

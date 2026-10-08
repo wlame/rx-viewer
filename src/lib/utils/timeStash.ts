@@ -1,8 +1,10 @@
 import type { OpenFile } from '../types';
 import {
   hasTimeFormat,
+  isTimeRangeUnknown,
   pendingIndexReason,
   sideOfAxis,
+  timeRangeUnknownReason,
   timelineAxis,
   type TimeAxis,
 } from './timeline';
@@ -10,8 +12,9 @@ import {
 /**
  * The timestamps stash: up to seven moments a user saved from the time
  * cursor, kept as UTC instants in ms, unique to the millisecond and in
- * time order. An instant belongs to no file; each file shows it in its
- * own layout and can jump to it when the instant is inside its range.
+ * time order. An instant belongs to no file; each file, and each log
+ * chain's tab, shows it in its own layout and can jump to it when the
+ * instant is inside its range.
  *
  * Everything here is pure: the store (`stores/timeStash.ts`) and the
  * URL's `stash` (`urlState.ts`) are built on it.
@@ -71,8 +74,8 @@ export function normalizeStash(instants: readonly number[]): number[] {
   return [...unique].sort((a, b) => a - b).slice(0, STASH_CAPACITY);
 }
 
-/** What the stash needs to know of the file a jump would move. */
-export type StashFile = Pick<OpenFile, 'name' | 'timeRange' | 'pendingIndex'>;
+/** What the stash needs to know of the tab a jump would move: a file's range, or a chain. */
+export type StashFile = Pick<OpenFile, 'name' | 'timeRange' | 'pendingIndex' | 'chain'>;
 
 /** Whether an entry can jump the active file, and why not when it cannot. */
 export type StashEntryState = { isEnabled: true } | { isEnabled: false; reason: string };
@@ -102,13 +105,13 @@ const DISABLED_WHEN: readonly {
     reason: (e) => pendingIndexReason(e.file) ?? '',
   },
   {
-    applies: (e) => e.file?.timeRange === null,
+    applies: (e) => isTimeRangeUnknown(e.file),
     reason: (e) => `The time range of ${e.name} is not known yet`,
   },
   { applies: (e) => !hasTimeFormat(e.file), reason: (e) => `${e.name} has no timestamps` },
   {
     applies: (e) => e.axis === null,
-    reason: (e) => `The time range of ${e.name} is not known yet`,
+    reason: (e) => (e.file ? timeRangeUnknownReason(e.file) : ''),
   },
   {
     applies: (e) => e.axis !== null && sideOfAxis(e.instantMs, e.axis) === 'before',

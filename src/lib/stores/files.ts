@@ -865,11 +865,11 @@ function createFilesStore() {
    * A jump that reads its value makes that instant the time cursor; a
    * typed text the file reads with no line at or after it has no instant
    * and leaves the cursor as it was. A refused value sets nothing, so a
-   * mistyped value never moves the cursor. No other file moves.
+   * mistyped value never moves the cursor. No other file moves. A log
+   * chain's tab moves the same way (`stores/chainTabs.ts`).
    */
   async function jumpToTime(path: string, query: TimeQuery): Promise<TimeJumpOutcome> {
-    // A chain's tab does not move by time yet.
-    if (isChainKey(path)) return { kind: 'unsupported' };
+    if (isChainKey(path)) return chains.jumpToTime(path, query);
     if (!get({ subscribe }).openFiles.some((f) => f.path === path)) {
       return { kind: 'refused', message: `${path} is not open` };
     }

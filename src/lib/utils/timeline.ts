@@ -1,20 +1,30 @@
 import type { FileLine, OpenFile } from '../types';
-import { formatInFileLayout } from './timeFormat';
+import {
+  chainRangeUnknownReason,
+  chainTimeAxis,
+  chainTimeLayout,
+  chainTimeRefusal,
+} from './chainTime';
+import { formatInFileLayout, type FileTimeLayout } from './timeFormat';
 
 /**
- * The geometry of the timeline bar: the time axis of the active file,
+ * The geometry of the timeline bar: the time axis of the active tab,
  * the instant under a point of the track, the keyboard's steps, and the
- * time of the line a file is anchored on.
+ * time of the line a tab is anchored on.
+ *
+ * A file's times come from its time range. A log chain's tab reads them
+ * from the chain's description (`chainTime.ts`): its axis once the chain
+ * is ready, written the way its first part with timestamps writes them.
  *
  * Everything here is pure and takes the track's width as a number, so it
  * is tested without a layout engine.
  */
 
-/** What the timeline needs to know of an open file. */
-export type TimelineFile = Pick<OpenFile, 'timeRange'>;
+/** What the timeline needs to know of an open tab: a file's time range, or a chain. */
+export type TimelineFile = Pick<OpenFile, 'timeRange' | 'chain'>;
 
-/** What the time features read about a file's line index. */
-export type PendingIndexFile = Pick<OpenFile, 'name' | 'pendingIndex'>;
+/** What the time features read about a file's line index, or a chain's state. */
+export type PendingIndexFile = Pick<OpenFile, 'name' | 'pendingIndex' | 'chain'>;
 
 /** Why the time features are off while a file has no line index, by the reason. */
 const PENDING_INDEX_REASONS: Record<
@@ -27,10 +37,12 @@ const PENDING_INDEX_REASONS: Record<
 
 /**
  * Why the timeline, the Go to time box and the stash cannot jump `file`
- * yet: it wants a line index and has none. Null when they can, and
- * without a file.
+ * yet: it wants a line index and has none; a chain's tab, until the chain
+ * is ready (its parts' line indexes are built and every check passed).
+ * Null when they can, and without a file.
  */
 export function pendingIndexReason(file: PendingIndexFile | undefined): string | null {
+  if (file?.chain) return chainTimeRefusal(file.name, file.chain);
   if (!file?.pendingIndex) return null;
   return PENDING_INDEX_REASONS[file.pendingIndex](file.name);
 }
@@ -41,29 +53,59 @@ export interface TimeAxis {
   endMs: number;
 }
 
-/** Whether a file has a timestamp format, so it can be moved by time. */
+/**
+ * How a tab writes its times: a file's time range, a chain's first part
+ * with timestamps; null while it is not known.
+ */
+export function timeLayoutOf(file: TimelineFile | undefined): FileTimeLayout | null {
+  if (file?.chain) return file.chain.description ? chainTimeLayout(file.chain.description) : null;
+  return file?.timeRange ?? null;
+}
+
+/** Whether a tab has a timestamp format, so it can be moved by time. */
 export function hasTimeFormat(file: TimelineFile | undefined): boolean {
-  return Boolean(file?.timeRange?.format);
+  return Boolean(timeLayoutOf(file)?.format);
 }
 
 /**
- * `ms` written the way the file writes a time, in the zone its lines
+ * Whether the tab's time range has not been read yet: a file's range not
+ * asked or not answered, a chain not described.
+ */
+export function isTimeRangeUnknown(file: TimelineFile | undefined): boolean {
+  if (file?.chain) return file.chain.description === null;
+  return file?.timeRange === null;
+}
+
+/**
+ * `ms` written the way the tab writes a time, in the zone its lines
  * show, or ISO 8601 in UTC for a file without timestamps, without a
  * range yet, or no file.
  */
 export function timeLabelFor(ms: number, file: TimelineFile | undefined): string {
-  const range = file?.timeRange;
-  return range && hasTimeFormat(file) ? formatInFileLayout(ms, range) : new Date(ms).toISOString();
+  const layout = timeLayoutOf(file);
+  return layout?.format ? formatInFileLayout(ms, layout) : new Date(ms).toISOString();
 }
 
 /**
- * The axis of one file, from its first to its last time, or null while
- * either is unknown or the file has no timestamps.
+ * The axis of one tab, from its first to its last time, or null while
+ * either is unknown, the file has no timestamps, or the chain is not
+ * ready.
  */
 export function timelineAxis(file: TimelineFile | undefined): TimeAxis | null {
+  if (file?.chain) return file.chain.description ? chainTimeAxis(file.chain.description) : null;
   const range = file?.timeRange;
   if (!range?.format || range.first_ms === null || range.last_ms === null) return null;
   return { startMs: range.first_ms, endMs: range.last_ms };
+}
+
+/**
+ * Why a tab that has a timestamp format has no axis: a chain names the end
+ * whose time is not known; a file's range is not known yet.
+ */
+export function timeRangeUnknownReason(file: TimelineFile & Pick<OpenFile, 'name'>): string {
+  const chain = file.chain?.description;
+  if (chain) return chainRangeUnknownReason(file.name, chain);
+  return `The time range of ${file.name} is not known yet`;
 }
 
 /** Whether the axis is a single instant: drawn as one point, with no scrubbing. */

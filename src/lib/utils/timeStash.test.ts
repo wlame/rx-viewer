@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { TimeRangeResponse } from '../types';
+import { CHAIN_T0, HOUR_MS, chainDescription, chainTabOf } from '../testing/chainDescription';
+import type { ChainResponse, TimeRangeResponse } from '../types';
 import {
   STASH_CAPACITY,
   STASH_REFUSALS,
@@ -187,5 +188,58 @@ describe('stashEntryState', () => {
       isEnabled: false,
       reason: 'The backend cannot jump to a time',
     });
+  });
+});
+
+describe('stashEntryState on a chain tab', () => {
+  function chainTab(description: ChainResponse | null): StashFile {
+    return {
+      name: 'agent.log',
+      timeRange: null,
+      pendingIndex: null,
+      chain: chainTabOf(description),
+    };
+  }
+  const ready = chainTab(chainDescription());
+
+  it("enables an instant inside the chain's range, its first and its last time included", () => {
+    for (const ms of [CHAIN_T0, CHAIN_T0 + HOUR_MS, CHAIN_T0 + 2 * HOUR_MS]) {
+      expect(stashEntryState(ms, ready, true)).toEqual({ isEnabled: true });
+    }
+  });
+
+  it.each([
+    {
+      case: 'an instant before the first time of the chain',
+      ms: CHAIN_T0 - 1,
+      file: ready,
+      reason: 'Before the first time in agent.log',
+    },
+    {
+      case: 'an instant after the last time of the chain',
+      ms: CHAIN_T0 + 2 * HOUR_MS + 1,
+      file: ready,
+      reason: 'After the last time in agent.log',
+    },
+    {
+      case: 'every instant of a pending chain',
+      ms: CHAIN_T0,
+      file: chainTab(chainDescription({ state: 'pending', first_ms: null, last_ms: null })),
+      reason: 'agent.log is not ready: the line indexes of its parts are being built',
+    },
+    {
+      case: 'every instant of a chain not described yet',
+      ms: CHAIN_T0,
+      file: chainTab(null),
+      reason: 'The log chain agent.log is being read',
+    },
+    {
+      case: 'every instant of a ready chain whose last time is not known',
+      ms: CHAIN_T0,
+      file: chainTab(chainDescription({ last_ms: null })),
+      reason: 'The last time of agent.log is not known',
+    },
+  ])('disables $case and says why', ({ ms, file, reason }) => {
+    expect(stashEntryState(ms, file, true)).toEqual({ isEnabled: false, reason });
   });
 });

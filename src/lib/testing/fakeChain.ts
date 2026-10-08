@@ -3,7 +3,8 @@
  *
  * Every line reads `<time> LINE <global n> part=<name> local=<l>`, so a
  * wrong number shows without a second tool, and global line n has the
- * timestamp `T0_MS + n` seconds. The chain is pending (no global
+ * timestamp `T0_MS + n` seconds, plus the `shiftSeconds` of its part and
+ * every part before it (a time gap). The chain is pending (no global
  * numbers; a request by global line or time answers 202 with the chain's
  * index task) until the test ends the task with `finishTask`, or ready
  * from the start. Requests are recorded for assertions.
@@ -24,6 +25,8 @@ export interface FakePart {
   isIndexed?: boolean;
   /** Its number, the description's key; by default its place counted from the newest part. */
   key?: string;
+  /** Seconds added to the times of this part and every later one: a time gap before it. */
+  shiftSeconds?: number;
 }
 
 export interface FakeChainOptions {
@@ -61,6 +64,14 @@ function answer(status: number, body: unknown): Answer {
 
 /** The id of the chain's index task. */
 export const CHAIN_TASK_ID = 'ct1';
+
+const DAY_MS = 86_400_000;
+
+/** A date and time as the fake reads one, in UTC: `2026-10-01T00:30`, seconds and `Z` optional. */
+const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z?$/;
+
+/** A time of day without a date: `00:30` or `00:30:15`. */
+const TIME_OF_DAY = /^(\d{2}):(\d{2})(?::(\d{2}))?$/;
 
 export class FakeChain {
   readonly dir: string;
@@ -116,9 +127,20 @@ export class FakeChain {
     return this.parts.reduce((sum, part) => sum + part.lines, 0);
   }
 
-  /** The text of global line `n`, of `part` and its local line `local`. */
-  static lineText(n: number, part: string, local: number): string {
-    return `${new Date(T0_MS + n * 1000).toISOString()} LINE ${n} part=${part} local=${local}`;
+  /** The seconds added to the times of part `i`: the shifts of it and of every part before it. */
+  private shiftOf(i: number): number {
+    return this.parts.slice(0, i + 1).reduce((sum, part) => sum + (part.shiftSeconds ?? 0), 0);
+  }
+
+  /** The timestamp of global line `n`, a line of part `i`. */
+  timeOf(n: number, i: number): number {
+    return T0_MS + (n + this.shiftOf(i)) * 1000;
+  }
+
+  /** The text of global line `n`, of part `i` and its local line `local`. */
+  private lineText(n: number, i: number, local: number): string {
+    const time = new Date(this.timeOf(n, i)).toISOString();
+    return `${time} LINE ${n} part=${this.parts[i].name} local=${local}`;
   }
 
   /**
@@ -151,7 +173,12 @@ export class FakeChain {
     };
   }
 
-  description(): ChainResponse {
+  /**
+   * The chain as rx-go describes it. Under a zone (`file_tz`) every part
+   * says it is read in that zone, as rx-go's `assumed_zone` does; the
+   * times stay as they are.
+   */
+  description(fileTz: string | null = null): ChainResponse {
     const starts = this.starts();
     const ready = this.isReady();
     const parts: ChainPart[] = this.parts.map((part, i) => {
@@ -168,19 +195,19 @@ export class FakeChain {
         modified_at: '2026-10-01T00:00:00.000000Z',
         is_indexed: isIndexed && part.lines > 0,
         line_count: known || (ready && part.isActive) ? part.lines : null,
-        first_ms: part.lines > 0 && (known || ready) ? T0_MS + first * 1000 : null,
-        last_ms:
-          part.lines > 0 && (known || ready) ? T0_MS + (first + part.lines - 1) * 1000 : null,
-        max_ms: part.lines > 0 && known ? T0_MS + (first + part.lines - 1) * 1000 : null,
+        first_ms: part.lines > 0 && (known || ready) ? this.timeOf(first, i) : null,
+        last_ms: part.lines > 0 && (known || ready) ? this.timeOf(first + part.lines - 1, i) : null,
+        max_ms: part.lines > 0 && known ? this.timeOf(first + part.lines - 1, i) : null,
         max_is_bound: false,
         global_start: ready ? first : null,
-        time_format: { format: 'iso', has_zone: true, assumed_zone: 'UTC' },
+        time_format: { format: 'iso', has_zone: true, assumed_zone: fileTz ?? 'UTC' },
         day_first: null,
         example: null,
         duplicates: [],
       };
     });
     const frozen = this.parts.filter((p) => !p.isActive).reduce((sum, p) => sum + p.lines, 0);
+    const timed = parts.filter((part) => part.first_ms !== null);
     return {
       path: this.handle,
       name: this.name,
@@ -191,8 +218,8 @@ export class FakeChain {
       missing: this.options.missing ?? [],
       missing_count: (this.options.missing ?? []).length,
       gaps: ready ? (this.options.gaps ?? []) : [],
-      first_ms: ready ? T0_MS + 1000 : null,
-      last_ms: ready ? T0_MS + this.totalLines * 1000 : null,
+      first_ms: ready ? (timed[0]?.first_ms ?? null) : null,
+      last_ms: ready ? (timed.at(-1)?.last_ms ?? null) : null,
       frozen_line_count: ready ? frozen : null,
       line_count: ready ? this.totalLines : null,
       index_build: this.state === 'pending' ? this.indexTask() : null,
@@ -222,8 +249,8 @@ export class FakeChain {
     const times: number[] = [];
     for (let local = from; local <= to; local++) {
       const n = start + local - 1;
-      lines.push(FakeChain.lineText(n, part.name, local));
-      times.push(T0_MS + n * 1000);
+      lines.push(this.lineText(n, i, local));
+      times.push(this.timeOf(n, i));
     }
     const piece: ChainPiece = {
       part: part.name,
@@ -255,7 +282,7 @@ export class FakeChain {
       name: this.name,
       state,
       fingerprint: this.fingerprint,
-      parts: this.description().parts,
+      parts: this.description(query.get('file_tz')).parts,
       before_context: Number(query.get('before_context') ?? context),
       after_context: Number(query.get('after_context') ?? context),
       lines,
@@ -320,10 +347,42 @@ export class FakeChain {
     return answer(200, this.samplesBody(query, { [key]: pieces }, lines, {}, 'ready'));
   }
 
+  /**
+   * The instant a time query names, read as rx-go reads one: a date and
+   * time in UTC, or a time of day on the chain's one day; a refusal for a
+   * time of day on a chain of several days and for any other text.
+   */
+  private readTime(value: string): number | { refused: string } {
+    if (DATE_TIME.test(value)) return Date.parse(value.endsWith('Z') ? value : `${value}Z`);
+    const timeOfDay = TIME_OF_DAY.exec(value);
+    if (!timeOfDay) return { refused: `cannot read the time "${value}"` };
+    const { first_ms: first, last_ms: last } = this.description();
+    const dayOf = (ms: number) => Math.floor(ms / DAY_MS) * DAY_MS;
+    if (first === null || last === null || dayOf(first) !== dayOf(last)) {
+      return {
+        refused: `a time of day without a date needs the chain's first and last timestamps on one day: "${value}"`,
+      };
+    }
+    const [, hours, minutes, seconds] = timeOfDay.map(Number);
+    return dayOf(first) + ((hours * 60 + minutes) * 60 + (seconds || 0)) * 1000;
+  }
+
+  /** The first line, in the chain's order, whose time is at or after `ms`; -1 when none is. */
+  private lineAtTime(ms: number): number {
+    const starts = this.starts();
+    for (let i = 0; i < this.parts.length; i++) {
+      const count = this.parts[i].lines;
+      if (count === 0 || ms > this.timeOf(starts[i] + count - 1, i)) continue;
+      return starts[i] + Math.max(0, Math.ceil((ms - this.timeOf(starts[i], i)) / 1000));
+    }
+    return -1;
+  }
+
   private timeSamples(query: URLSearchParams, value: string, before: number, after: number) {
-    const ms = Date.parse(value);
-    const line = Math.max(1, Math.ceil((ms - T0_MS) / 1000));
-    if (line > this.totalLines) {
+    const ms = this.readTime(value);
+    if (typeof ms !== 'number') return answer(400, { detail: ms.refused });
+    const line = this.lineAtTime(ms);
+    if (line === -1) {
       return answer(200, this.samplesBody(query, { [value]: null }, {}, { [value]: -1 }, 'ready'));
     }
     const pieces = this.globalPieces(
@@ -422,9 +481,9 @@ export class FakeChain {
         if (query.get('path') !== this.handle) return answer(404, { detail: 'not a log chain' });
         const fingerprint = query.get('fingerprint');
         if (fingerprint !== null && fingerprint !== this.fingerprint) {
-          return answer(409, this.description());
+          return answer(409, this.description(query.get('file_tz')));
         }
-        return answer(200, this.description());
+        return answer(200, this.description(query.get('file_tz')));
       }
       case '/v1/logs/samples':
         return this.samples(query, prefer);

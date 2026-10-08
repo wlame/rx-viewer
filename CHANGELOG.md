@@ -60,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encoding of a part included. Turning the mode off or on keeps the
   folders open as they were. A link with `chain_parts=1` lists each
   chain's parts under its row.
+- Jumps by time on a log chain's tab. The timeline bar, the Go to time
+  box and the timestamps stash move a ready chain's tab to the first
+  line, in the chain's order, at or after a time, the line
+  `rx logs samples --timestamps=` names: a time in a gap between two
+  parts lands on the later part's first line, a time before the chain
+  on line 1, and a time after it shows the chain's end with a notice.
+  A jump sets the time cursor. A typed time is read in the format of
+  the chain's first part with timestamps, and the chain's times are
+  written that way. A time of day without a date is refused on a chain
+  whose times span several days; the tab stays where it was and the box
+  says why. A stash entry outside the chain's first and last time is
+  disabled. Until the chain is ready nothing moves it by time, and the
+  tooltip says why: its parts' line indexes are being built, the
+  backend's reason it has no index task, or the checks it failed.
 
 - The file tree opens with every search root unfolded, so the first
   level of each root is in view at once; deeper folders stay closed

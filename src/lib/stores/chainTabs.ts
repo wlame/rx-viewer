@@ -1,6 +1,7 @@
 /**
  * The tabs of log chains: open one, read its description, follow its
- * index task, load and page its lines in both states, and go to a line.
+ * index task, load and page its lines in both states, and go to a line
+ * or to a time.
  *
  * A chain's tab is an open tab like a file's, keyed `chain:<handle>`
  * (`utils/tabKey.ts`), with its own fields in `OpenFile.chain`. Its
@@ -28,6 +29,7 @@ import type {
   OpenFile,
 } from '../types';
 import { isChainIndexed, neighbourPartWithLines } from '../utils/chainParts';
+import { chainTimeRefusal } from '../utils/chainTime';
 import {
   LOCAL_NUMBERING_BASE,
   anchorAt,
@@ -48,21 +50,29 @@ import type { SampleWindow } from '../utils/sampleWindow';
 import { addPage, maxHeldLines } from '../utils/slidingWindow';
 import { chainHandleOf, chainKey, type TabKey } from '../utils/tabKey';
 import { watchTask } from '../utils/taskPolling';
+import { timeLabelFor } from '../utils/timeline';
 import { chainMode, isChainModeOn } from './chainMode';
 import { chainTopLines } from './chainTopLines';
 import { commandLog } from './commands';
+import type { TimeJumpOutcome, TimeQuery } from './files';
 import { requestZoneOf } from './fileZones';
-import { health } from './health';
+import { backendHas, health } from './health';
 import { notifications } from './notifications';
+import { timeCursor } from './timeCursor';
 import { tree } from './tree';
 
-/** Where a chain's tab goes: its start or end, a global line, a part's line, or a time. */
+/**
+ * Where a chain's tab goes: its start or end, a global line, a part's
+ * line, a time (an instant), or a time as a person typed it, which the
+ * backend reads.
+ */
 export type ChainPosition =
   | { kind: 'start' }
   | { kind: 'end' }
   | { kind: 'global'; line: number }
   | { kind: 'local'; part: string; line: number; timeMs?: number | null }
-  | { kind: 'time'; ms: number };
+  | { kind: 'time'; ms: number }
+  | { kind: 'typedTime'; text: string };
 
 /** What the files store hands the chain tabs: its tabs, and its request slot per tab. */
 export interface ChainTabDeps {
@@ -128,6 +138,28 @@ function nameOf(handle: string): string {
 /** The directory of a chain from its handle. */
 function directoryOf(handle: string): string {
   return handle.slice(0, handle.lastIndexOf('/')) || '/';
+}
+
+/**
+ * The value a time position sends as `timestamps`: an instant in RFC 3339
+ * with ms and `Z`, a typed time as typed; null for any other position.
+ */
+function timeValueOf(position: ChainPosition): string | null {
+  if (position.kind === 'time') return new Date(position.ms).toISOString();
+  if (position.kind === 'typedTime') return position.text;
+  return null;
+}
+
+/** The position a time query names, an instant or a typed text, with the value its request sends. */
+function timeQueryPosition(query: TimeQuery): { position: ChainPosition; value: string } {
+  return typeof query === 'number'
+    ? { position: { kind: 'time', ms: query }, value: new Date(query).toISOString() }
+    : { position: { kind: 'typedTime', text: query }, value: query };
+}
+
+/** The message of a failure, for a person. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** The anchor a position names before its line is read: only a part's line names one. */
@@ -461,6 +493,8 @@ export function createChainTabs(deps: ChainTabDeps) {
         return { part: position.part, lines: [String(position.line)], context: JUMP_CONTEXT };
       case 'time':
         return { timestamps: [new Date(position.ms).toISOString()], context: JUMP_CONTEXT };
+      case 'typedTime':
+        return { timestamps: [position.text], context: JUMP_CONTEXT };
     }
   }
 
@@ -484,6 +518,7 @@ export function createChainTabs(deps: ChainTabDeps) {
       case 'end':
         return lastLine;
       case 'time':
+      case 'typedTime':
         return named(answer.timestamps);
       default:
         return named(answer.lines);
@@ -492,7 +527,7 @@ export function createChainTabs(deps: ChainTabDeps) {
 
   /** Show the window of a ready chain's answer, by global numbers. */
   function showGlobalWindow(key: TabKey, position: ChainPosition, answer: ChainSamplesResponse) {
-    const value = position.kind === 'time' ? new Date(position.ms).toISOString() : null;
+    const value = timeValueOf(position);
     const time = value === null ? null : readChainTimeAnswer(answer, value);
     const lines = flattenPieces(piecesOf(answer), { kind: 'global' });
     const lastLine = lines.at(-1)?.lineNumber ?? 0;
@@ -633,13 +668,11 @@ export function createChainTabs(deps: ChainTabDeps) {
       return;
     }
     const samples = answer.samples;
-    if (
-      position.kind === 'time' &&
-      readChainTimeAnswer(samples, new Date(position.ms).toISOString()).found === false
-    ) {
-      notifications.info(
-        `No line at or after ${new Date(position.ms).toISOString()} in ${nameOf(handleOf(key))}`,
-      );
+    const timeValue = timeValueOf(position);
+    if (timeValue !== null && readChainTimeAnswer(samples, timeValue).found === false) {
+      const tab = deps.getTab(key);
+      const label = position.kind === 'time' ? timeLabelFor(position.ms, tab) : timeValue;
+      notifications.info(`No line at or after ${label} in ${nameOf(handleOf(key))}`);
       await show(key, { kind: 'end' }, record);
       return;
     }
@@ -1011,6 +1044,84 @@ export function createChainTabs(deps: ChainTabDeps) {
     if (anchor !== null) await moveTo(key, { kind: 'local', part: anchor.part, line: anchor.line });
   }
 
+  /**
+   * Move the tab `key` to the first line, in the chain's order, at or
+   * after a time, the way a file's tab moves by time: the window around
+   * the line the backend names, anchored on it, and the tab made active.
+   * `query` is an instant (UTC ms) or a text the backend reads as
+   * `--timestamps` does (a time of day is answered only on a chain whose
+   * times fall on one day). A time in a gap between two parts lands on
+   * the later part's first line, a time before the chain on line 1.
+   *
+   * A jump that finds a line makes the time cursor the instant asked, or
+   * the found line's time for a typed text. No line at or after the time
+   * shows the chain's end with a notice. A refused query, or a chain that
+   * is not ready, leaves the tab as it was and says why; the backend is
+   * asked nothing while the chain is not ready.
+   */
+  async function jumpToTime(key: TabKey, query: TimeQuery): Promise<TimeJumpOutcome> {
+    const tab = deps.getTab(key);
+    if (!tab?.chain) return { kind: 'refused', message: `${key} is not open` };
+    deps.setActive(key);
+    await contractGate.pass();
+    if (!backendHas('log_chains')) return { kind: 'unsupported' };
+    const notReady = chainTimeRefusal(tab.name, tab.chain);
+    if (notReady !== null) return { kind: 'refused', message: notReady };
+
+    const { position, value } = timeQueryPosition(query);
+    const request: ChainRequest = { timestamps: [value], context: JUMP_CONTEXT };
+    deps.patchTab(key, () => ({ loading: true, error: null }));
+    let answer: Awaited<ReturnType<typeof loadChainSamples>> | typeof SUPERSEDED;
+    try {
+      answer = await deps.loads.run(key, (signal) => loadChainSamples(key, request, signal));
+    } catch (error) {
+      if (isAbortError(error)) return { kind: 'superseded' };
+      deps.patchTab(key, () => ({ loading: false }));
+      return { kind: 'refused', message: messageOf(error) };
+    }
+    if (answer === SUPERSEDED) return { kind: 'superseded' };
+    if (answer.kind === 'changed') {
+      await readAgainAfterChange(key, answer.chain);
+      return { kind: 'superseded' };
+    }
+    if (answer.kind === 'invalid') {
+      // The query or the chain: the description says which, and an
+      // invalid chain then shows its reasons.
+      deps.patchTab(key, () => ({ loading: false }));
+      void refresh(key);
+      return { kind: 'refused', message: answer.detail };
+    }
+    return showTimeAnswer(key, { position, value }, request, answer.samples);
+  }
+
+  /** Show the answer of a jump by time to `value`, and say where it landed. */
+  async function showTimeAnswer(
+    key: TabKey,
+    { position, value }: { position: ChainPosition; value: string },
+    request: ChainRequest,
+    samples: ChainSamplesResponse,
+  ): Promise<TimeJumpOutcome> {
+    const instant = position.kind === 'time' ? position.ms : null;
+    let found: ReturnType<typeof readChainTimeAnswer>;
+    try {
+      found = readChainTimeAnswer(samples, value);
+      await applyAnswer(key, position, request, { kind: 'samples', samples }, true);
+    } catch (error) {
+      if (isAbortError(error)) return { kind: 'superseded' };
+      showError(key, error);
+      return { kind: 'refused', message: messageOf(error) };
+    }
+    if (!found.found) {
+      if (instant !== null) timeCursor.set(instant);
+      return { kind: 'none' };
+    }
+    const lineTime = found.window.lines.find((l) => l.lineNumber === found.line)?.timestampMs;
+    const jumpInstant = instant ?? lineTime ?? null;
+    deps.patchTab(key, () => ({ timeJump: jumpInstant }));
+    if (jumpInstant !== null) timeCursor.set(jumpInstant);
+    return { kind: 'found', line: found.line };
+  }
+
   /** Read the chain again, as its zone now asks, and show the anchor line. */
   async function reload(key: TabKey): Promise<void> {
     if (!chainOf(key)) return;
@@ -1040,6 +1151,7 @@ export function createChainTabs(deps: ChainTabDeps) {
     loadMore,
     jumpToPosition,
     jumpToEnd: (key: TabKey) => show(key, { kind: 'end' }),
+    jumpToTime,
     reload,
     forget,
   };
