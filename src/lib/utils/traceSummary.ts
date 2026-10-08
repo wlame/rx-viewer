@@ -41,3 +41,20 @@ export function skippedFiles(
 export function chainCount(response: SearchResponse): number {
   return isChainSearchAnswer(response) ? Object.keys(response.chains).length : 0;
 }
+
+/**
+ * `path` as it reads under the searched path that holds it: relative to
+ * the deepest one, the name alone for a path the search named itself,
+ * and whole when no searched path holds it.
+ */
+export function pathInSearch(path: string, searched: readonly string[]): string {
+  let shortest = path;
+  for (const root of searched) {
+    if (root === path) return path.slice(path.lastIndexOf('/') + 1);
+    const prefix = root.endsWith('/') ? root : `${root}/`;
+    if (path.startsWith(prefix) && path.length - prefix.length < shortest.length) {
+      shortest = path.slice(prefix.length);
+    }
+  }
+  return shortest;
+}

@@ -355,11 +355,12 @@ describe('SearchResults skipped files', () => {
 
     const skipped = target.querySelector('details');
     expect(skipped?.querySelector('summary')?.textContent?.trim()).toBe('2 files skipped');
+    expect(skipped?.querySelector('li [title]')?.getAttribute('title')).toBe('/logs/app.log.2');
     expect(
       [...(skipped?.querySelectorAll('li') ?? [])].map((li) =>
         li.textContent?.replace(/\s+/g, ' ').trim(),
       ),
-    ).toEqual([`/logs/app.log.2: ${DUPLICATE}`, '/logs/wtmp: binary file']);
+    ).toEqual([`app.log.2: ${DUPLICATE}`, 'wtmp: binary file']);
   });
 
   it('says how many more files were skipped than it lists', async () => {

@@ -221,7 +221,7 @@
       </div>
     </div>
 
-    <SkippedFiles skipped={skippedFiles($trace.response)} />
+    <SkippedFiles skipped={skippedFiles($trace.response)} searched={$trace.response.path} />
 
     {#if $trace.response.matches.length > 0}
       <ul class="divide-y divide-gh-border-default dark:divide-gh-border-dark-default">
@@ -237,17 +237,21 @@
               class="w-full text-left px-3 py-2 hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle"
               on:click={() => openMatch(match, filePath)}
             >
-              <div class="flex items-center gap-2 text-sm">
+              <div
+                class="flex items-center gap-x-2 text-sm"
+                class:flex-wrap={place && place.chainLine !== null}
+              >
                 {#if place && place.chainLine !== null}
-                  <!-- A ready chain's match: its line in the chain, its part's own line beside it. -->
+                  <!-- A ready chain's match: its line in the chain, its part's own line
+                       beside it. The row wraps rather than cut either label short. -->
                   <span
-                    class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate"
+                    class="text-gh-accent-fg dark:text-gh-accent-dark-fg truncate max-w-full"
                     title={place.handle}
                   >
                     {place.name}:{place.chainLine}
                   </span>
                   <span
-                    class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted truncate"
+                    class="text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted truncate max-w-full"
                     title={filePath}
                   >
                     {place.part}:{lineNum ?? '?'}

@@ -1,9 +1,11 @@
 <script lang="ts">
   import { formatCount } from '$lib/utils/format';
-  import type { SkippedEntry } from '$lib/utils/traceSummary';
+  import { pathInSearch, type SkippedEntry } from '$lib/utils/traceSummary';
 
   /** The files a search left out that the list shows, and how many more there are. */
   export let skipped: { shown: SkippedEntry[]; more: number };
+  /** The paths the search was given; each skipped path reads relative to the one that holds it. */
+  export let searched: readonly string[] = [];
 
   $: total = skipped.shown.length + skipped.more;
 </script>
@@ -22,7 +24,8 @@
     <ul class="mt-1 space-y-1">
       {#each skipped.shown as entry}
         <li class="break-all">
-          <span class="font-mono text-gh-fg-default dark:text-gh-fg-dark-default">{entry.path}</span
+          <span class="font-mono text-gh-fg-default dark:text-gh-fg-dark-default" title={entry.path}
+            >{pathInSearch(entry.path, searched)}</span
           >{#if entry.reason}: <span class="text-gh-fg-muted dark:text-gh-fg-dark-muted"
               >{entry.reason}</span
             >{/if}

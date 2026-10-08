@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { chainCount, searchedFileCount, skippedFiles } from './traceSummary';
+import { chainCount, pathInSearch, searchedFileCount, skippedFiles } from './traceSummary';
 import { chainRef, chainSearchAnswer } from '../testing/chainSearchAnswer';
 import type { TraceResponse } from '../types';
 
@@ -114,5 +114,21 @@ describe('chainCount', () => {
 
   it('counts no chain in a trace answer', () => {
     expect(chainCount(makeResponse())).toBe(0);
+  });
+});
+
+describe('pathInSearch', () => {
+  it.each([
+    { path: '/srv/logs/atop/atop_1', searched: ['/srv/logs'], expected: 'atop/atop_1' },
+    // The deepest searched path that holds it names it.
+    { path: '/srv/logs/atop/atop_1', searched: ['/srv', '/srv/logs'], expected: 'atop/atop_1' },
+    // A path the search named itself reads as its name.
+    { path: '/srv/logs/wtmp', searched: ['/srv/logs/wtmp'], expected: 'wtmp' },
+    // A searched path is a whole directory, not a prefix of a name.
+    { path: '/srv/logs2/wtmp', searched: ['/srv/logs'], expected: '/srv/logs2/wtmp' },
+    { path: '/srv/logs/wtmp', searched: ['/'], expected: 'srv/logs/wtmp' },
+    { path: '/srv/logs/wtmp', searched: [], expected: '/srv/logs/wtmp' },
+  ])('writes $path searched in $searched as $expected', ({ path, searched, expected }) => {
+    expect(pathInSearch(path, searched)).toBe(expected);
   });
 });
