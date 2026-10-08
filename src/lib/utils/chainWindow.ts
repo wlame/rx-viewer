@@ -337,3 +337,29 @@ export function anchorAt(
   }
   return { part: line.part, line: line.localLine, timeMs: line.timestampMs ?? null };
 }
+
+/**
+ * The position of the held line nearest to `target` whose text is
+ * `text`: the target itself, else the nearest one on either side, the
+ * one after the target when two are as near (the line a time names is
+ * the first at or after that time, so a line with the same time and text
+ * is more often after it). Null when no held line has that text, or the
+ * held lines do not hold the target. One pass outward from the target.
+ */
+export function nearestSameText(
+  lines: readonly Pick<FileLine, 'lineNumber' | 'content'>[],
+  startLine: number,
+  target: number,
+  text: string,
+): number | null {
+  const at = target - startLine;
+  if (lines[at]?.lineNumber !== target) return null;
+  for (let distance = 0; distance < lines.length; distance++) {
+    const after = lines[at + distance];
+    if (after?.content === text) return after.lineNumber;
+    const before = lines[at - distance];
+    if (before?.content === text) return before.lineNumber;
+    if (after === undefined && before === undefined) return null;
+  }
+  return null;
+}
