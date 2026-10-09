@@ -91,15 +91,63 @@ const KEY_LABELS: Readonly<Record<string, string>> = {
   ArrowUp: '↑',
 };
 
+/** The prefix of a `KeyboardEvent.code` before the letter or digit it names (`KeyG`, `Digit1`). */
+const CODE_PREFIX = /^(Key|Digit)/;
+
+/** The name of a chord's key without its modifiers: `G` for `KeyG`, `1` for `Digit1`, `Esc`. */
+function keyName(chord: KeyChord): string {
+  const key = chord.key ?? chord.code?.replace(CODE_PREFIX, '') ?? '';
+  return KEY_LABELS[key] ?? (key.length === 1 ? key.toUpperCase() : key);
+}
+
 /** The help dialog's label for a key press. */
 export function chordLabel(chord: KeyChord): string {
   const parts: string[] = [];
   if (chord.mod) parts.push(MOD_LABEL);
   if (chord.alt) parts.push('Alt');
   if (chord.shift) parts.push('Shift');
-  const key = chord.key ?? chord.code?.replace(/^Key/, '') ?? '';
-  parts.push(KEY_LABELS[key] ?? (key.length === 1 ? key.toUpperCase() : key));
+  parts.push(keyName(chord));
   return parts.join('+');
+}
+
+/** Whose key names a label uses: a Mac's symbols, or the words other keyboards print. */
+export type Platform = 'mac' | 'other';
+
+/** An Apple system, whose keyboards print ⌘, ⌥ and ⇧. An iPad may report itself as a Mac. */
+const APPLE_SYSTEM = /Mac|iPhone|iPad|iPod/;
+
+/**
+ * The platform whose key names to show, from the browser's navigator
+ * unless one is given. Without a navigator it is `other`.
+ */
+export function detectPlatform(
+  nav: { platform?: string; userAgent?: string } | undefined = typeof navigator === 'undefined'
+    ? undefined
+    : navigator,
+): Platform {
+  if (!nav) return 'other';
+  const isApple = APPLE_SYSTEM.test(nav.platform ?? '') || APPLE_SYSTEM.test(nav.userAgent ?? '');
+  return isApple ? 'mac' : 'other';
+}
+
+/** The modifiers a chord can hold, in the order a label names them. */
+const MODIFIERS = ['mod', 'alt', 'shift'] as const;
+
+/** Each platform's name for each modifier. */
+const MODIFIER_NAMES: Readonly<Record<Platform, Record<(typeof MODIFIERS)[number], string>>> = {
+  mac: { mod: '⌘', alt: '⌥', shift: '⇧' },
+  other: { mod: 'Ctrl', alt: 'Alt', shift: 'Shift' },
+};
+
+/**
+ * The keys of a chord as `platform` names them, the key itself last:
+ * `['⌥', 'G']` on a Mac, `['Alt', 'G']` elsewhere. A modifier set to
+ * `false` must stay up, so it is not named.
+ */
+export function chordKeys(chord: KeyChord, platform: Platform): string[] {
+  const names = MODIFIER_NAMES[platform];
+  const pressed = MODIFIERS.filter((modifier) => chord[modifier]);
+  return [...pressed.map((modifier) => names[modifier]), keyName(chord)];
 }
 
 /** Every key press of a row, its main chord first. */
@@ -309,6 +357,14 @@ export function shortcutById(id: ShortcutId): Shortcut {
   const shortcut = SHORTCUTS.find((s) => s.id === id);
   if (!shortcut) throw new Error(`No shortcut with id ${id}`);
   return shortcut;
+}
+
+/**
+ * The keys of every chord of the row `id`, its main chord first, as
+ * `platform` names them. A row that is a mouse gesture has none.
+ */
+export function shortcutKeys(id: ShortcutId, platform: Platform): string[][] {
+  return chordsOf(shortcutById(id)).map((chord) => chordKeys(chord, platform));
 }
 
 /** Whether `event` is the key press of the row `id`. */

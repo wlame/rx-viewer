@@ -1,13 +1,18 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SHORTCUTS,
+  chordKeys,
+  chordLabel,
+  detectPlatform,
   handleGlobalKey,
   isShortcut,
+  shortcutKeys,
   shortcutLabel,
   shortcutsByScope,
   type GlobalShortcutActions,
+  type KeyChord,
   type KeyPress,
 } from './shortcuts';
 import { belongsToInputMethod } from './keyTargets';
@@ -253,5 +258,82 @@ describe('the shortcut list', () => {
       expect(shortcutLabel(shortcut)).not.toBe('');
       expect(shortcut.description).not.toBe('');
     }
+  });
+});
+
+describe('chordKeys', () => {
+  it.each<[KeyChord, string[], string[]]>([
+    [{ code: 'KeyG', alt: true }, ['⌥', 'G'], ['Alt', 'G']],
+    [{ code: 'Digit1', alt: true }, ['⌥', '1'], ['Alt', '1']],
+    [{ key: 'e', mod: true, shift: true }, ['⌘', '⇧', 'E'], ['Ctrl', 'Shift', 'E']],
+    [{ key: 'Escape' }, ['Esc'], ['Esc']],
+    [{ key: '/', mod: true }, ['⌘', '/'], ['Ctrl', '/']],
+    [{ key: ' ' }, ['Space'], ['Space']],
+    [{ key: 'ArrowLeft', shift: true }, ['⇧', '←'], ['Shift', '←']],
+  ])('names the keys of %o on a Mac and elsewhere', (chord, mac, other) => {
+    expect(chordKeys(chord, 'mac')).toEqual(mac);
+    expect(chordKeys(chord, 'other')).toEqual(other);
+  });
+
+  // `shift: false` means "without Shift": it is matched, not pressed.
+  it('shows no Shift for a chord that must be pressed without it', () => {
+    expect(chordKeys({ key: 'Enter', shift: false }, 'mac')).toEqual(['Enter']);
+    expect(chordKeys({ key: 'Enter', shift: false }, 'other')).toEqual(['Enter']);
+  });
+});
+
+describe('shortcutKeys', () => {
+  it('gives the keys of every chord of a row, its main chord first', () => {
+    expect(shortcutKeys('gotoLine', 'mac')).toEqual([[':'], ['⌘', 'G']]);
+    expect(shortcutKeys('gotoLine', 'other')).toEqual([[':'], ['Ctrl', 'G']]);
+    expect(shortcutKeys('focusSearch', 'mac')).toEqual([['⌘', 'K']]);
+    expect(shortcutKeys('toggle:matchCase', 'other')).toEqual([['Alt', 'C']]);
+  });
+
+  it('gives no keys for a row that is a mouse gesture', () => {
+    expect(shortcutKeys('timelineScrub', 'mac')).toEqual([]);
+  });
+});
+
+describe('detectPlatform', () => {
+  const MAC_SAFARI =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  const WINDOWS_CHROME =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+  const LINUX_FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:141.0) Gecko/20100101 Firefox/141.0';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['a Mac', { platform: 'MacIntel', userAgent: MAC_SAFARI }],
+    ['a Mac whose platform is empty', { platform: '', userAgent: MAC_SAFARI }],
+    ['a Mac platform alone', { platform: 'MacIntel' }],
+    ['an iPad', { platform: 'iPad', userAgent: '' }],
+  ])('is mac for %s', (_name, nav) => {
+    expect(detectPlatform(nav)).toBe('mac');
+  });
+
+  it.each([
+    ['Windows', { platform: 'Win32', userAgent: WINDOWS_CHROME }],
+    ['Linux', { platform: 'Linux x86_64', userAgent: LINUX_FIREFOX }],
+    ['an empty navigator', {}],
+  ])('is other for %s', (_name, nav) => {
+    expect(detectPlatform(nav)).toBe('other');
+  });
+
+  it('reads the browser navigator when given none, and is other without one', () => {
+    vi.stubGlobal('navigator', { platform: 'MacIntel', userAgent: MAC_SAFARI });
+    expect(detectPlatform()).toBe('mac');
+
+    vi.stubGlobal('navigator', undefined);
+    expect(detectPlatform()).toBe('other');
+  });
+});
+
+describe('chordLabel', () => {
+  it('reads a digit code as its digit', () => {
+    expect(chordLabel({ code: 'Digit1', alt: true })).toBe('Alt+1');
   });
 });
