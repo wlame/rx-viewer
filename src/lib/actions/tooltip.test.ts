@@ -218,9 +218,25 @@ describe('the tooltip action', () => {
     const { trigger } = mount({ label: 'Files' });
     const list = document.body.appendChild(document.createElement('div'));
     showByKeyboard(trigger);
+    vi.advanceTimersToNextFrame();
 
     list.dispatchEvent(new Event('scroll'));
 
+    expect(shownTooltip()).toBeNull();
+  });
+
+  // A focus that scrolls its trigger into view sends `scroll` after
+  // `focus`, before the next frame's animation callbacks.
+  it('stays through the scroll its keyboard focus causes, and hides on a later one', () => {
+    const { trigger } = mount({ label: 'Files' });
+    const list = document.body.appendChild(document.createElement('div'));
+    showByKeyboard(trigger);
+
+    list.dispatchEvent(new Event('scroll'));
+    expect(shownTooltip()?.textContent).toBe('Files');
+
+    vi.advanceTimersToNextFrame();
+    list.dispatchEvent(new Event('scroll'));
     expect(shownTooltip()).toBeNull();
   });
 

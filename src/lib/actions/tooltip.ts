@@ -7,9 +7,10 @@
  * shown for one trigger at a time. It appears after a hover of
  * `TOOLTIP_DELAY_MS`, and at once when the keyboard focuses the trigger
  * (`:focus-visible`). It hides when the pointer leaves, the trigger
- * loses focus, Escape is pressed on it, anything scrolls, a pointer is
- * pressed, or the trigger stops being drawn or is destroyed. While it is
- * shown, the trigger's `aria-describedby` names it.
+ * loses focus, Escape is pressed on it, anything scrolls (after the frame
+ * it was shown in), a pointer is pressed, or the trigger stops being
+ * drawn or is destroyed. While it is shown, the trigger's
+ * `aria-describedby` names it.
  *
  * The text is set with `textContent` only: a label may hold a file name.
  */
@@ -63,6 +64,8 @@ const DETAIL_CLASS = 'mt-0.5 text-gh-fg-muted dark:text-gh-fg-dark-muted';
 let owner: HTMLElement | null = null;
 /** Watches the owner while its tooltip is shown, to hide it when it is no longer drawn. */
 let drawnWatch: IntersectionObserver | null = null;
+/** The frame until which a scroll does not hide the tooltip, or null when every scroll does. */
+let scrollGraceFrame: number | null = null;
 
 interface Size {
   width: number;
@@ -170,16 +173,35 @@ function watchWhileShown(node: HTMLElement): void {
   drawnWatch.observe(node);
 }
 
+/**
+ * Let no scroll hide the tooltip until the next frame. A keyboard focus
+ * that scrolls its trigger into view sends `scroll` after `focus`, in the
+ * next frame and before that frame's animation callbacks; that scroll is
+ * not the user's, and the tooltip it would hide at once stays.
+ */
+function ignoreScrollUntilNextFrame(): void {
+  if (typeof requestAnimationFrame === 'undefined') return;
+  scrollGraceFrame = requestAnimationFrame(() => {
+    scrollGraceFrame = null;
+  });
+}
+
+function hideOnScroll(): void {
+  if (scrollGraceFrame === null) hideTooltip();
+}
+
 function hideTooltip(): void {
   if (!owner) return;
   stopDescribingByTooltip(owner);
   owner = null;
   const element = document.getElementById(TOOLTIP_ID);
   if (element) element.hidden = true;
-  window.removeEventListener('scroll', hideTooltip, true);
+  window.removeEventListener('scroll', hideOnScroll, true);
   window.removeEventListener('pointerdown', hideTooltip, true);
   drawnWatch?.disconnect();
   drawnWatch = null;
+  if (scrollGraceFrame !== null) cancelAnimationFrame(scrollGraceFrame);
+  scrollGraceFrame = null;
 }
 
 function showTooltip(node: HTMLElement, params: TooltipParams): void {
@@ -187,9 +209,10 @@ function showTooltip(node: HTMLElement, params: TooltipParams): void {
     hideTooltip();
     owner = node;
     describeByTooltip(node);
-    window.addEventListener('scroll', hideTooltip, true);
+    window.addEventListener('scroll', hideOnScroll, true);
     window.addEventListener('pointerdown', hideTooltip, true);
     watchWhileShown(node);
+    ignoreScrollUntilNextFrame();
   }
   const element = tooltipElement();
   element.replaceChildren(...tooltipLines(params, detectPlatform()));
