@@ -286,6 +286,33 @@ describe('the tooltip action', () => {
     expect(shownTooltip()?.style.left).toBe('120px');
     expect(shownTooltip()?.style.top).toBe(`${50 + 20 + TOOLTIP_GAP_PX}px`);
   });
+
+  // A box with `position: fixed` and `left` set is at most as wide as the
+  // room right of `left`. The stub gives jsdom that rule: the tooltip is
+  // 10 px per character, cut to the room right of its current `left`.
+  it('measures itself away from where the last tooltip stood', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.id !== TOOLTIP_ID) return 0;
+      const room = window.innerWidth - (parseFloat(this.style.left) || 0);
+      return Math.min((this.textContent ?? '').length * 10, room);
+    });
+    const nearRightEdge = mount({ label: 'Help' });
+    vi.spyOn(nearRightEdge.trigger, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(window.innerWidth - 24, 10, 20, 20),
+    );
+    showByKeyboard(nearRightEdge.trigger);
+    expect(shownTooltip()?.style.left).toBe(`${window.innerWidth - TOOLTIP_EDGE_PX - 40}px`);
+    nearRightEdge.trigger.blur();
+
+    const wider = mount({ label: 'Group rotated logs' });
+    vi.spyOn(wider.trigger, 'getBoundingClientRect').mockReturnValue(new DOMRect(400, 10, 20, 20));
+    showByKeyboard(wider.trigger);
+
+    // 180 px wide, centred on x = 410.
+    expect(shownTooltip()?.style.left).toBe(`${410 - 90}px`);
+  });
 });
 
 describe('the keys in a tooltip', () => {

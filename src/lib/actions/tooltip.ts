@@ -194,6 +194,11 @@ function showTooltip(node: HTMLElement, params: TooltipParams): void {
   const element = tooltipElement();
   element.replaceChildren(...tooltipLines(params, detectPlatform()));
   element.hidden = false;
+  // A fixed box with `left` set is at most as wide as the room right of
+  // it; measured where the last tooltip stood, near the right edge, a
+  // longer one would wrap and keep that narrow size.
+  element.style.left = '0px';
+  element.style.top = '0px';
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const size = { width: element.offsetWidth, height: element.offsetHeight };
   const { left, top } = tooltipPosition(node.getBoundingClientRect(), size, viewport);
