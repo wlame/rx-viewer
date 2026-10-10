@@ -8,6 +8,7 @@ import { health, tree } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
 import { treeFocusRequested } from '$lib/stores/layout';
+import type { TreeEntry } from '$lib/types';
 import {
   CHAIN_NAMES,
   LOG_DIR,
@@ -16,8 +17,11 @@ import {
   LogDirBackend,
   logDirChains,
   serveLogDir,
+  treeEntry,
 } from '$lib/testing/fakeLogDir';
+import { isChainRow, shownChildren } from '$lib/utils/chainTree';
 import { formatFileTime, formatSize } from '$lib/utils/format';
+import type { TreeSort } from '$lib/utils/treeSort';
 import FileTree from './FileTree.svelte';
 
 let mounted: FileTree | null = null;
@@ -30,6 +34,34 @@ async function mount(features: string[], backend = new LogDirBackend({ features 
   mounted = new FileTree({ target });
   await tick();
   return { target };
+}
+
+/** A backend whose search roots are `roots`, in that order, each an empty folder. */
+function serveRoots(roots: string[]) {
+  const answer = (body: unknown) => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+  const listing = (path: string, entries: TreeEntry[], isRoot: boolean) => ({
+    path,
+    parent: null,
+    is_search_root: isRoot,
+    entries,
+    total_entries: entries.length,
+    total_size: null,
+    total_size_human: null,
+  });
+  vi.stubGlobal('fetch', async (url: string) => {
+    const parsed = new URL(url, 'http://localhost');
+    if (parsed.pathname === '/health') return answer({ contract_version: '1.7', features: [] });
+    const path = parsed.searchParams.get('path');
+    if (path !== null) return answer(listing(path, [], false));
+    const entries = roots.map((root) => treeEntry(root, 'directory', { children_count: 0 }));
+    return answer(listing('', entries, true));
+  });
 }
 
 /** The tree row of `path`. */
@@ -173,6 +205,65 @@ describe('the value column of the files panel', () => {
     expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe(
       formatFileTime(LOG_FILE_TIME).full,
     );
+  });
+});
+
+describe('the order of the files panel', () => {
+  /** The names of the rows under `LOG_DIR`, in the order the page shows them. */
+  function shownUnderLogDir(target: HTMLElement): string[] {
+    const rows = [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    const logDir = rows.findIndex((row) => row.textContent?.trim().startsWith('logs'));
+    return rows
+      .slice(logDir + 1)
+      .map(
+        (row) => row.dataset.chain ?? row.querySelector('span.truncate')?.textContent?.trim() ?? '',
+      );
+  }
+
+  /** The names `shownChildren` gives the rows of `LOG_DIR`, a chain's by its name. */
+  function expectedUnderLogDir(chainModeOn: boolean, sort: TreeSort): string[] {
+    const dir = tree.nodeAt(LOG_DIR);
+    if (!dir) throw new Error(`${LOG_DIR} is not in the tree`);
+    return shownChildren(dir, { chainModeOn, sort }).map((row) =>
+      isChainRow(row) ? row.chain.name : row.name,
+    );
+  }
+
+  it.each([
+    [false, { key: 'size', dir: 'desc' }],
+    [false, { key: 'name', dir: 'desc' }],
+    [true, { key: 'size', dir: 'asc' }],
+    [true, { key: 'name', dir: 'desc' }],
+  ] as const)('shows the rows (chain mode %s) in the order %o', async (mode, sort) => {
+    const { target } = await mountLogDir(mode);
+
+    filesView.update((view) => ({ ...view, sort }));
+    await tick();
+
+    const shown = shownUnderLogDir(target);
+    expect(shown).toEqual(expectedUnderLogDir(mode, sort));
+    expect(shown).not.toEqual(expectedUnderLogDir(mode, DEFAULT_FILES_VIEW.sort));
+  });
+
+  it('keeps the search roots in their configured order', async () => {
+    serveRoots(['/zeta', '/alpha', '/mid']);
+    await health.check();
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    mounted = new FileTree({ target });
+    await tree.loadRoots();
+    await tick();
+    const roots = () =>
+      [...target.querySelectorAll<HTMLElement>('[role="tree"] > div > [role="treeitem"]')].map(
+        (row) => row.querySelector('span.truncate')?.textContent?.trim(),
+      );
+
+    expect(roots()).toEqual(['zeta', 'alpha', 'mid']);
+
+    filesView.update((view) => ({ ...view, sort: { key: 'name', dir: 'desc' } }));
+    await tick();
+
+    expect(roots()).toEqual(['zeta', 'alpha', 'mid']);
   });
 });
 

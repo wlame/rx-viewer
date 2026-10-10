@@ -9,6 +9,7 @@ import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { chainMode } from './stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from './stores/filesView';
+import { DEFAULT_SORT, type TreeSort } from './utils/treeSort';
 import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
 import { fileViewOf, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
@@ -27,6 +28,7 @@ import { FakeChain, T0_MS, serveChain, type FakePart } from './testing/fakeChain
 import { notifications } from './stores/notifications';
 
 const ONE_MB = 1024 * 1024;
+const DATE_ASC: TreeSort = { key: 'date', dir: 'asc' };
 
 function openFile(overrides: Partial<OpenFile>): OpenFile {
   return {
@@ -364,6 +366,7 @@ describe('restoreView', () => {
       chains: false,
       labels: false,
       show: 'date',
+      sort: DATE_ASC,
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
@@ -380,7 +383,7 @@ describe('restoreView', () => {
     expect(file.regexFilter?.mode).toBe('hide');
     expect(file.selectedAnomalyCategory).toBe('error');
     expect(get(sidebarTab)).toBe('search');
-    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
+    expect(get(filesView)).toEqual({ labels: false, show: 'date', sort: DATE_ASC });
     expect(get(searchShowsOffsets)).toBe(true);
     expect(get(searchRequest)).toEqual(view.search);
   });
@@ -1611,8 +1614,8 @@ describe('the files panel view in the URL', () => {
   it('restores the labels and the value shown of a view', async () => {
     stubWindow();
 
-    await restoreView({ ...DEFAULT_VIEW, labels: false, show: 'date' });
-    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
+    await restoreView({ ...DEFAULT_VIEW, labels: false, show: 'date', sort: DATE_ASC });
+    expect(get(filesView)).toEqual({ labels: false, show: 'date', sort: DATE_ASC });
 
     await restoreView(DEFAULT_VIEW);
     expect(get(filesView)).toEqual(DEFAULT_FILES_VIEW);
@@ -1624,9 +1627,61 @@ describe('the files panel view in the URL', () => {
     await loadView(readViewState());
     stopSync = startViewSync();
 
-    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
+    expect(get(filesView)).toEqual({ labels: false, show: 'date', sort: DEFAULT_SORT });
     expect(window.location.search).toBe('?labels=0&show=date');
   });
+
+  it('writes the sort by rewriting the entry, and takes it out at name A to Z', () => {
+    const calls = stubWindow();
+    stopSync = startViewSync();
+
+    filesView.update((view) => ({ ...view, sort: { key: 'size', dir: 'desc' } }));
+    expect(urlParams().get('sort')).toBe('size-desc');
+
+    filesView.update((view) => ({ ...view, sort: DEFAULT_SORT }));
+    expect(window.location.search).toBe('');
+    expect(calls.map((call) => call.mode)).toEqual(['replace', 'replace']);
+  });
+
+  it('opens a link sorted by date, oldest first, with the dates shown', async () => {
+    stubWindow('?show=date&sort=date-asc');
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(filesView)).toEqual({ labels: true, show: 'date', sort: DATE_ASC });
+    expect(window.location.search).toBe('?show=date&sort=date-asc');
+  });
+
+  // A link whose sort names the value it does not show sorts by the shown
+  // value in the link's direction, and the address bar says so.
+  it.each([
+    ['?show=size&sort=date-desc', { key: 'size', dir: 'desc' }, '?sort=size-desc'],
+    ['?sort=date-asc', { key: 'size', dir: 'asc' }, '?sort=size-asc'],
+    ['?show=date&sort=size-desc', { key: 'date', dir: 'desc' }, '?show=date&sort=date-desc'],
+  ])('opens %s sorted by the shown value, and rewrites the URL', async (link, sort, written) => {
+    const calls = stubWindow(link);
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(filesView).sort).toEqual(sort);
+    expect(window.location.search).toBe(written);
+    expect(calls.map((call) => call.mode)).toEqual(['replace']);
+  });
+
+  it.each(['?sort=size', '?sort=lines-asc', '?sort=', '?sort=name-asc'])(
+    'opens %s sorted by name, A to Z, and leaves the sort out of the URL',
+    async (link) => {
+      stubWindow(link);
+
+      await loadView(readViewState());
+      stopSync = startViewSync();
+
+      expect(get(filesView).sort).toEqual(DEFAULT_SORT);
+      expect(window.location.search).toBe('');
+    },
+  );
 });
 
 describe('chain mode is not remembered', () => {

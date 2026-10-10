@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alt+G, Alt+L and Alt+V do the same while the files panel is shown and
   no dialog is open, and ← and → move between Size and Date. The link
   keeps the choices as `labels=0` and `show=date`.
+- The link keeps the order of the files panel as `sort=<key>-<dir>`
+  (`name-desc`, `size-asc`, `size-desc`, `date-asc`, `date-desc`; by
+  name A to Z when absent). A sort on the value the link does not show
+  opens as a sort on the shown value in the same direction, and the
+  address bar says so. Switching between Size and Date moves a sort on
+  one to the other, largest or newest first; a sort by name stays.
 
 ### Changed
 

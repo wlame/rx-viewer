@@ -145,6 +145,7 @@ const currentView = derived(
     chains: $chains,
     labels: $filesView.labels,
     show: $filesView.show,
+    sort: $filesView.sort,
     offsets: $offsets,
     search: $search,
     stash: $stash,
@@ -408,7 +409,7 @@ export async function loadView(view: ViewState): Promise<void> {
 /**
  * Bring the app to the view a URL describes: chain mode (the open tabs
  * turned over to it, `stores/chainModeSwitch.ts`), the files panel's
- * labels and value, the results switch, the search, the sidebar tab and
+ * labels, value and sort, the results switch, the search, the sidebar tab and
  * the file. The stash and the file zones
  * stay as they are. Resolves when the file's lines are
  * loaded. A later restore supersedes this one: Back pressed twice ends
@@ -420,7 +421,8 @@ export async function restoreView(view: ViewState): Promise<void> {
   // mode before its first wait, so the search below runs in that mode;
   // the open tabs turn over to it before the file is restored.
   const switching = switchChainMode(view.chains || view.chain !== null);
-  filesView.update((shown) => ({ ...shown, labels: view.labels, show: view.show }));
+  // The value and the sort come together: the sort a link names is on its value.
+  filesView.set({ labels: view.labels, show: view.show, sort: view.sort });
   searchShowsOffsets.set(view.offsets);
   restoreSearch(view.search);
   sidebarTab.set(view.tab);

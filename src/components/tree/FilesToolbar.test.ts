@@ -202,6 +202,50 @@ describe('the Size/Date switch of the files toolbar', () => {
   });
 });
 
+describe('the Size/Date switch and the sort', () => {
+  it.each([
+    [
+      { key: 'size', dir: 'desc' },
+      { key: 'date', dir: 'desc' },
+    ],
+    [
+      { key: 'size', dir: 'asc' },
+      { key: 'date', dir: 'desc' },
+    ],
+    [
+      { key: 'name', dir: 'desc' },
+      { key: 'name', dir: 'desc' },
+    ],
+  ] as const)('turns the sort %o into %o when Date is clicked', async (before, after) => {
+    const { date } = await mount();
+    filesView.update((view) => ({ ...view, sort: before }));
+
+    date()?.click();
+    await tick();
+
+    expect(get(filesView).sort).toEqual(after);
+  });
+
+  it('moves a sort on the date to the size, largest first, with Alt+V', async () => {
+    await mount();
+    filesView.set({ ...DEFAULT_FILES_VIEW, show: 'date', sort: { key: 'date', dir: 'asc' } });
+
+    await keyDown(document.body, { key: '√', code: 'KeyV', altKey: true });
+
+    expect(get(filesView)).toMatchObject({ show: 'size', sort: { key: 'size', dir: 'desc' } });
+  });
+
+  it('keeps the sort when the value already shown is clicked', async () => {
+    const { size } = await mount();
+    filesView.update((view) => ({ ...view, sort: { key: 'size', dir: 'asc' } }));
+
+    size()?.click();
+    await tick();
+
+    expect(get(filesView).sort).toEqual({ key: 'size', dir: 'asc' });
+  });
+});
+
 describe('the tooltips of the files toolbar', () => {
   it('names Group rotated logs, its key and what it groups', async () => {
     vi.stubGlobal('navigator', { platform: 'Linux x86_64', userAgent: '' });

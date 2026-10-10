@@ -1,6 +1,7 @@
 <!--
   The files panel's toolbar: its title, the Group rotated logs and Show
   labels toggles, and the Size/Date switch of the value each row shows.
+  Switching the value moves a sort on the other value to this one.
   Alt+G, Alt+L and Alt+V do the same from anywhere while the panel is
   shown and no dialog is open; at any other time the key is left alone.
 -->
@@ -9,7 +10,7 @@
   import { backendHas, health } from '$lib/stores';
   import { chainMode } from '$lib/stores/chainMode';
   import { switchChainMode } from '$lib/stores/chainModeSwitch';
-  import { filesPanelShown, filesView } from '$lib/stores/filesView';
+  import { filesPanelShown, filesView, showFilesValue } from '$lib/stores/filesView';
   import { modalOpen } from '$lib/stores/layout';
   import {
     handleFilesPanelKey,
@@ -60,10 +61,6 @@
     return true;
   }
 
-  function showValue(show: ValueColumn): void {
-    filesView.update((view) => ({ ...view, show }));
-  }
-
   /** The value `step` places after `from` in the switch, around the ends. */
   function valueAfter(from: ValueColumn, step: number): ValueColumn {
     const count = VALUE_COLUMNS.length;
@@ -71,7 +68,7 @@
   }
 
   function switchValue(): boolean {
-    showValue(valueAfter($filesView.show, 1));
+    showFilesValue(valueAfter($filesView.show, 1));
     return true;
   }
 
@@ -90,7 +87,7 @@
     if (!move) return;
     event.preventDefault();
     const next = valueAfter($filesView.show, move.step);
-    showValue(next);
+    showFilesValue(next);
     valueSwitch.querySelector<HTMLElement>(`[data-value="${next}"]`)?.focus();
   }
 </script>
@@ -147,7 +144,7 @@
         data-value={value}
         class="{VALUE_CLASS} {isChecked ? ON_CLASS : OFF_CLASS}"
         use:tooltip={{ label: VALUE_SWITCH_LABEL, shortcut: 'switchValue' }}
-        on:click={() => showValue(value)}
+        on:click={() => showFilesValue(value)}
         on:keydown={handleValueKeydown}
       >
         {VALUE_NAMES[value]}

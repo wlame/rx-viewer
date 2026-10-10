@@ -6,11 +6,10 @@
  * time it jumped to (in a chain, with the fingerprint of the files that
  * line was read in), its highlighting, filter and anomaly category, the
  * sidebar tab, whether rotated logs are grouped into chains, whether the
- * files panel shows its labels and which value it shows, the last
- * search, whether its results show byte offsets, the timestamps stash,
- * and the time zones chosen for files and chains. Each key has one row
- * in
- * `CODECS`, which reads it as untrusted input (a missing or invalid
+ * files panel shows its labels, which value it shows and how it sorts
+ * its rows, the last search, whether its results show byte offsets, the
+ * timestamps stash, and the time zones chosen for files and chains. Each
+ * key has one row in `CODECS`, which reads it as untrusted input (a missing or invalid
  * value gives that key's default) and writes it back, leaving a value at
  * its default out of the link.
  *
@@ -29,6 +28,7 @@ import {
 import { SEARCH_TOGGLES } from './searchToggles';
 import { isChainKey } from './tabKey';
 import { normalizeStash } from './timeStash';
+import { DEFAULT_SORT, SORT_DIRS, SORT_KEYS, sortForShown, type TreeSort } from './treeSort';
 
 /** The sidebar's two tabs. */
 export type SidebarTab = 'tree' | 'search';
@@ -111,6 +111,11 @@ export interface ViewState {
   labels: boolean;
   /** The value the files panel shows beside each name (`show=date` for the date). */
   show: ValueColumn;
+  /**
+   * The order of the files panel's rows (`sort=size-desc`). A sort on a
+   * value is on the value shown.
+   */
+  sort: TreeSort;
   /** The search results show byte offsets instead of line numbers. */
   offsets: boolean;
   /** The last search run, or null for none. */
@@ -140,6 +145,7 @@ export const DEFAULT_VIEW: ViewState = {
   chains: false,
   labels: true,
   show: 'size',
+  sort: DEFAULT_SORT,
   offsets: false,
   search: null,
   stash: [],
@@ -339,6 +345,32 @@ function defaultTab(hasSearch: boolean): SidebarTab {
   return hasSearch ? 'search' : 'tree';
 }
 
+/** The value a link shows: only `show=date` is the date. */
+function parseShow(params: URLSearchParams): ValueColumn {
+  return VALUE_COLUMNS.find((value) => value === params.get('show')) ?? DEFAULT_VIEW.show;
+}
+
+/** A sort as the URL writes it: `size-desc`. */
+function sortText(sort: TreeSort): string {
+  return `${sort.key}-${sort.dir}`;
+}
+
+/** Every sort there is, each key in both directions. */
+const TREE_SORTS: readonly TreeSort[] = SORT_KEYS.flatMap((key) =>
+  SORT_DIRS.map((dir) => ({ key, dir })),
+);
+
+/**
+ * The sort a link names: one of the sorts written out exactly, else by
+ * name A to Z. A sort on the value the link does not show is read as a
+ * sort on the value it shows, in the link's direction.
+ */
+function parseSort(params: URLSearchParams): TreeSort {
+  const text = params.get('sort');
+  const named = TREE_SORTS.find((sort) => sortText(sort) === text) ?? DEFAULT_SORT;
+  return sortForShown(named, parseShow(params));
+}
+
 const FILTER_MODES: readonly FilterMode[] = ['hide', 'show', 'highlight'];
 const DEFAULT_FILTER_MODE: FilterMode = 'highlight';
 
@@ -432,7 +464,8 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     parse: (params) => isOn(params.get('chains')),
     serialize: (on) => (on ? [['chains', '1']] : []),
   },
-  // Hiding the labels or showing another value rewrites the current entry.
+  // Hiding the labels, showing another value or sorting the rows
+  // rewrites the current entry.
   labels: {
     names: ['labels'],
     parse: (params) => params.get('labels') !== '0',
@@ -440,9 +473,14 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
   },
   show: {
     names: ['show'],
-    parse: (params) =>
-      VALUE_COLUMNS.find((value) => value === params.get('show')) ?? DEFAULT_VIEW.show,
+    parse: parseShow,
     serialize: (show) => (show === DEFAULT_VIEW.show ? [] : [['show', show]]),
+  },
+  sort: {
+    names: ['sort'],
+    parse: parseSort,
+    serialize: (sort) =>
+      sortText(sort) === sortText(DEFAULT_SORT) ? [] : [['sort', sortText(sort)]],
   },
   offsets: {
     names: ['offsets'],
@@ -533,8 +571,8 @@ function isStepKey<K extends keyof ViewState>(
  * any key changed in a way that is a step (opening a file or a chain,
  * running a search, switching the sidebar tab, a jump by time),
  * otherwise a replace (the line and its part, the highlighting, the
- * filter, the category, chain mode, the files panel's labels and value,
- * the offsets switch, the stash, the file zones).
+ * filter, the category, chain mode, the files panel's labels, value and
+ * sort, the offsets switch, the stash, the file zones).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';

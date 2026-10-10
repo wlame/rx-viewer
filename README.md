@@ -229,12 +229,18 @@ An unknown or invalid value is read as absent.
 | `chains`                                      | `1`: chain mode on; absent, off                                                                                      |
 | `labels`                                      | `0`: the files panel hides the labels of its rows; absent, it shows them                                             |
 | `show`                                        | `date`: the files panel shows each row's modification time; absent, its size                                         |
+| `sort`                                        | The files panel's order: `name-desc`, `size-asc`, `size-desc`, `date-asc` or `date-desc`; absent, `name-asc`         |
 | `regexp`                                      | A search pattern, once per pattern                                                                                   |
 | `max_results`, `only_opened`                  | The search's cap (1 to 10,000, default 100) and "Only opened files"                                                  |
 | `ignore_case`, `word_regexp`, `fixed_strings` | The search's matching toggles                                                                                        |
 | `offsets`                                     | `1`: the search results show byte offsets                                                                            |
 | `stash`                                       | The timestamps stash: up to 7 instants, comma-separated                                                              |
 | `ftz`                                         | A zone chosen for a file, `ftz=UTC@/var/log/app.log`, or for a chain, `ftz=UTC@chain:/var/log/syslog`; once per file |
+
+A `sort` on the value the link does not show is read as a sort on the
+value it shows, in the same direction: `?sort=date-desc` without
+`show=date` opens sorted by size, largest first, and the address bar is
+rewritten to `?sort=size-desc`.
 
 A chain's tab writes `chain`, `part`, `line`, `time` and `fp` together:
 `?chains=1&chain=/var/log/syslog&part=syslog.3.gz&line=500&time=2026-10-03T14:00:00.123Z&fp=3f9a0c51e2d87b46`.

@@ -11,6 +11,7 @@ import {
   type SearchState,
   type ViewState,
 } from './urlState';
+import { DEFAULT_SORT, type TreeSort } from './treeSort';
 
 /**
  * The URL is how a viewer session is shared and restored. A value that
@@ -251,6 +252,8 @@ describe('serializeViewState and parseViewState', () => {
     ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
     ['the Search tab with no search', view({ tab: 'search' })],
     ['labels off and the dates shown', view({ labels: false, show: 'date' })],
+    ['sorted by name, Z to A', view({ sort: { key: 'name', dir: 'desc' } })],
+    ['the dates shown, oldest first', view({ show: 'date', sort: { key: 'date', dir: 'asc' } })],
     ['byte offsets', view({ offsets: true, search: plainSearch, tab: 'search' })],
     [
       'a search with every option',
@@ -356,6 +359,61 @@ describe('the files panel view in the URL', () => {
   it('writes show=date for the dates and nothing for the sizes', () => {
     expect(serializeViewState(view({ show: 'date' }), '')).toBe('?show=date');
     expect(serializeViewState(view({ show: 'size' }), '?show=date')).toBe('');
+  });
+});
+
+describe('the files panel sort in the URL', () => {
+  const sorted = (key: TreeSort['key'], dir: TreeSort['dir']): TreeSort => ({ key, dir });
+
+  it('reads a link without a sort as by name, A to Z', () => {
+    expect(parseViewState('?file=%2Fa.log').sort).toEqual(DEFAULT_SORT);
+  });
+
+  it.each([
+    ['?sort=name-desc', sorted('name', 'desc')],
+    ['?sort=size-asc', sorted('size', 'asc')],
+    ['?sort=size-desc', sorted('size', 'desc')],
+    ['?show=date&sort=date-asc', sorted('date', 'asc')],
+    ['?show=date&sort=date-desc', sorted('date', 'desc')],
+    ['?show=date&sort=name-desc', sorted('name', 'desc')],
+  ])('reads %s as its sort', (query, sort) => {
+    expect(parseViewState(query).sort).toEqual(sort);
+  });
+
+  // The sort follows the value the link shows, in the link's direction.
+  it.each([
+    ['?show=size&sort=date-desc', sorted('size', 'desc')],
+    ['?sort=date-asc', sorted('size', 'asc')],
+    ['?show=date&sort=size-desc', sorted('date', 'desc')],
+    ['?show=lines&sort=date-asc', sorted('size', 'asc')],
+  ])('reads %s, whose sort names the value not shown, as the shown one', (query, sort) => {
+    expect(parseViewState(query).sort).toEqual(sort);
+  });
+
+  it.each(['size', 'lines-asc', '', 'NAME-DESC', 'name-up', 'constructor', 'name-asc-x'])(
+    'reads sort=%j as by name, A to Z',
+    (value) => {
+      expect(parseViewState(`?sort=${value}`).sort).toEqual(DEFAULT_SORT);
+    },
+  );
+
+  it('writes the sort as key-direction', () => {
+    expect(serializeViewState(view({ sort: sorted('size', 'asc') }), '')).toBe('?sort=size-asc');
+    expect(serializeViewState(view({ show: 'date', sort: sorted('date', 'desc') }), '')).toBe(
+      '?show=date&sort=date-desc',
+    );
+  });
+
+  it('never writes sort=name-asc, and drops it from a link', () => {
+    expect(serializeViewState(view({ sort: DEFAULT_SORT }), '')).toBe('');
+    expect(serializeViewState(view({ sort: DEFAULT_SORT }), '?sort=name-asc')).toBe('');
+    expect(serializeViewState(parseViewState('?sort=name-asc'), '?sort=name-asc')).toBe('');
+  });
+
+  it('writes a link whose sort named the hidden value with the shown one', () => {
+    const query = '?show=size&sort=date-desc';
+
+    expect(serializeViewState(parseViewState(query), query)).toBe('?sort=size-desc');
   });
 });
 
@@ -477,6 +535,12 @@ describe('historyModeFor', () => {
         name: 'showing the labels and the sizes again',
         previous: view({ file: '/a.log', labels: false, show: 'date' }),
         next: fileA,
+        mode: 'replace',
+      },
+      {
+        name: 'sorting the files panel',
+        previous: fileA,
+        next: view({ file: '/a.log', sort: { key: 'size', dir: 'desc' } }),
         mode: 'replace',
       },
       { name: 'changing nothing', previous: fileA, next: fileA, mode: 'replace' },

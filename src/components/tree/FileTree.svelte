@@ -62,8 +62,14 @@
         No search roots configured
       </div>
     {:else}
+      <!-- The search roots keep their configured order; the rows under them are sorted. -->
       {#each $tree.roots as node (node.path)}
-        <TreeNode {node} showLabels={$filesView.labels} show={$filesView.show} />
+        <TreeNode
+          {node}
+          showLabels={$filesView.labels}
+          show={$filesView.show}
+          sort={$filesView.sort}
+        />
       {/each}
     {/if}
   </div>
