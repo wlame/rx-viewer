@@ -30,11 +30,6 @@ function mount() {
   dialog = new AnalyzeDialog({ target, props: { path: '/logs/app.log', name: 'app.log' } });
   const close = vi.fn();
   dialog.$on('close', close);
-  const backdrop = target.querySelector<HTMLElement>('div[role="presentation"]');
-  if (!backdrop) throw new Error('the dialog is not rendered');
-  // jsdom does no layout; the dialog checks it has a box before it
-  // takes Escape, so the test gives it one.
-  backdrop.getClientRects = () => [new DOMRect(0, 0, 800, 600)] as unknown as DOMRectList;
   return { close };
 }
 

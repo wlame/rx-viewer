@@ -25,9 +25,9 @@
   /** Cancels the analysis wait: its index request and its share of the task poll. */
   const run = new AbortController();
 
-  // The dialog goes away when it is closed, and with its tree row when
-  // the folder collapses; a poll nobody can see stops with it. Switching
-  // the sidebar to Search only hides the tree, so the dialog stays.
+  // The dialog goes away when it is closed or another analysis takes its
+  // place, and the poll stops with it. The app draws it over every panel,
+  // so no panel switch hides it.
   onDestroy(() => run.abort());
 
   /** Runs once, as the dialog is created. */
@@ -62,16 +62,10 @@
     dispatch('close');
   }
 
-  // The backdrop, which takes no space while the tree is hidden.
-  let backdropEl: HTMLDivElement;
-
   /** Escape closes the dialog. Without it the only way out is a click,
-   *  which leaves a keyboard user trapped behind the overlay. A dialog
-   *  hidden with the tree (the Search panel is shown) ignores Escape, which
-   *  belongs to what is on screen. */
+   *  which leaves a keyboard user trapped behind the overlay. */
   function handleKeydown(event: KeyboardEvent) {
-    const isOnScreen = backdropEl?.getClientRects().length > 0;
-    if (isShortcut('closeAnalysis', event) && isOnScreen) {
+    if (isShortcut('closeAnalysis', event)) {
       close();
     }
   }
@@ -104,7 +98,6 @@
      closes the dialog (handleKeydown), so the backdrop
      click is a mouse convenience, not the only way out. -->
 <div
-  bind:this={backdropEl}
   class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
   role="presentation"
   on:click={handleBackdropClick}

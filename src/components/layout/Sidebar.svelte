@@ -53,8 +53,9 @@
   style:display={$sidebarVisible ? null : 'none'}
 >
   <!-- Every panel stays mounted and the one not shown is hidden, so the
-       tree keeps its expanded folders and an open Analyze dialog, and
-       the search form its unsent patterns and options. -->
+       tree keeps its expanded folders and the search form its unsent
+       patterns and options. A modal dialog is drawn by the app, never in
+       a panel, so hiding a panel never hides one that is open. -->
   <div class="flex-1 overflow-hidden">
     {#each PANELS as panel (panel.id)}
       <div class="h-full" hidden={$sidebarTab !== panel.id}>

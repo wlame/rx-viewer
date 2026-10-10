@@ -110,6 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switch or the files or search panel do nothing and are left to the
   browser; a click that the browser makes of Enter on an activity bar
   button does nothing either.
+- The analysis dialog stays on screen over every panel until its Close,
+  its backdrop or Esc closes it. Back or Forward to a view of the Search
+  panel used to hide it with the files panel until Files was shown
+  again.
 
 ## [0.7.0] - 2026-10-09
 

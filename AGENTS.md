@@ -251,9 +251,13 @@ separate comment above, or eslint reads every word as another rule.
   panel (id, label, icon, the shortcut row that shows it) and
   `Sidebar.svelte` has its view in `PANEL_VIEWS`, so a further panel is
   one row and one view. Every panel stays mounted and the one not shown
-  is `hidden`: the tree keeps its open folders and an open analysis
-  dialog, the search form its unsent edits, and a link's search runs on
-  load whichever panel is shown. A component shows a panel through
+  is `hidden`: the tree keeps its open folders, the search form its
+  unsent edits, and a link's search runs on load whichever panel is
+  shown. A modal dialog is therefore never drawn inside a panel, where a
+  panel switch or Back would hide it while `modalOpen` still counts it:
+  a tree row opens the analysis through `openAnalysis`
+  (`stores/analysisDialog.ts`) and `App.svelte` draws it
+  (`tree/AnalyzeDialogHost.svelte`). A component shows a panel through
   `showPanel(id, focus)` or `clickPanelButton(id)` (`stores/layout.ts`);
   only `restoreView` sets `sidebarTab` itself, from a link.
   A focus request (`treeFocusRequested`, `searchFocusRequested`,

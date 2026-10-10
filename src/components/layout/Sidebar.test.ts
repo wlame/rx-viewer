@@ -6,23 +6,33 @@ import { get } from 'svelte/store';
 import { health, trace, tree } from '$lib/stores';
 import {
   clickPanelButton,
+  modalOpen,
   searchFocusRequested,
   shortcutsHelpOpen,
+  showPanel,
   sidebarTab,
   sidebarVisible,
   treeFocusRequested,
+  type SidebarTab,
 } from '$lib/stores/layout';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
 import { draftFromSearch, searchDraft } from '$lib/stores/searchDraft';
 import { searchRequest } from '$lib/stores/trace';
 import { LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
+import { closeAnalysis } from '$lib/stores/analysisDialog';
+import { startViewSync } from '$lib/viewState';
 import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
+import AnalyzeDialogHost from '../tree/AnalyzeDialogHost.svelte';
+import ActivityBar from './ActivityBar.svelte';
 import Sidebar from './Sidebar.svelte';
 
-let mounted: (Sidebar | KeyboardShortcuts)[] = [];
+let mounted: (Sidebar | KeyboardShortcuts | ActivityBar | AnalyzeDialogHost)[] = [];
 
-/** The side panel and the window's key handler, over a backend with one search root. */
+/**
+ * The side panel, the window's key handler and the analysis dialog's
+ * host, over a backend with one search root.
+ */
 async function mount(backend = new LogDirBackend({ features: [] })) {
   serveLogDir(backend);
   await health.check();
@@ -31,6 +41,7 @@ async function mount(backend = new LogDirBackend({ features: [] })) {
   document.body.appendChild(target);
   mounted = [
     new Sidebar({ target, props: { width: 300 } }),
+    new AnalyzeDialogHost({ target: document.body }),
     new KeyboardShortcuts({ target: document.body }),
   ];
   await tick();
@@ -70,6 +81,7 @@ async function pressAnywhere(init: KeyboardEventInit) {
 afterEach(() => {
   for (const component of mounted) component.$destroy();
   mounted = [];
+  closeAnalysis();
   sidebarTab.set('tree');
   sidebarVisible.set(true);
   shortcutsHelpOpen.set(false);
@@ -217,11 +229,32 @@ async function openAnalysisFromTree(features: string[] = []) {
   );
   analyze?.click();
   await tick();
-  const dialog = target.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+  const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
   const closeButton = dialog?.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
   if (!dialog || !closeButton) throw new Error('the analysis dialog did not open');
   closeButton.focus();
   return { target, dialog, closeButton };
+}
+
+/** Whether `element` is drawn: in the page, under no `hidden` element and none set to `display: none`. */
+function isDrawn(element: Element): boolean {
+  if (!element.isConnected) return false;
+  for (let at: Element | null = element; at; at = at.parentElement) {
+    if (at.hasAttribute('hidden')) return false;
+    if (at instanceof HTMLElement && at.style.display === 'none') return false;
+  }
+  return true;
+}
+
+/**
+ * What Back or Forward does to the page: the address bar names another
+ * entry, then `popstate` fires and the view sync restores it.
+ */
+async function stepHistoryTo(query: string) {
+  history.replaceState(null, '', query);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await tick();
+  await tick();
 }
 
 /** Press a key on `element`, then let the reactive updates run. */
@@ -233,7 +266,7 @@ async function keyDown(element: HTMLElement, init: KeyboardEventInit) {
   return event;
 }
 
-describe('the analysis dialog in the files panel', () => {
+describe('the analysis dialog opened from the files panel', () => {
   it.each([
     ['Alt+2', { key: '™', code: 'Digit2', altKey: true }],
     ['Cmd+Shift+F', { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true }],
@@ -249,23 +282,94 @@ describe('the analysis dialog in the files panel', () => {
       const event = await keyDown(closeButton, init);
 
       expect(event.defaultPrevented).toBe(false);
-      expect(target.contains(dialog)).toBe(true);
-      expect(dialog.closest('[hidden]')).toBeNull();
+      expect(isDrawn(dialog)).toBe(true);
       expect(target.querySelector('aside')?.style.display).not.toBe('none');
       expect(document.activeElement).toBe(closeButton);
     },
   );
 
   it('lets Alt+2 show Search once the dialog is closed', async () => {
-    const { target, closeButton } = await openAnalysisFromTree();
+    const { closeButton } = await openAnalysisFromTree();
     closeButton.click();
     await tick();
-    expect(target.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
 
     const event = await pressAnywhere({ key: '™', code: 'Digit2', altKey: true });
 
     expect(event.defaultPrevented).toBe(true);
     expect(get(sidebarTab)).toBe('search');
+  });
+});
+
+describe('the analysis dialog when the panel behind it changes', () => {
+  let stopSync: () => void = () => {};
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    history.replaceState(null, '', '/');
+  });
+
+  it('stays drawn with the focus in it when Back shows Search, and Esc gives the keys back', async () => {
+    const { dialog, closeButton } = await openAnalysisFromTree();
+    const bar = document.body.appendChild(document.createElement('div'));
+    mounted.push(new ActivityBar({ target: bar }));
+    stopSync = startViewSync();
+
+    await stepHistoryTo('?tab=search');
+
+    expect(get(sidebarTab)).toBe('search');
+    expect(isDrawn(dialog)).toBe(true);
+    expect(document.activeElement).toBe(closeButton);
+    expect(get(modalOpen)).toBe(true);
+
+    await keyDown(closeButton, { key: 'Escape' });
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(get(modalOpen)).toBe(false);
+    const altOne = await pressAnywhere({ key: '¡', code: 'Digit1', altKey: true });
+    expect(altOne.defaultPrevented).toBe(true);
+    expect(get(sidebarTab)).toBe('tree');
+    bar.querySelector<HTMLButtonElement>('button[aria-label="Search"]')?.click();
+    expect(get(sidebarTab)).toBe('search');
+  });
+
+  // A dialog counted in modalOpen but not drawn leaves every panel key
+  // and the activity bar dead, with nothing on screen to close.
+  it('is counted as open only while it is drawn, through panel switches, Back, Forward and a collapse', async () => {
+    const { target, dialog, closeButton } = await openAnalysisFromTree();
+    const folder = rowNamed(target, 'logs')?.dataset.rowId;
+    if (!folder) throw new Error('the folder that holds the file is not rendered');
+    stopSync = startViewSync();
+    /** Each step, and the panel it leaves shown. */
+    const steps: [string, () => unknown, SidebarTab][] = [
+      ['Search shown', () => showPanel('search', false), 'search'],
+      ['Back to Files', () => stepHistoryTo('/'), 'tree'],
+      ['Forward to Search', () => stepHistoryTo('?tab=search'), 'search'],
+      ['Files shown', () => showPanel('tree', false), 'tree'],
+      ['the folder collapsed', () => tree.toggleExpanded(folder), 'tree'],
+      ['the side panel hidden', () => sidebarVisible.set(false), 'tree'],
+    ];
+    const expectCountedAsDrawn = (step: string) => {
+      const modals = [...document.querySelectorAll('[aria-modal="true"]')];
+      expect(modals.filter(isDrawn), step).toEqual(modals);
+      expect(get(modalOpen), step).toBe(modals.length > 0);
+    };
+
+    for (const [step, act, tab] of steps) {
+      await act();
+      await tick();
+
+      expect(get(sidebarTab), step).toBe(tab);
+      expect(document.querySelectorAll('[aria-modal="true"]'), step).toHaveLength(1);
+      expectCountedAsDrawn(step);
+    }
+    expect(rowNamed(target, 'agentctl.log')).toBeUndefined();
+
+    await keyDown(closeButton, { key: 'Escape' });
+
+    expect(dialog.isConnected).toBe(false);
+    expectCountedAsDrawn('closed');
   });
 });
 

@@ -4,6 +4,7 @@
   import { chainModeOn } from '$lib/stores/chainMode';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { openTreeRow } from '$lib/fileOpening';
+  import { openAnalysis } from '$lib/stores/analysisDialog';
   import { treeTabStop } from '$lib/stores/treeFocus';
   import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
   import { formatCount, formatSize } from '$lib/utils/format';
@@ -13,7 +14,6 @@
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
-  import AnalyzeDialog from './AnalyzeDialog.svelte';
   import ChainTreeNode from './ChainTreeNode.svelte';
   import TreeContextMenu from './TreeContextMenu.svelte';
   import { TREE_ROW_FOCUS_CLASS } from './treeRowStyle';
@@ -66,8 +66,6 @@
   let contextMenuX = 0;
   let contextMenuY = 0;
 
-  let showAnalyzePopup = false;
-
   // The keys of the row are the tree's (FileTree.svelte), which reach
   // the same actions as a click.
   function handleClick() {
@@ -90,9 +88,10 @@
     showContextMenu = false;
   }
 
+  /** The app draws the dialog, so it stays on screen whatever the panel or the row does. */
   function handleAnalyze() {
     closeContextMenu();
-    showAnalyzePopup = true;
+    openAnalysis({ path: node.path, name: node.name });
   }
 
   async function handleIndex(reindex: boolean) {
@@ -215,8 +214,4 @@
     on:choose={(e) => MENU_HANDLERS[e.detail]()}
     on:close={closeContextMenu}
   />
-{/if}
-
-{#if showAnalyzePopup}
-  <AnalyzeDialog path={node.path} name={node.name} on:close={() => (showAnalyzePopup = false)} />
 {/if}

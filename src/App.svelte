@@ -9,6 +9,7 @@
   import Sidebar from './components/layout/Sidebar.svelte';
   import MainContent from './components/layout/MainContent.svelte';
   import StatusBar from './components/layout/StatusBar.svelte';
+  import AnalyzeDialogHost from './components/tree/AnalyzeDialogHost.svelte';
   import KeyboardShortcuts from './components/common/KeyboardShortcuts.svelte';
   import Notifications from './components/common/Notifications.svelte';
   import TokenPrompt from './components/common/TokenPrompt.svelte';
@@ -51,6 +52,8 @@
   </div>
 
   <StatusBar />
+  <!-- Before the shortcut list, which opens over it. -->
+  <AnalyzeDialogHost />
   <KeyboardShortcuts />
   <Notifications />
   <TokenPrompt />
