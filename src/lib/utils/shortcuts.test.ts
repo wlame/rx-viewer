@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SHORTCUTS,
+  SHORTCUT_SCOPES,
   chordKeys,
   chordLabel,
   detectPlatform,
@@ -41,6 +42,8 @@ function recordingActions(overrides: Partial<GlobalShortcutActions> = {}) {
   };
   const actions: GlobalShortcutActions = {
     focusSearch: act('focusSearch'),
+    showFiles: act('showFiles'),
+    showSearch: act('showSearch'),
     toggleSidebar: act('toggleSidebar'),
     showShortcuts: act('showShortcuts'),
     closeDialog: act('closeDialog'),
@@ -59,6 +62,37 @@ describe('handleGlobalKey', () => {
       expect(ran).toEqual(['focusSearch']);
       expect(event.preventDefault).toHaveBeenCalled();
     }
+  });
+
+  // A Mac sends the character Option makes ("¡", "™") as the key, so the
+  // digit rows match the key's code.
+  it.each([
+    ['Alt+1 as a Mac sends it', press('¡', { code: 'Digit1', altKey: true }), 'showFiles'],
+    ['Alt+1 elsewhere', press('1', { code: 'Digit1', altKey: true }), 'showFiles'],
+    ['Cmd+Shift+E', press('E', { code: 'KeyE', metaKey: true, shiftKey: true }), 'showFiles'],
+    ['Ctrl+Shift+E', press('E', { code: 'KeyE', ctrlKey: true, shiftKey: true }), 'showFiles'],
+    ['Alt+2 as a Mac sends it', press('™', { code: 'Digit2', altKey: true }), 'showSearch'],
+    ['Cmd+Shift+F', press('F', { code: 'KeyF', metaKey: true, shiftKey: true }), 'showSearch'],
+    ['Ctrl+Shift+F', press('F', { code: 'KeyF', ctrlKey: true, shiftKey: true }), 'showSearch'],
+  ])('runs the panel key for %s and keeps the key from the browser', (_name, event, id) => {
+    const { actions, ran } = recordingActions();
+
+    expect(handleGlobalKey(event, actions)).toBe(true);
+    expect(ran).toEqual([id]);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('takes neither panel key without its modifiers', () => {
+    const { actions, ran } = recordingActions();
+    for (const event of [
+      press('1', { code: 'Digit1' }),
+      press('¡', { code: 'Digit1', altKey: true, metaKey: true }),
+      press('e', { code: 'KeyE', metaKey: true }),
+      press('f', { code: 'KeyF', ctrlKey: true }),
+    ]) {
+      expect(handleGlobalKey(event, actions)).toBe(false);
+    }
+    expect(ran).toEqual([]);
   });
 
   it('runs the sidebar toggle for Cmd+B', () => {
@@ -137,6 +171,8 @@ describe('isShortcut', () => {
     ['focusSearch', press('k', { metaKey: true, isComposing: true })],
     ['closeHistory', press('Escape', { isComposing: true })],
     ['closeAnalysis', press('Escape', { keyCode: 229 })],
+    ['showFiles', press('¡', { code: 'Digit1', altKey: true, isComposing: true })],
+    ['showSearch', press('F', { metaKey: true, shiftKey: true, keyCode: 229 })],
   ] as const)('leaves %s to an input method that composes', (id, event) => {
     expect(isShortcut(id, event)).toBe(false);
   });
@@ -213,6 +249,12 @@ describe('the shortcut list', () => {
   });
 
   it.each([
+    [
+      'panels',
+      'Panels, from anywhere',
+      ['showFiles', 'showSearch'],
+      ['Alt+1 or ⌘/Ctrl+Shift+E', 'Alt+2 or ⌘/Ctrl+Shift+F'],
+    ],
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
     [
       'openPanel',
@@ -245,6 +287,24 @@ describe('the shortcut list', () => {
     expect(group?.title).toBe(title);
     expect(group?.shortcuts.map((s) => s.id)).toEqual(ids);
     expect(group?.shortcuts.map(shortcutLabel)).toEqual(labels);
+  });
+
+  it('lists no group for a place that has no shortcut yet', () => {
+    const groups = shortcutsByScope();
+
+    expect(SHORTCUT_SCOPES.filesPanel).toBe('In the files panel, while it is shown');
+    expect(SHORTCUT_SCOPES.searchPanel).toBe('In the search panel');
+    expect(groups.map((g) => g.scope)).not.toContain('filesPanel');
+    expect(groups.map((g) => g.scope)).not.toContain('searchPanel');
+    expect(groups.every((g) => g.shortcuts.length > 0)).toBe(true);
+  });
+
+  it('lists the panel keys right after the window-wide ones', () => {
+    expect(
+      shortcutsByScope()
+        .map((g) => g.scope)
+        .slice(0, 2),
+    ).toEqual(['anywhere', 'panels']);
   });
 
   it('holds one row per search toggle, from the toggle table', () => {

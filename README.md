@@ -83,32 +83,34 @@ way.
 
 Cmd/Ctrl+/ lists every shortcut in the app. They are:
 
-| Where                               | Keys                    | Action                                                                             |
-| ----------------------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| Anywhere                            | Cmd/Ctrl+K              | Go to the search pattern field                                                     |
-| Anywhere                            | Cmd/Ctrl+B              | Show or hide the sidebar                                                           |
-| Anywhere                            | Cmd/Ctrl+/              | Show or hide the shortcut list                                                     |
-| Anywhere                            | Esc                     | Close the shortcut list                                                            |
-| In a search pattern field           | Enter                   | Run the search                                                                     |
-| In a search pattern field           | Alt+C, Alt+W, Alt+R     | Switch match case, whole word, regular expression                                  |
-| In the file tree                    | Enter or Space          | Open the file, or open or close the folder                                         |
-| In the open file                    | `:` or Cmd/Ctrl+G       | Go to a line of the file; in a log chain's tab, see below                          |
-| In the open file                    | Cmd/Ctrl+F              | Find in the lines loaded in the editor                                             |
-| In the open file                    | Cmd/Alt+click on a chip | Next anomaly of the selected category; with Shift, the previous one                |
-| In the go-to-line box               | Enter                   | Jump to the typed line                                                             |
-| In the go-to-line box               | Esc                     | Close the go-to-line box                                                           |
-| In the editor filter field          | Enter                   | Apply the filter to the open file                                                  |
-| In the editor filter field          | Esc                     | Close the filter bar (an applied filter stays)                                     |
-| On the timeline bar                 | ← or →                  | Move the time by 1/200 of the bar, to a whole second                               |
-| On the timeline bar                 | Shift+← or Shift+→      | Move the time by 1/20 of the bar, to a whole second                                |
-| On the timeline bar                 | Home or End             | Move the time to the start or the end of the bar                                   |
-| On the timeline bar                 | Enter                   | Go to that time in the open file (also in the Go to time box)                      |
-| On the timeline bar                 | Esc                     | Put the time back where the open file is                                           |
-| On the timeline bar                 | Drag or click           | Go to the time under the pointer when the button is released                       |
-| In the picker of a file's time zone | ↓ or ↑                  | Move down or up through the listed zones and the filter field                      |
-| In the picker of a file's time zone | Enter                   | In the filter field: read the file in the first listed zone or the typed offset    |
-| In the picker of a file's time zone | Esc                     | Close the picker and keep the zone                                                 |
-| While a panel is open               | Esc                     | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
+| Where                               | Keys                      | Action                                                                             |
+| ----------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| Anywhere                            | Cmd/Ctrl+K                | Go to the search pattern field                                                     |
+| Anywhere                            | Cmd/Ctrl+B                | Show or hide the sidebar                                                           |
+| Anywhere                            | Cmd/Ctrl+/                | Show or hide the shortcut list                                                     |
+| Anywhere                            | Esc                       | Close the shortcut list                                                            |
+| Panels, from anywhere               | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
+| Panels, from anywhere               | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
+| In the file tree                    | Enter or Space            | Open the file, or open or close the folder                                         |
+| In a search pattern field           | Enter                     | Run the search                                                                     |
+| In a search pattern field           | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
+| In the open file                    | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
+| In the open file                    | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
+| In the open file                    | Cmd/Alt+click on a chip   | Next anomaly of the selected category; with Shift, the previous one                |
+| In the go-to-line box               | Enter                     | Jump to the typed line                                                             |
+| In the go-to-line box               | Esc                       | Close the go-to-line box                                                           |
+| In the editor filter field          | Enter                     | Apply the filter to the open file                                                  |
+| In the editor filter field          | Esc                       | Close the filter bar (an applied filter stays)                                     |
+| On the timeline bar                 | ← or →                    | Move the time by 1/200 of the bar, to a whole second                               |
+| On the timeline bar                 | Shift+← or Shift+→        | Move the time by 1/20 of the bar, to a whole second                                |
+| On the timeline bar                 | Home or End               | Move the time to the start or the end of the bar                                   |
+| On the timeline bar                 | Enter                     | Go to that time in the open file (also in the Go to time box)                      |
+| On the timeline bar                 | Esc                       | Put the time back where the open file is                                           |
+| On the timeline bar                 | Drag or click             | Go to the time under the pointer when the button is released                       |
+| In the picker of a file's time zone | ↓ or ↑                    | Move down or up through the listed zones and the filter field                      |
+| In the picker of a file's time zone | Enter                     | In the filter field: read the file in the first listed zone or the typed offset    |
+| In the picker of a file's time zone | Esc                       | Close the picker and keep the zone                                                 |
+| While a panel is open               | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
 
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
 is the one to trust if the two ever differ.

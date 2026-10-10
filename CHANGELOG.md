@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Panel keys from anywhere: Alt+1 or Cmd/Ctrl+Shift+E shows the files
+  panel and moves the focus to the file tree (its selected row, else its
+  first row); Alt+2 or Cmd/Ctrl+Shift+F shows the search panel and moves
+  the focus to the first pattern field. Both show a hidden side panel,
+  and neither acts while the shortcut list is open.
+
 ## [0.7.0] - 2026-10-09
 
 ### Added

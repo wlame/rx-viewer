@@ -12,8 +12,11 @@ import { SEARCH_TOGGLES } from './searchToggles';
 /** Where a shortcut works, in the order the help dialog lists them. */
 export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
-  searchField: 'In a search pattern field',
+  panels: 'Panels, from anywhere',
+  filesPanel: 'In the files panel, while it is shown',
   fileTree: 'In the file tree',
+  searchPanel: 'In the search panel',
+  searchField: 'In a search pattern field',
   filePane: 'In the open file',
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
@@ -40,7 +43,8 @@ export interface KeyChord {
 }
 
 /** The shortcuts the window-wide handler acts on. */
-export type GlobalShortcutId = 'focusSearch' | 'toggleSidebar' | 'showShortcuts' | 'closeDialog';
+export type GlobalShortcutId =
+  'focusSearch' | 'showFiles' | 'showSearch' | 'toggleSidebar' | 'showShortcuts' | 'closeDialog';
 
 export type ShortcutId =
   | GlobalShortcutId
@@ -211,6 +215,23 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: 'Close this list',
     chord: { key: 'Escape' },
   },
+  // Alt+digit is matched by the key's code: on a Mac Option+1 types "¡".
+  // Firefox on Linux takes Alt+1 to Alt+8 for its own tabs, hence the
+  // second chord.
+  {
+    id: 'showFiles',
+    scope: 'panels',
+    description: 'Show the files panel and go to the file tree',
+    chord: { code: 'Digit1', alt: true },
+    otherChords: [{ key: 'e', mod: true, shift: true }],
+  },
+  {
+    id: 'showSearch',
+    scope: 'panels',
+    description: 'Show the search panel and go to the first pattern field',
+    chord: { code: 'Digit2', alt: true },
+    otherChords: [{ key: 'f', mod: true, shift: true }],
+  },
   {
     id: 'runSearch',
     scope: 'searchField',
@@ -372,17 +393,22 @@ export function isShortcut(id: ShortcutId, event: KeyPress): boolean {
   return chordsOf(shortcutById(id)).some((chord) => matchesChord(chord, event));
 }
 
-/** The rows of each scope, in table order, for the help dialog. */
+/**
+ * The rows of each scope, in table order, for the help dialog. A scope
+ * with no row yet is left out, so the help shows no empty group.
+ */
 export function shortcutsByScope(): {
   scope: ShortcutScope;
   title: string;
   shortcuts: Shortcut[];
 }[] {
-  return (Object.keys(SHORTCUT_SCOPES) as ShortcutScope[]).map((scope) => ({
-    scope,
-    title: SHORTCUT_SCOPES[scope],
-    shortcuts: SHORTCUTS.filter((s) => s.scope === scope),
-  }));
+  return (Object.keys(SHORTCUT_SCOPES) as ShortcutScope[])
+    .map((scope) => ({
+      scope,
+      title: SHORTCUT_SCOPES[scope],
+      shortcuts: SHORTCUTS.filter((s) => s.scope === scope),
+    }))
+    .filter((group) => group.shortcuts.length > 0);
 }
 
 /**
@@ -393,6 +419,8 @@ export type GlobalShortcutActions = Record<GlobalShortcutId, () => boolean>;
 
 const GLOBAL_IDS: readonly GlobalShortcutId[] = [
   'focusSearch',
+  'showFiles',
+  'showSearch',
   'toggleSidebar',
   'showShortcuts',
   'closeDialog',

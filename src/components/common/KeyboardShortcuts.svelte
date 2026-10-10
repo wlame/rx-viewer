@@ -1,6 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { focusSearch, toggleSidebar } from '$lib/stores/layout';
+  import { shortcutsHelpOpen, showPanel, toggleSidebar, type SidebarTab } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
   import {
     handleGlobalKey,
@@ -10,27 +10,37 @@
     type GlobalShortcutActions,
   } from '$lib/utils/shortcuts';
 
-  let showHelp = false;
-
   const groups = shortcutsByScope();
+
+  /**
+   * Show a panel and move the focus into it. Not while this help covers
+   * the window: the key is then left to the browser.
+   */
+  function showPanelByKey(id: SidebarTab): boolean {
+    if ($shortcutsHelpOpen) return false;
+    showPanel(id, true);
+    return true;
+  }
 
   const actions: GlobalShortcutActions = {
     focusSearch: () => {
-      showHelp = false;
-      focusSearch();
+      shortcutsHelpOpen.set(false);
+      showPanel('search', true);
       return true;
     },
+    showFiles: () => showPanelByKey('tree'),
+    showSearch: () => showPanelByKey('search'),
     toggleSidebar: () => {
       toggleSidebar();
       return true;
     },
     showShortcuts: () => {
-      showHelp = !showHelp;
+      shortcutsHelpOpen.update((open) => !open);
       return true;
     },
     closeDialog: () => {
-      if (!showHelp) return false;
-      showHelp = false;
+      if (!$shortcutsHelpOpen) return false;
+      shortcutsHelpOpen.set(false);
       return true;
     },
   };
@@ -48,14 +58,14 @@
 <svelte:window on:keydown|capture={handleKeydown} />
 
 <!-- Help dialog -->
-{#if showHelp}
+{#if $shortcutsHelpOpen}
   <div
     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
     role="button"
     tabindex="-1"
     aria-label="Close dialog"
-    on:click={() => (showHelp = false)}
-    on:keydown={(e) => isShortcut('closeDialog', e) && (showHelp = false)}
+    on:click={() => shortcutsHelpOpen.set(false)}
+    on:keydown={(e) => isShortcut('closeDialog', e) && shortcutsHelpOpen.set(false)}
   >
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div
@@ -95,7 +105,7 @@
         </dl>
       {/each}
 
-      <button class="btn btn-primary w-full mt-4" on:click={() => (showHelp = false)}>
+      <button class="btn btn-primary w-full mt-4" on:click={() => shortcutsHelpOpen.set(false)}>
         Close
       </button>
     </div>

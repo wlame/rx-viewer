@@ -1,9 +1,9 @@
-import { writable } from 'svelte/store';
+import { writable, type Writable } from 'svelte/store';
 import type { SidebarTab } from '../utils/urlState';
 
 export type { SidebarTab };
 
-/** Which sidebar tab is open. */
+/** Which panel the side panel shows: Files (`tree`) or Search. */
 export const sidebarTab = writable<SidebarTab>('tree');
 
 /** Whether the search results show byte offsets instead of line numbers. */
@@ -12,6 +12,9 @@ export const searchShowsOffsets = writable(false);
 /** Whether the sidebar is shown. Hiding it keeps its state. */
 export const sidebarVisible = writable(true);
 
+/** Whether the help dialog of keyboard shortcuts is open. */
+export const shortcutsHelpOpen = writable(false);
+
 /**
  * Set when something asks for the search pattern field to take focus.
  * The search panel focuses its field and resets it; the panel may not
@@ -19,11 +22,28 @@ export const sidebarVisible = writable(true);
  */
 export const searchFocusRequested = writable(false);
 
-/** Show the sidebar on its Search tab and focus the pattern field. */
-export function focusSearch(): void {
+/**
+ * Set when something asks for the file tree's current row to take
+ * focus. The files panel focuses the row and resets it; while the roots
+ * load, the request waits for them.
+ */
+export const treeFocusRequested = writable(false);
+
+/** The request each panel answers by taking the focus. */
+const FOCUS_REQUESTS: Readonly<Record<SidebarTab, Writable<boolean>>> = {
+  tree: treeFocusRequested,
+  search: searchFocusRequested,
+};
+
+/**
+ * Show the side panel with the panel `id`; with `focus`, ask that panel
+ * to take the focus. The panel is shown before the request is raised, so
+ * the panel answers it once it is drawn.
+ */
+export function showPanel(id: SidebarTab, focus: boolean): void {
   sidebarVisible.set(true);
-  sidebarTab.set('search');
-  searchFocusRequested.set(true);
+  sidebarTab.set(id);
+  if (focus) FOCUS_REQUESTS[id].set(true);
 }
 
 /** Show or hide the sidebar. */

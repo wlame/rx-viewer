@@ -1,16 +1,41 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { backendHas, health, tree } from '$lib/stores';
   import { chainMode } from '$lib/stores/chainMode';
   import { switchChainMode } from '$lib/stores/chainModeSwitch';
+  import { treeFocusRequested } from '$lib/stores/layout';
   import TreeNode from './TreeNode.svelte';
   import Spinner from '../common/Spinner.svelte';
+
+  /** The row that takes the focus first: the selected one. */
+  const SELECTED_ROW = '[role="treeitem"][aria-selected="true"]';
+  const ANY_ROW = '[role="treeitem"]';
+
+  let treeElement: HTMLElement | null = null;
 
   // The switch is offered only by a backend that serves log chains.
   $: canGroupChains = backendHas('log_chains', $health);
 
-  // The tree stays mounted while the Search tab is shown, and a link may
-  // have loaded the roots already; either way the expanded folders stay.
+  // A panel key asks for the tree's focus, possibly while the roots load;
+  // the request waits for them.
+  $: if ($treeFocusRequested && treeElement && !$tree.loading) void focusCurrentRow();
+
+  /**
+   * Focus the selected row, else the first row; with no row, the focus
+   * stays where it is. The rows, and the panel just shown around them,
+   * are drawn in the update after this one.
+   */
+  async function focusCurrentRow() {
+    treeFocusRequested.set(false);
+    await tick();
+    const row =
+      treeElement?.querySelector<HTMLElement>(SELECTED_ROW) ??
+      treeElement?.querySelector<HTMLElement>(ANY_ROW);
+    row?.focus();
+  }
+
+  // The tree stays mounted while the Search panel is shown, and a link
+  // may have loaded the roots already; either way the expanded folders stay.
   onMount(() => {
     tree.ensureRoots();
   });
@@ -43,7 +68,7 @@
     {/if}
   </div>
 
-  <div class="flex-1 overflow-auto scrollbar-thin py-1" role="tree">
+  <div class="flex-1 overflow-auto scrollbar-thin py-1" role="tree" bind:this={treeElement}>
     {#if $tree.loading}
       <div class="flex items-center justify-center py-8">
         <Spinner size="md" />
