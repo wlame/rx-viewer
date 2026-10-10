@@ -41,8 +41,10 @@
       });
       notifications.success(`Analysis ready for ${name}`, 3000);
     } catch (e) {
-      // Closing the dialog cancels the run; nothing to report.
-      if (isAbortError(e)) return;
+      // Closing the dialog cancels the run; nothing to report. A run that
+      // fails after its dialog went (another analysis took its place) is
+      // nobody's: closing would close the dialog that replaced it.
+      if (isAbortError(e) || run.signal.aborted) return;
       // Not a failure: the dialog says so in place of the report.
       if (e instanceof AnalysisUnavailableError) {
         unavailableMessage = e.message;
