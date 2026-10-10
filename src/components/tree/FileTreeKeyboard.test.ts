@@ -368,6 +368,37 @@ describe('the focused row going away', () => {
     expect(tabStops(target)).toEqual([`${LOG_DIR}/pkg.log`]);
   });
 
+  // Chromium sends focusout from a focused element it removes; jsdom sends
+  // none. The row's focus must come back all the same.
+  it('gives the focus back after the browser drops it from the row it removes', async () => {
+    const { target } = await mountTree({ chains: true });
+    await openLogDir();
+    const chainRow = focusRow(target, PKG_CHAIN);
+
+    chainRow.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+    chainMode.set(false);
+    await tick();
+    await tick();
+
+    expect(document.activeElement).toBe(rowOf(target, `${LOG_DIR}/pkg.log`));
+  });
+
+  // Turning chain mode off removes the chain row before the tree looks at
+  // its rows, as in the case above; a focus the row lost before stays lost.
+  it('leaves the focus where a click on no control put it', async () => {
+    const { target } = await mountTree({ chains: true });
+    await openLogDir();
+    focusRow(target, PKG_CHAIN).blur();
+    await tick();
+
+    chainMode.set(false);
+    await tick();
+    await tick();
+
+    expect(document.activeElement).toBe(document.body);
+    expect(tabStops(target)).toEqual([`${LOG_DIR}/pkg.log`]);
+  });
+
   it('moves the focus to the folder a click closes while one of its rows is focused', async () => {
     const { target } = await mountTree();
     await openLogDir();

@@ -47,13 +47,23 @@
   let treeElement: HTMLElement | null = null;
   /** The name typed so far, for typing a name. */
   let typeahead: Typeahead = { buffer: '', at: 0 };
-  /** Whether a row of the tree holds the keyboard focus. */
-  let isRowFocused = false;
+  /**
+   * The row element that holds the keyboard focus, or held it until the
+   * update that removed it: a browser may send `focusout` from a focused
+   * row it removes (Chromium does), and that focus is the tree's to give
+   * back.
+   */
+  let focusedRow: HTMLElement | null = null;
+
+  /** The row element that `target` is or is inside of; null outside the rows. */
+  function rowOf(target: EventTarget | null): HTMLElement | null {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>('[data-row-id]');
+  }
 
   /** The id of the row that `target` is or is inside of; null outside the rows. */
   function rowIdOf(target: EventTarget | null): string | null {
-    if (!(target instanceof Element)) return null;
-    return target.closest<HTMLElement>('[data-row-id]')?.dataset.rowId ?? null;
+    return rowOf(target)?.dataset.rowId ?? null;
   }
 
   /** The row element of `id`, compared as text: an id is a path or a chain's key. */
@@ -129,13 +139,32 @@
 
   /** A row that takes the focus, by click, Tab or key, becomes the current row. */
   function handleFocusin(event: FocusEvent) {
-    const id = rowIdOf(event.target);
-    isRowFocused = id !== null;
-    if (id !== null) treeFocus.set(id);
+    focusedRow = rowOf(event.target);
+    const id = focusedRow?.dataset.rowId;
+    if (id !== undefined) treeFocus.set(id);
   }
 
-  function handleFocusout(event: FocusEvent) {
-    if (rowIdOf(event.relatedTarget) === null) isRowFocused = false;
+  /**
+   * The focus left a row. Once the event and the update around it are
+   * over, the row has lost it for good if it is still in the page and
+   * not focused (the focus went to another control, or to none after a
+   * click); a row that is gone lost it to its removal, and one that is
+   * still focused only to another window.
+   */
+  function handleFocusout() {
+    const left = focusedRow;
+    queueMicrotask(() => {
+      const hasLeft = left !== null && left.isConnected && document.activeElement !== left;
+      if (focusedRow === left && hasLeft) focusedRow = null;
+    });
+  }
+
+  /** Whether the keyboard focus is on a row, or was on one the last update removed. */
+  function isFocusOnRows(): boolean {
+    if (focusedRow === null) return false;
+    const active = document.activeElement;
+    if (active === focusedRow) return true;
+    return !focusedRow.isConnected && (active === null || active === document.body);
   }
 
   /**
@@ -151,7 +180,7 @@
     if (isLoadingAbove(rows, current)) return;
     const folder = tree.nodeAt(chainDirectoryOf(chainHandleOf(current) ?? current));
     const next = fallbackFocus(rows, current, replacementRow(folder, current));
-    const hadFocus = isRowFocused;
+    const hadFocus = isFocusOnRows();
     treeFocus.set(next);
     if (hadFocus && next !== null) void tick().then(() => moveFocusTo(next));
   }
