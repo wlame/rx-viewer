@@ -515,16 +515,18 @@ describe('the order the tabs were used in', () => {
     expect(get(files).activeFilePath).toBe('/logs/a.log');
   });
 
-  it('shows the most recently used tab when the active one closes, not its neighbour', async () => {
+  it('shows the most recently used tab when the active one closes, not a neighbour or the last tab', async () => {
     await openThree();
+    await files.openFile('/logs/d.log', { isIndexed: false });
     files.setActiveFile('/logs/a.log');
-    files.setActiveFile('/logs/b.log');
+    files.setActiveFile('/logs/c.log');
 
-    files.closeFile('/logs/b.log');
+    files.closeFile('/logs/c.log');
 
-    // The left neighbour of b.log is a.log and the right one c.log; c.log was used last.
+    // c.log's left neighbour is b.log, its right one d.log, the last tab
+    // too; a.log was shown before c.log.
     expect(get(files).activeFilePath).toBe('/logs/a.log');
-    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/c.log']);
+    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/d.log', '/logs/b.log']);
   });
 
   it('shows the tab used before a binary file the backend refuses, and forgets the file', async () => {
