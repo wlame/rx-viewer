@@ -186,7 +186,15 @@ Alt+], Alt+[ and Alt+X act from anywhere, a text field or the editor
 too, while no dialog is open: Alt+] and Alt+[ go through the tabs in the
 order of the strip, round the ends, and Alt+X closes the tab shown and
 shows the tab used before it. With one tab open, Alt+] and Alt+[ leave
-the key to the browser.
+the key to the browser. The browsers keep their own tab keys (Ctrl+Tab,
+Ctrl+PageUp and PageDown, Cmd/Ctrl with a digit, Cmd/Ctrl+W), so the
+viewer does not use them.
+
+After a switch by key (Alt+], Alt+[, Alt+X or Alt+Q) the focus goes back
+to where it was: from the editor to the editor of the tab now shown,
+from the tab strip to the tab now active, also when Alt+X closed the
+focused tab. In a panel it stays where it is, and with nothing focused
+nothing takes it.
 
 Alt+Q goes back to the tab used before, the way an operating system
 switches windows. Hold Alt and press Q: after a quarter of a second a
@@ -198,9 +206,7 @@ quick Alt+Q shows the tab used before without drawing the list. Esc, or
 switching to another window, closes the list and stays on the tab
 shown. While Alt is held after Alt+Q, the viewer's other keys wait. The
 order of use is not part of the link: a link opens with its tab first
-and the others in the order of the strip. The browsers keep their own tab keys (Ctrl+Tab,
-Ctrl+PageUp and PageDown, Cmd/Ctrl with a digit, Cmd/Ctrl+W), so the
-viewer does not use them.
+and the others in the order of the strip.
 
 The file tree is one Tab stop. Tab enters it on the row that had the
 focus last, else on the open file's row, else on the first row, and Tab

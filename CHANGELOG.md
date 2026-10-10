@@ -62,7 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and Alt+X closes the tab shown and shows the tab used before it. They
   act while no dialog is open, also from a text field or the editor;
   Alt+] and Alt+[ need two tabs open. A tab's close button names Alt+X
-  in its tooltip.
+  in its tooltip. After such a switch, and after one by Alt+Q, the focus
+  goes back to where it was: from the editor to the editor of the tab
+  now shown, from the tab strip to the tab now active; in a panel it
+  stays.
 - A recent-tab switcher on Alt+Q: hold Alt and press Q to go back to the
   tab used before, Q again to go further back through the tabs as last
   used (Shift+Q goes forward), and release Alt to show the chosen one.

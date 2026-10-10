@@ -19,7 +19,7 @@
   import { tooltip } from '$lib/actions/tooltip';
   import { files } from '$lib/stores';
   import { activeOpenFile } from '$lib/stores/files';
-  import { modalOpen } from '$lib/stores/layout';
+  import { modalOpen, tabStripFocusRequested } from '$lib/stores/layout';
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import { chainTabCaption } from '$lib/utils/chainPane';
   import { isShortcut, type TabStripShortcutId } from '$lib/utils/shortcuts';
@@ -77,6 +77,15 @@
 
   async function focusActiveTab() {
     (await activeTab())?.focus();
+  }
+
+  // A switch of tabs by key while the focus was on the strip asks for it
+  // on the tab now active, also when the focused tab closed.
+  $: if ($tabStripFocusRequested) answerFocusRequest();
+
+  function answerFocusRequest() {
+    tabStripFocusRequested.set(false);
+    void focusActiveTab();
   }
 
   /** The keys of the focused tab `key`: the moves and Delete. */

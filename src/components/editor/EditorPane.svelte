@@ -372,6 +372,8 @@
   function handleMonacoReady(e: CustomEvent<{ editor: Monaco.editor.IStandaloneCodeEditor }>) {
     monacoEditor = e.detail.editor;
     restoreTabView();
+    if (isHoldingFocusForEditor && document.activeElement === paneEl) monacoEditor.focus();
+    isHoldingFocusForEditor = false;
 
     // Draw the decorations again over new text: the filter's marks are
     // found in the editor's text, which changes under the same model.
@@ -391,15 +393,30 @@
     }, 100);
   }
 
-  // Esc in the file tree asks for the open file's editor. A pane that
-  // shows no editor (a file loading, failed or empty, an invalid chain)
-  // takes the focus itself, so it never stays behind in the tree.
+  // Esc in the file tree asks for the open file's editor, and a switch of
+  // tabs by key from the editor asks the new tab's. A pane that shows no
+  // editor (a file loading, failed or empty, an invalid chain) takes the
+  // focus itself, so it never stays behind in the tree; one whose editor
+  // is not ready yet holds it for the editor (`handleMonacoReady`).
   $: if ($editorFocusRequested && isActive) focusEditor();
+
+  /** Whether the pane holds the focus that its editor, not ready yet, is to take. */
+  let isHoldingFocusForEditor = false;
 
   function focusEditor() {
     editorFocusRequested.set(false);
-    if (monacoComponent && monacoEditor) monacoEditor.focus();
-    else paneEl?.focus();
+    // A pane mounted with the request raised is drawn before it answers.
+    if (paneEl) takeFocusForEditor();
+    else void tick().then(takeFocusForEditor);
+  }
+
+  function takeFocusForEditor() {
+    if (monacoComponent && monacoEditor) {
+      monacoEditor.focus();
+      return;
+    }
+    paneEl?.focus();
+    isHoldingFocusForEditor = true;
   }
 
   // `:` or Cmd/Ctrl+G opens the go-to box, also while the read-only

@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { TOOLTIP_DELAY_MS, TOOLTIP_ID } from '$lib/actions/tooltip';
 import { files } from '$lib/stores';
-import { registerModal } from '$lib/stores/layout';
+import { registerModal, tabStripFocusRequested } from '$lib/stores/layout';
 import TabStrip from './TabStrip.svelte';
 
 const PANEL_ID = 'tab-panel';
@@ -53,6 +53,7 @@ afterEach(() => {
   strip = null;
   closeModal?.();
   closeModal = null;
+  tabStripFocusRequested.set(false);
   for (const file of get(files).openFiles) files.closeFile(file.path);
   document.body.replaceChildren();
   vi.unstubAllGlobals();
@@ -171,6 +172,20 @@ describe('the tab strip', () => {
     const keys = [...(document.getElementById(TOOLTIP_ID)?.querySelectorAll('kbd') ?? [])];
     expect(document.getElementById(TOOLTIP_ID)?.textContent).toContain('Close');
     expect(keys.map((kbd) => kbd.textContent)).toEqual(['Alt', 'X']);
+  });
+
+  // A switch of tabs by key from the strip asks for the focus on the tab now active.
+  it('focuses the active tab when asked, and resets the request', async () => {
+    openTabs(A, B, C);
+    const { tabOf } = mount();
+    await tick();
+    tabOf(C).focus();
+
+    files.setActiveFile(A);
+    tabStripFocusRequested.set(true);
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(tabOf(A)));
+    expect(get(tabStripFocusRequested)).toBe(false);
   });
 
   it('shows a tab that is clicked', async () => {

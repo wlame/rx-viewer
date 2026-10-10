@@ -5,13 +5,17 @@ import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { files } from '$lib/stores';
 import {
+  editorFocusRequested,
   registerModal,
   searchFocusRequested,
   shortcutsHelpOpen,
   sidebarTab,
   sidebarVisible,
+  tabStripFocusRequested,
   treeFocusRequested,
 } from '$lib/stores/layout';
+import { TAB_PANEL_ID } from '$lib/stores/tabFocus';
+import TabStrip from '../layout/TabStrip.svelte';
 import AnalyzeDialog from '../tree/AnalyzeDialog.svelte';
 import KeyboardShortcuts from './KeyboardShortcuts.svelte';
 
@@ -372,6 +376,7 @@ describe('the open file tab keys', () => {
   const CLOSE: KeyboardEventInit = { key: '≈', code: 'KeyX', altKey: true };
 
   let closeModal: (() => void) | null = null;
+  let strip: TabStrip | null = null;
 
   /** Open the tabs without waiting for their lines: the backend here never answers. */
   function openTabs(...paths: string[]) {
@@ -385,8 +390,107 @@ describe('the open file tab keys', () => {
   afterEach(() => {
     closeModal?.();
     closeModal = null;
+    strip?.$destroy();
+    strip = null;
     for (const file of get(files).openFiles) files.closeFile(file.path);
+    editorFocusRequested.set(false);
+    tabStripFocusRequested.set(false);
     vi.unstubAllGlobals();
+  });
+
+  /** An editor area as `MainContent.svelte` draws it, with the focus on a control in it. */
+  function focusInEditor(): HTMLElement {
+    const panel = document.body.appendChild(document.createElement('div'));
+    panel.id = TAB_PANEL_ID;
+    const editor = panel.appendChild(document.createElement('textarea'));
+    editor.focus();
+    return editor;
+  }
+
+  /** The tab strip beside the keys, with the focus on its active tab. */
+  async function focusInStrip(): Promise<() => Element | null> {
+    const target = document.body.appendChild(document.createElement('div'));
+    strip = new TabStrip({ target, props: { panelId: TAB_PANEL_ID } });
+    await tick();
+    const activeTab = () => target.querySelector('[role="tab"][aria-selected="true"]');
+    (activeTab() as HTMLElement).focus();
+    return activeTab;
+  }
+
+  /** Let every focus request a switch raises be raised and answered. */
+  async function settle() {
+    for (let i = 0; i < 5; i += 1) await tick();
+  }
+
+  const SWITCH_KEYS: [string, KeyboardEventInit][] = [
+    ['Alt+]', NEXT],
+    ['Alt+[', PREVIOUS],
+    ['Alt+X', CLOSE],
+  ];
+
+  it.each(SWITCH_KEYS)(
+    '%s from the editor asks the editor of the tab now shown for the focus',
+    async (_, init) => {
+      openTabs(A, B, C);
+      mount();
+
+      await keyDown(focusInEditor(), init);
+
+      await vi.waitFor(() => expect(get(editorFocusRequested)).toBe(true));
+      expect(get(tabStripFocusRequested)).toBe(false);
+    },
+  );
+
+  it.each(SWITCH_KEYS)('%s from the tab strip focuses the tab now active', async (_, init) => {
+    openTabs(A, B, C);
+    mount();
+    const activeTab = await focusInStrip();
+
+    await keyDown(document.activeElement as HTMLElement, init);
+
+    expect(activeTab()?.textContent).not.toContain('syslog-20260930.gz');
+    await vi.waitFor(() => expect(document.activeElement).toBe(activeTab()));
+    expect(activeTab()?.getAttribute('tabindex')).toBe('0');
+    expect(get(editorFocusRequested)).toBe(false);
+  });
+
+  it.each(SWITCH_KEYS)('%s from a panel leaves the focus there', async (_, init) => {
+    openTabs(A, B, C);
+    mount();
+    const field = document.body.appendChild(document.createElement('input'));
+    field.focus();
+
+    await keyDown(field, init);
+    await settle();
+
+    expect(document.activeElement).toBe(field);
+    expect(get(editorFocusRequested)).toBe(false);
+    expect(get(tabStripFocusRequested)).toBe(false);
+  });
+
+  it.each(SWITCH_KEYS)('%s with nothing focused gives the focus to nothing', async (_, init) => {
+    openTabs(A, B, C);
+    mount();
+
+    expect(document.activeElement).toBe(document.body);
+
+    await keyDown(document.body, init);
+    await settle();
+
+    expect(document.activeElement).toBe(document.body);
+    expect(get(editorFocusRequested)).toBe(false);
+    expect(get(tabStripFocusRequested)).toBe(false);
+  });
+
+  it('Alt+X that closes the last tab asks no editor for the focus', async () => {
+    openTabs(A);
+    mount();
+
+    await keyDown(focusInEditor(), CLOSE);
+    await settle();
+
+    expect(get(files).openFiles).toEqual([]);
+    expect(get(editorFocusRequested)).toBe(false);
   });
 
   it('Alt+] and Alt+[ show the next and the previous tab in strip order, round the ends', async () => {

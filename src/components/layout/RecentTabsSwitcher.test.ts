@@ -6,10 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { files } from '$lib/stores';
-import { modalOpen, registerModal } from '$lib/stores/layout';
+import {
+  editorFocusRequested,
+  modalOpen,
+  registerModal,
+  tabStripFocusRequested,
+} from '$lib/stores/layout';
+import { TAB_PANEL_ID } from '$lib/stores/tabFocus';
 import { RECENT_LIST_DELAY_MS } from '$lib/utils/recentSwitch';
 import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
 import RecentTabsSwitcher from './RecentTabsSwitcher.svelte';
+import TabStrip from './TabStrip.svelte';
 
 const A = '/d/app.log';
 const B = '/d/worker.log.3.gz';
@@ -71,6 +78,8 @@ afterEach(() => {
   mounted = [];
   closeModal?.();
   closeModal = null;
+  editorFocusRequested.set(false);
+  tabStripFocusRequested.set(false);
   vi.useRealTimers();
   for (const file of get(files).openFiles) files.closeFile(file.path);
   document.body.replaceChildren();
@@ -300,6 +309,70 @@ describe('the recent-tab switcher', () => {
     // A cancelled key press types no character.
     expect(event.defaultPrevented).toBe(true);
     expect(activeTab()).toBe(B);
+  });
+
+  /** An editor area as `MainContent.svelte` draws it, with the focus on a control in it. */
+  function focusInEditor(): HTMLElement {
+    const panel = document.body.appendChild(document.createElement('div'));
+    panel.id = TAB_PANEL_ID;
+    const editor = panel.appendChild(document.createElement('textarea'));
+    editor.focus();
+    return editor;
+  }
+
+  it.each([
+    ['a quick Alt+Q', false],
+    ['an Alt+Q held until the list shows', true],
+  ])(
+    'after %s from the editor asks the editor of the tab now shown for the focus',
+    async (_, isHeld) => {
+      openTabs(A, B, C);
+      mount();
+      focusInEditor();
+
+      await keyDown(ALT_Q);
+      if (isHeld) await waitForList();
+      await keyUp(ALT_RELEASED);
+
+      expect(activeTab()).toBe(B);
+      await vi.waitFor(() => expect(get(editorFocusRequested)).toBe(true));
+      expect(get(tabStripFocusRequested)).toBe(false);
+    },
+  );
+
+  it('after a switch from the tab strip focuses the tab now active', async () => {
+    openTabs(A, B, C);
+    mount();
+    const target = document.body.appendChild(document.createElement('div'));
+    mounted.push(new TabStrip({ target, props: { panelId: TAB_PANEL_ID } }));
+    await tick();
+    const activeTabElement = () => target.querySelector('[role="tab"][aria-selected="true"]');
+    (activeTabElement() as HTMLElement).focus();
+
+    await keyDown(ALT_Q);
+    await waitForList();
+    await keyUp(ALT_RELEASED);
+
+    expect(activeTab()).toBe(B);
+    await vi.waitFor(() => expect(document.activeElement).toBe(activeTabElement()));
+    expect(activeTabElement()?.textContent).toContain('worker.log.3.gz');
+  });
+
+  it('after a switch from a panel gives the focus back there and asks for none', async () => {
+    openTabs(A, B, C);
+    mount();
+    const field = document.body.appendChild(document.createElement('input'));
+    field.focus();
+
+    await keyDown(ALT_Q);
+    await waitForList();
+    await keyUp(ALT_RELEASED);
+    for (let i = 0; i < 5; i += 1) await tick();
+
+    expect(activeTab()).toBe(B);
+    expect(document.activeElement).toBe(field);
+    expect(get(editorFocusRequested)).toBe(false);
+    expect(get(tabStripFocusRequested)).toBe(false);
   });
 
   it('marks a chain as the tab strip does', async () => {

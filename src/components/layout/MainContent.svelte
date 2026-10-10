@@ -2,6 +2,7 @@
   import { files } from '$lib/stores';
   import { activeOpenFile, type TimeQuery } from '$lib/stores/files';
   import { fileZones } from '$lib/stores/fileZones';
+  import { TAB_PANEL_ID } from '$lib/stores/tabFocus';
   import { backendHas, health } from '$lib/stores/health';
   import { notifications } from '$lib/stores/notifications';
   import { timeCursor } from '$lib/stores/timeCursor';
@@ -14,9 +15,6 @@
   import TimeCursorIndicator from './TimeCursorIndicator.svelte';
   import TimeStashRow from './TimeStashRow.svelte';
   import TimelineBar from './TimelineBar.svelte';
-
-  /** The id of the editor area, the tab panel every tab of the strip controls. */
-  const TAB_PANEL_ID = 'rx-tab-panel';
 
   // The same rule picks the file the URL names, so the two cannot differ.
   $: activeFile = activeOpenFile($files);

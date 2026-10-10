@@ -6,6 +6,7 @@
   import { activeOpenFile } from '$lib/stores/files';
   import { modalOpen, shortcutsHelpOpen, showPanel, toggleSidebar } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
+  import { switchTabsByKey } from '$lib/stores/tabFocus';
   import {
     handleFileTabsKey,
     handleGlobalKey,
@@ -71,11 +72,12 @@
     return true;
   }
 
-  // A key that would change the tab behind a dialog is left to the dialog.
+  // A key that would change the tab behind a dialog is left to the
+  // dialog. A switch brings the focus back to the place it was in.
   const tabActions: FileTabsShortcutActions = {
-    nextTab: () => !$modalOpen && showTabBeside(1),
-    previousTab: () => !$modalOpen && showTabBeside(-1),
-    closeTab: () => !$modalOpen && closeActiveTab(),
+    nextTab: () => !$modalOpen && switchTabsByKey(() => showTabBeside(1)),
+    previousTab: () => !$modalOpen && switchTabsByKey(() => showTabBeside(-1)),
+    closeTab: () => !$modalOpen && switchTabsByKey(closeActiveTab),
   };
 
   // Under the cover of a refused contract the app is blocked; its

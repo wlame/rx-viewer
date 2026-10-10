@@ -255,6 +255,69 @@ describe('EditorPane focus request', () => {
     expect(get(editorFocusRequested)).toBe(false);
   });
 
+  // A switch of tabs by key asks the new tab's pane, which is mounted
+  // with the request raised or raises it before its editor is drawn.
+  it('focuses its editor once drawn, when it is mounted with the request raised', async () => {
+    editorFocusRequested.set(true);
+    const target = document.body.appendChild(document.createElement('div'));
+    pane = new EditorPane({
+      target,
+      props: { file: openFile(), hideHeader: true, isActive: true },
+    });
+    await tick();
+    await tick();
+
+    expect(fakeMonacoEditors.at(-1)?.focusCount).toBe(1);
+    expect(get(editorFocusRequested)).toBe(false);
+  });
+
+  it('holds the focus for its editor until the editor is ready, then hands it on', async () => {
+    const target = document.body.appendChild(document.createElement('div'));
+    pane = new EditorPane({
+      target,
+      props: { file: openFile(), hideHeader: true, isActive: true },
+    });
+    // The pane is drawn; its editor reports ready only after a tick.
+    editorFocusRequested.set(true);
+    await tick();
+    await tick();
+
+    expect(fakeMonacoEditors.at(-1)?.focusCount).toBe(1);
+  });
+
+  // A tab whose file is still loading shows no editor until its lines come.
+  it('hands the focus to its editor when the lines of a loading file come', async () => {
+    const target = document.body.appendChild(document.createElement('div'));
+    const loading = openFile({ lines: [], loading: true });
+    pane = new EditorPane({ target, props: { file: loading, hideHeader: true, isActive: true } });
+    editorFocusRequested.set(true);
+    await tick();
+    expect(document.activeElement).toBe(target.firstElementChild);
+
+    pane.$set({ file: openFile() });
+    await tick();
+    await tick();
+
+    expect(fakeMonacoEditors.at(-1)?.focusCount).toBe(1);
+  });
+
+  it('keeps the focus where it went meanwhile when its editor becomes ready', async () => {
+    const target = document.body.appendChild(document.createElement('div'));
+    const field = document.body.appendChild(document.createElement('input'));
+    const loading = openFile({ lines: [], loading: true });
+    pane = new EditorPane({ target, props: { file: loading, hideHeader: true, isActive: true } });
+    editorFocusRequested.set(true);
+    await tick();
+    field.focus();
+
+    pane.$set({ file: openFile() });
+    await tick();
+    await tick();
+
+    expect(fakeMonacoEditors.at(-1)?.focusCount).toBe(0);
+    expect(document.activeElement).toBe(field);
+  });
+
   it('focuses the pane itself when it shows no editor', async () => {
     const target = document.createElement('div');
     document.body.appendChild(target);

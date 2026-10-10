@@ -296,8 +296,17 @@ role="tab">` that also carries the drag handlers; its close button is a
   `showPanel(id, focus)` or `clickPanelButton(id)` (`stores/layout.ts`);
   only `restoreView` sets `sidebarTab` itself, from a link.
   A focus request (`treeFocusRequested`, `searchFocusRequested`,
-  `editorFocusRequested`) is a flag that the target answers after the
-  next update and resets, so a panel is drawn before it takes the focus.
+  `editorFocusRequested`, `tabStripFocusRequested`) is a flag that the
+  target answers after the next update and resets, so a panel is drawn
+  before it takes the focus. An editor pane mounted with the request
+  raised answers once it is drawn, and while its Monaco editor is not
+  ready it holds the focus and hands it on when the editor is.
+  A switch of tabs by key (Alt+], Alt+[, Alt+X, an Alt+Q switch) goes
+  through `stores/tabFocus.ts`: it notes where the focus was (the editor
+  area, the tab strip, elsewhere, nothing) and raises the request of
+  that place after the switch, so the focus returns to the new tab's
+  editor or the strip's active tab and stays in a panel. The switcher
+  notes the place at its first Alt+Q, before its list takes the focus.
   The `tab` key of the URL holds the panel.
 - Every element with `aria-modal="true"` carries `use:modal`
   (`actions/modal.ts`), which counts the dialog in `modalOpen`

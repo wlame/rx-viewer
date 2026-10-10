@@ -19,6 +19,7 @@
   import { chainTopLines } from '$lib/stores/chainTopLines';
   import { contractRefused } from '$lib/stores/health';
   import { modalOpen } from '$lib/stores/layout';
+  import { focusPlaceOf, returnFocusTo, type FocusPlace } from '$lib/stores/tabFocus';
   import type { OpenFile } from '$lib/types';
   import { chainTabCaption, type ChainTopLine } from '$lib/utils/chainPane';
   import {
@@ -35,17 +36,26 @@
 
   let switcher: RecentSwitch = CLOSED_SWITCH;
   let revealTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Where the focus was at the first Alt+Q, before the list took it. */
+  let focusOrigin: FocusPlace = 'none';
 
-  /** Apply `event`, show the tab it chose, and start or stop the list's delay. */
+  /**
+   * Apply `event`, show the tab it chose with the focus back in its
+   * place, and start or stop the list's delay.
+   */
   function apply(event: RecentSwitchEvent) {
     const wasOpen = switcher.isOpen;
     const step = stepRecentSwitch(switcher, event);
     switcher = step.state;
     if (switcher.isOpen && !wasOpen) {
+      focusOrigin = focusPlaceOf(document.activeElement);
       revealTimer = setTimeout(() => apply({ kind: 'reveal' }), RECENT_LIST_DELAY_MS);
     }
     if (!switcher.isOpen) stopRevealTimer();
-    if (step.activate !== null) files.setActiveFile(step.activate);
+    if (step.activate !== null) {
+      files.setActiveFile(step.activate);
+      void returnFocusTo(focusOrigin);
+    }
   }
 
   function stopRevealTimer() {

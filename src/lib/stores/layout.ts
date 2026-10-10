@@ -62,6 +62,13 @@ export const treeFocusRequested = writable(false);
  */
 export const editorFocusRequested = writable(false);
 
+/**
+ * Set when something asks for the active tab of the tab strip to take
+ * focus: a switch of tabs by key while the focus was on the strip
+ * (`stores/tabFocus.ts`). The strip focuses the tab and resets it.
+ */
+export const tabStripFocusRequested = writable(false);
+
 /** The request each panel answers by taking the focus. */
 const FOCUS_REQUESTS: Readonly<Record<SidebarTab, Writable<boolean>>> = {
   tree: treeFocusRequested,
