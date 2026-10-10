@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { FakeChain } from '../testing/fakeChain';
 import { CHAIN_NAMES, LOG_DIR, LOG_ROOT, LogDirBackend, serveLogDir } from '../testing/fakeLogDir';
 import { isChainRow, shownChildren } from '../utils/chainTree';
+import { DEFAULT_SORT } from '../utils/treeSort';
 import { chainMode } from './chainMode';
 import { health } from './health';
 import { MAX_DESCRIBED_CHAINS, tree } from './tree';
@@ -102,7 +103,7 @@ function listed(pathname: string, dir: string): string {
 function chainNamesShown(dir: string): string[] {
   const node = tree.nodeAt(dir);
   if (!node) throw new Error(`${dir} is not in the tree`);
-  return shownChildren(node, { chainModeOn: true })
+  return shownChildren(node, { chainModeOn: true, sort: DEFAULT_SORT })
     .filter(isChainRow)
     .map((row) => row.chain.name);
 }

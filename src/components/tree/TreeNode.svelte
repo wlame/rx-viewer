@@ -6,7 +6,9 @@
   import { openTreeFile } from '$lib/fileOpening';
   import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
   import { formatCount, formatSize } from '$lib/utils/format';
+  import { memoizeLast } from '$lib/utils/memoizeLast';
   import { isShortcut } from '$lib/utils/shortcuts';
+  import { DEFAULT_SORT, type TreeSort } from '$lib/utils/treeSort';
   import type { ValueColumn } from '$lib/utils/urlState';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
@@ -21,10 +23,22 @@
   export let showLabels = true;
   /** The value the row shows right of its name. */
   export let show: ValueColumn = 'size';
+  /** The order of a folder's rows. */
+  export let sort: TreeSort = DEFAULT_SORT;
+
+  /**
+   * A folder's rows, sorted again only when the folder, the mode or the
+   * order changes: the tree store keeps a node it did not change, and
+   * Svelte hands it down again at every update (a click that selects a
+   * row), so a large folder is not sorted on each of them.
+   */
+  const rowsOf = memoizeLast((folder: TreeNodeType, chainModeOn: boolean, order: TreeSort) =>
+    shownChildren(folder, { chainModeOn, sort: order }),
+  );
 
   // In chain mode a folder shows one row per log chain in place of its
   // parts; the node keeps every entry, so the mode changes no state.
-  $: rows = node.type === 'directory' ? shownChildren(node, { chainModeOn: $chainModeOn }) : [];
+  $: rows = node.type === 'directory' ? rowsOf(node, $chainModeOn, sort) : [];
 
   $: isSelected = $tree.selectedPath === node.path;
   $: indentPx = node.level * 16;
@@ -173,7 +187,7 @@
         {#if isChainRow(child)}
           <ChainTreeNode row={child} {showLabels} {show} />
         {:else}
-          <svelte:self node={child} {showLabels} {show} />
+          <svelte:self node={child} {showLabels} {show} {sort} />
         {/if}
       {/each}
     </div>

@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key is left to the browser, so the focus stays in the dialog. Before,
   Cmd/Ctrl+K closed the shortcut list and went to Search, and Cmd/Ctrl+K
   or Cmd/Ctrl+B hid an open analysis dialog with the files panel.
+- The files panel orders the names in each folder itself, without case
+  and with the numbers in them read as numbers, so `app.log.2` comes
+  before `app.log.10`; a log chain's row sorts among the files by the
+  same rule. Folders still come first; the search roots keep their
+  configured order.
 - Group rotated logs is off unless the link turns it on with `chains=1`.
   The viewer no longer remembers the mode chosen last for a link that
   does not name it, and ignores the mode an earlier version stored.

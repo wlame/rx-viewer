@@ -17,6 +17,7 @@ import {
   shownChildren,
   type TreeRow,
 } from './chainTree';
+import { DEFAULT_SORT, type TreeSort } from './treeSort';
 
 const DIR = '/l';
 
@@ -60,8 +61,8 @@ function names(rows: TreeRow[]): string[] {
   return rows.map((row) => (isChainRow(row) ? `chain:${row.chain.name}` : row.name));
 }
 
-const ON = { chainModeOn: true };
-const OFF = { chainModeOn: false };
+const ON = { chainModeOn: true, sort: DEFAULT_SORT };
+const OFF = { chainModeOn: false, sort: DEFAULT_SORT };
 
 describe('shownChildren', () => {
   const entries = [
@@ -160,6 +161,99 @@ describe('shownChildren', () => {
 
     expect(names(rows)).toEqual(['chain:gone.log', 'notes.txt']);
   });
+});
+
+describe('shownChildren in a chosen order', () => {
+  /** A file of `DIR` of `size` bytes, last modified on day `day` of October 2026. */
+  function sized(name: string, size: number | null, day: number): TreeEntry {
+    const modified_at = `2026-10-${String(day).padStart(2, '0')}T12:00:00Z`;
+    return treeEntry(`${DIR}/${name}`, 'file', { is_text: true, size, modified_at });
+  }
+
+  // app.log's parts sum to 300 bytes and end on day 9; svc.log's to 30, day 2.
+  const entries = [
+    sized('zz.txt', 100, 5),
+    treeEntry(`${DIR}/archive`, 'directory', { modified_at: '2026-10-01T00:00:00Z' }),
+    sized('app.log', 100, 9),
+    sized('app.log.1', 100, 8),
+    sized('app.log.2.gz', 100, 7),
+    sized('notes.txt', 50, 6),
+    sized('svc.log', 20, 2),
+    sized('svc.log.1', 10, 1),
+    sized('empty.txt', null, 3),
+  ];
+  const chains = [
+    chain('app.log', ['app.log.2.gz', 'app.log.1', 'app.log'], { size: 300 }),
+    chain('svc.log', ['svc.log.1', 'svc.log'], { size: 30 }),
+  ];
+  const by = (key: TreeSort['key'], dir: TreeSort['dir'], chainModeOn = true) => ({
+    chainModeOn,
+    sort: { key, dir },
+  });
+
+  it.each([
+    [
+      by('name', 'desc'),
+      ['archive', 'zz.txt', 'chain:svc.log', 'notes.txt', 'empty.txt', 'chain:app.log'],
+    ],
+    [
+      by('size', 'desc'),
+      ['archive', 'chain:app.log', 'zz.txt', 'notes.txt', 'chain:svc.log', 'empty.txt'],
+    ],
+    [
+      by('size', 'asc'),
+      ['archive', 'chain:svc.log', 'notes.txt', 'zz.txt', 'chain:app.log', 'empty.txt'],
+    ],
+    [
+      by('date', 'desc'),
+      ['archive', 'chain:app.log', 'notes.txt', 'zz.txt', 'empty.txt', 'chain:svc.log'],
+    ],
+    [
+      by('date', 'asc'),
+      ['archive', 'chain:svc.log', 'empty.txt', 'zz.txt', 'notes.txt', 'chain:app.log'],
+    ],
+  ])('sorts the chains among the files, parts hidden: %o', (options, expected) => {
+    expect(names(shownChildren(directory(DIR, entries, chains), options))).toEqual(expected);
+  });
+
+  it('sorts the listed entries with the mode off, parts and all', () => {
+    const rows = shownChildren(directory(DIR, entries, chains), by('size', 'desc', false));
+
+    expect(names(rows)).toEqual([
+      'archive',
+      'app.log',
+      'app.log.1',
+      'app.log.2.gz',
+      'zz.txt',
+      'notes.txt',
+      'svc.log',
+      'svc.log.1',
+      'empty.txt',
+    ]);
+  });
+
+  it('keeps the folders and files the same objects in any order', () => {
+    const dir = directory(DIR, entries, chains);
+
+    const rows = shownChildren(dir, by('date', 'asc'));
+
+    for (const row of rows.filter(isNodeRow)) expect(dir.children).toContain(row);
+  });
+
+  // The two tie on name, and on date when neither has a time.
+  it.each([by('name', 'asc'), by('name', 'desc'), by('date', 'asc'), by('date', 'desc')])(
+    'puts a chain of too many parts before its file of the same name: %o',
+    (options) => {
+      const many = [file('big.log'), file('big.log.1')];
+      const rows = shownChildren(
+        directory(DIR, many, [chain('big.log', [], { too_many_parts: true })]),
+        options,
+      );
+
+      const chainAt = names(rows).indexOf('chain:big.log');
+      expect(names(rows)[chainAt + 1]).toBe('big.log');
+    },
+  );
 });
 
 describe('shownChildren on a directory that mixes chains with look-alikes', () => {

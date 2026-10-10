@@ -13,8 +13,9 @@ import {
   serveLogDir,
   treeEntry,
 } from '$lib/testing/fakeLogDir';
-import type { TreeNode as TreeNodeType } from '$lib/types';
+import type { TreeEntry, TreeNode as TreeNodeType } from '$lib/types';
 import { formatFileTime } from '$lib/utils/format';
+import type { TreeSort } from '$lib/utils/treeSort';
 import type { ValueColumn } from '$lib/utils/urlState';
 import TreeNode from './TreeNode.svelte';
 
@@ -202,5 +203,54 @@ describe('TreeNode of a folder in chain mode', () => {
       .filter((item) => item.dataset.chain === undefined)
       .map((item) => item.textContent?.trim().split(/\s/)[0] ?? '');
     expect(fileNames.filter((name) => partNames.has(name))).toEqual([]);
+  });
+});
+
+describe('TreeNode of a folder in a chosen order', () => {
+  /** An expanded node of `entry` holding `children`, at `level`. */
+  function expanded(entry: TreeEntry, level: number, children: TreeNodeType[]): TreeNodeType {
+    return { ...entry, expanded: true, loading: false, level, children };
+  }
+
+  function sizedFile(path: string, size: number): TreeNodeType {
+    return expanded(treeEntry(path, 'file', { is_text: true, size }), 2, []);
+  }
+
+  // A folder holding a sub-folder and two files, the sub-folder holding
+  // two more; by size each folder's files come in the reverse of their name order.
+  const ROOT = expanded(treeEntry('/logs', 'directory'), 0, [
+    sizedFile('/logs/app.log.10', 500),
+    expanded(treeEntry('/logs/sub', 'directory'), 1, [
+      sizedFile('/logs/sub/a.log', 1),
+      sizedFile('/logs/sub/z.log', 900),
+    ]),
+    sizedFile('/logs/app.log.2', 10),
+  ]);
+  const BY_NAME = ['logs', 'sub', 'a.log', 'z.log', 'app.log.2', 'app.log.10'];
+  const BY_SIZE = ['logs', 'sub', 'z.log', 'a.log', 'app.log.10', 'app.log.2'];
+
+  function mountOrdered(sort: TreeSort) {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    row = new TreeNode({ target, props: { node: ROOT, sort } });
+    return () =>
+      [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')].map(
+        (item) => item.textContent?.trim().split(/\s/)[0],
+      );
+  }
+
+  it('shows the rows of every open folder in the order it is given', () => {
+    const shown = mountOrdered({ key: 'size', dir: 'desc' });
+
+    expect(shown()).toEqual(BY_SIZE);
+  });
+
+  it('shows the rows in the new order when the order changes', async () => {
+    const shown = mountOrdered({ key: 'size', dir: 'desc' });
+
+    row?.$set({ sort: { key: 'name', dir: 'asc' } });
+    await tick();
+
+    expect(shown()).toEqual(BY_NAME);
   });
 });
