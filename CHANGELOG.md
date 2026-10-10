@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the files toolbar, the column header and the search options line show
   the control's name and its shortcut as the platform prints it (`⌥G` on
   a Mac, `Alt+G` elsewhere): after half a second of hover, and at once
-  when the keyboard focuses the control. Esc hides the tooltip.
+  when the keyboard focuses the control. Esc hides the tooltip. A match
+  toggle's tooltip also says which state sends which ripgrep flag
+  (`Off: ripgrep -i`), in place of the browser's tooltip it had.
 - A toolbar at the top of the files panel, in place of the "Search
   Roots" heading: Group rotated logs (before, a checkbox) and Show
   labels as icon toggles, and a Size | Date switch for the value right
@@ -93,7 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   search, as in a pattern field. Alt+C, Alt+W, Alt+R and the new Alt+O
   (Only opened files) work wherever the focus is in the search panel (a
   toggle, the max box, a result), not only in a pattern field; a toggle
-  that is disabled leaves the key to the browser.
+  that is disabled leaves the key to the browser. A disabled match toggle
+  stays in the Tab order and says why in its tooltip when the backend
+  does not take match options.
 
 ### Fixed
 

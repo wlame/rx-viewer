@@ -88,11 +88,10 @@ export function togglesFromFlags(flags: TraceMatchingFlags): SearchToggles {
 }
 
 /**
- * The tooltip of a toggle: its name, its shortcut, and which state sends
- * which ripgrep flag, so the equivalent command is never a guess.
+ * The line under a toggle's name in its tooltip: which state sends which
+ * ripgrep flag, so the equivalent command is never a guess.
  */
-export function toggleTooltip(spec: SearchToggleSpec): string {
-  const key = spec.shortcutCode.replace('Key', '');
+export function toggleFlagLine(spec: SearchToggleSpec): string {
   const state = spec.sendsWhen ? 'On' : 'Off';
-  return `${spec.title} (Alt+${key}). ${state}: ripgrep ${spec.ripgrepFlag}`;
+  return `${state}: ripgrep ${spec.ripgrepFlag}`;
 }

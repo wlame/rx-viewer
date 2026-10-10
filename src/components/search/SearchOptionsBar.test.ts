@@ -100,6 +100,57 @@ describe('the search options line', () => {
   });
 });
 
+describe('the match toggles', () => {
+  function matchCase(target: HTMLElement): HTMLButtonElement {
+    const button = target.querySelector<HTMLButtonElement>('button[aria-label="Match case"]');
+    if (!button) throw new Error('no Match case toggle');
+    return button;
+  }
+
+  it.each([
+    ['MacIntel', 'Match case⌥COff: ripgrep -i'],
+    ['Linux x86_64', 'Match caseAlt+COff: ripgrep -i'],
+  ])('names Aa, its key as %s prints it, and the ripgrep flag in its tooltip', (platform, text) => {
+    vi.stubGlobal('navigator', { platform, userAgent: '' });
+    const { target } = mount();
+
+    focusByKeyboard(matchCase(target));
+
+    expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe(text);
+    expect(matchCase(target).hasAttribute('title')).toBe(false);
+  });
+
+  it('says why in its tooltip on a backend that takes no match options, and does not switch', async () => {
+    vi.stubGlobal('navigator', { platform: 'Linux x86_64', userAgent: '' });
+    const reason = 'This backend does not take match options';
+    const { target } = mount({ togglesUnavailable: reason });
+
+    matchCase(target).click();
+    await tick();
+    focusByKeyboard(matchCase(target));
+
+    expect(matchCase(target).getAttribute('aria-disabled')).toBe('true');
+    expect(matchCase(target).disabled).toBe(false);
+    expect(document.activeElement).toBe(matchCase(target));
+    expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe(reason);
+    expect(get(searchDraft).toggles.matchCase).toBe(true);
+  });
+
+  it('keeps the focus but does not switch, and names no key, while there is no root', async () => {
+    vi.stubGlobal('navigator', { platform: 'Linux x86_64', userAgent: '' });
+    const { target } = mount({ togglesDisabled: true });
+
+    matchCase(target).click();
+    await tick();
+    focusByKeyboard(matchCase(target));
+
+    expect(matchCase(target).getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(matchCase(target));
+    expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe('Match caseOff: ripgrep -i');
+    expect(get(searchDraft).toggles.matchCase).toBe(true);
+  });
+});
+
 describe('only opened files', () => {
   it('shows the number of opened files beside its icon, pressed as the draft says', async () => {
     const { onlyOpened } = mount({ openCount: 3 });

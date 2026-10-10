@@ -3,6 +3,7 @@ import {
   DEFAULT_SEARCH_TOGGLES,
   SEARCH_TOGGLES,
   matchingFlagParams,
+  toggleFlagLine,
   togglesFromFlags,
   type SearchToggles,
 } from './searchToggles';
@@ -33,6 +34,19 @@ describe('SEARCH_TOGGLES', () => {
   it('gives every toggle its own shortcut', () => {
     const codes = SEARCH_TOGGLES.map((spec) => spec.shortcutCode);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+});
+
+describe('toggleFlagLine', () => {
+  it.each([
+    ['matchCase', 'Off: ripgrep -i'],
+    ['wholeWord', 'On: ripgrep -w'],
+    ['regex', 'Off: ripgrep -F'],
+  ])('says which state of %s sends which ripgrep flag: %j', (key, line) => {
+    const spec = SEARCH_TOGGLES.find((toggle) => toggle.key === key);
+    if (!spec) throw new Error(`no toggle ${key}`);
+
+    expect(toggleFlagLine(spec)).toBe(line);
   });
 });
 
