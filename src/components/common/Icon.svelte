@@ -28,7 +28,7 @@
   focusable="false"
   class={className}
 >
-  {#each shapes as shape}
+  {#each shapes as shape, index (index)}
     <svelte:element this={shape.tag} {...shape.attrs} />
   {/each}
 </svg>
