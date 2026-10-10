@@ -9,6 +9,7 @@ import {
   detectPlatform,
   handleFileTabsKey,
   handleFilesPanelKey,
+  handleRecentTabsKey,
   handleGlobalKey,
   handleSearchPanelKey,
   isShortcut,
@@ -247,6 +248,52 @@ describe('handleFileTabsKey', () => {
     expect(handleFileTabsKey(event, actions)).toBe(false);
     expect(ran).toEqual([]);
     expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleRecentTabsKey', () => {
+  /** Actions for the recent-tab switcher's keys, recording which one ran. */
+  function switcherActions() {
+    const ran: string[] = [];
+    const act = (id: string) => () => {
+      ran.push(id);
+      return true;
+    };
+    return {
+      ran,
+      actions: {
+        recentTab: act('recentTab'),
+        recentTabBack: act('recentTabBack'),
+        closeRecentTabs: act('closeRecentTabs'),
+      },
+    };
+  }
+
+  // A Mac types "œ" for Option+Q and "Œ" for Option+Shift+Q.
+  it.each([
+    ['recentTab', press('œ', { code: 'KeyQ', altKey: true })],
+    ['recentTab', press('q', { code: 'KeyQ', altKey: true })],
+    ['recentTabBack', press('Œ', { code: 'KeyQ', altKey: true, shiftKey: true })],
+    ['recentTabBack', press('Q', { code: 'KeyQ', altKey: true, shiftKey: true })],
+    // Alt is held while the list is open; Esc without it is matched too.
+    ['closeRecentTabs', press('Escape', { code: 'Escape', altKey: true })],
+    ['closeRecentTabs', press('Escape', { code: 'Escape' })],
+  ])('runs %s for %o and keeps the key from the browser', (id, event) => {
+    const { actions, ran } = switcherActions();
+
+    expect(handleRecentTabsKey(event, actions)).toBe(true);
+    expect(ran).toEqual([id]);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Q without Alt', press('q', { code: 'KeyQ' })],
+    ['Cmd+Alt+Q', press('œ', { code: 'KeyQ', altKey: true, metaKey: true })],
+  ])('leaves %s alone', (_name, event) => {
+    const { actions, ran } = switcherActions();
+
+    expect(handleRecentTabsKey(event, actions)).toBe(false);
+    expect(ran).toEqual([]);
   });
 });
 
@@ -522,8 +569,8 @@ describe('the shortcut list', () => {
     [
       'fileTabs',
       'Open file tabs, from anywhere',
-      ['nextTab', 'previousTab', 'closeTab'],
-      ['Alt+]', 'Alt+[', 'Alt+X'],
+      ['nextTab', 'previousTab', 'recentTab', 'recentTabBack', 'closeTab'],
+      ['Alt+]', 'Alt+[', 'Alt+Q', 'Alt+Shift+Q', 'Alt+X'],
     ],
     ['activityBar', 'In the activity bar', ['activityBarMove'], ['↓ or ↑']],
     [
@@ -573,8 +620,8 @@ describe('the shortcut list', () => {
     [
       'openPanel',
       'While a panel is open',
-      ['closeHistory', 'closeAnalysis', 'closeChainParts'],
-      ['Esc', 'Esc', 'Esc'],
+      ['closeHistory', 'closeAnalysis', 'closeChainParts', 'closeRecentTabs'],
+      ['Esc', 'Esc', 'Esc', 'Alt+Esc or Esc'],
     ],
     [
       'timeline',

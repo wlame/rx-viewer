@@ -66,9 +66,11 @@ way.
   opened.
 - **Tabs** for the open files, reordered by drag and drop. Each tab keeps
   its own filter bar and scroll position. Closing the active tab shows
-  the tab used before it. The tab strip works from the keyboard as one
-  Tab stop: ← and → show the tab beside, Home and End the first and the
-  last, Delete closes the tab.
+  the tab used before it. Alt+] and Alt+[ go through the tabs, Alt+Q
+  back to the tab used before (held, through all of them as last used),
+  and Alt+X closes the tab shown. The tab strip works from the keyboard
+  as one Tab stop: ← and → show the tab beside, Home and End the first
+  and the last, Delete closes the tab.
 - **Paged reading of large files.** The editor never loads a whole file:
   it asks `/v1/samples` for windows of 1,000 lines as you scroll and holds
   at most five of them. Line numbers are the file's own, also in gzip and
@@ -114,55 +116,58 @@ way.
 
 Cmd/Ctrl+/ lists every shortcut in the app. They are:
 
-| Where                                    | Keys                      | Action                                                                             |
-| ---------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
-| Anywhere                                 | Cmd/Ctrl+K                | Go to the search pattern field                                                     |
-| Anywhere                                 | Cmd/Ctrl+B                | Show or hide the sidebar                                                           |
-| Anywhere                                 | Cmd/Ctrl+/                | Show or hide the shortcut list                                                     |
-| Anywhere                                 | Esc                       | Close the shortcut list                                                            |
-| Panels, from anywhere                    | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
-| Panels, from anywhere                    | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
-| Open file tabs, from anywhere            | Alt+]                     | Show the next tab of the strip (after the last, the first)                         |
-| Open file tabs, from anywhere            | Alt+[                     | Show the previous tab of the strip (before the first, the last)                    |
-| Open file tabs, from anywhere            | Alt+X                     | Close the tab shown and show the tab used before it                                |
-| In the activity bar                      | ↓ or ↑                    | Move down or up through the panel buttons                                          |
-| In the files panel, while it is shown    | Alt+G                     | Group rotated logs: on or off                                                      |
-| In the files panel, while it is shown    | Alt+L                     | Show labels: on or off                                                             |
-| In the files panel, while it is shown    | Alt+V                     | Show the size or the date of each file                                             |
-| In the files panel, while it is shown    | Alt+N                     | Sort by name, or reverse a sort by name                                            |
-| In the files panel, while it is shown    | Alt+S                     | Sort by the size or date shown, or reverse that sort                               |
-| On the Size/Date switch                  | ← or →                    | Choose the value before or after the chosen one                                    |
-| In the file tree                         | ↓ or ↑                    | Go to the next or the previous row                                                 |
-| In the file tree                         | →                         | Open the folder, or go to its first row                                            |
-| In the file tree                         | ←                         | Close the folder, or go to the folder that holds the row                           |
-| In the file tree                         | Home or End               | Go to the first or the last row                                                    |
-| In the file tree                         | PageDown or PageUp        | Go one panel height down or up                                                     |
-| In the file tree                         | Enter or Space            | Open the file, or open or close the folder                                         |
-| In the file tree                         | Type a name               | Go to the next row whose name starts with the letters typed                        |
-| In the file tree                         | Esc                       | Go back to the open file                                                           |
-| In the search panel                      | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
-| In the search panel                      | Alt+O                     | Switch Only opened files                                                           |
-| In a search pattern field or the max box | Enter                     | Run the search                                                                     |
-| On the open-file tabs                    | → or ←                    | Show the next or the previous tab, round the ends                                  |
-| On the open-file tabs                    | Home or End               | Show the first or the last tab                                                     |
-| On the open-file tabs                    | Delete or Backspace       | Close the tab and show the tab used before it                                      |
-| In the open file                         | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
-| In the open file                         | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
-| In the open file                         | Cmd/Alt+click             | On a chip: next anomaly of the selected category; with Shift, the previous one     |
-| In the go-to-line box                    | Enter                     | Jump to the typed line                                                             |
-| In the go-to-line box                    | Esc                       | Close the go-to-line box                                                           |
-| In the editor filter field               | Enter                     | Apply the filter to the open file                                                  |
-| In the editor filter field               | Esc                       | Close the filter bar (an applied filter stays)                                     |
-| On the timeline bar                      | ← or →                    | Move the time by 1/200 of the bar, to a whole second                               |
-| On the timeline bar                      | Shift+← or Shift+→        | Move the time by 1/20 of the bar, to a whole second                                |
-| On the timeline bar                      | Home or End               | Move the time to the start or the end of the bar                                   |
-| On the timeline bar                      | Enter                     | Go to that time in the open file (also in the Go to time box)                      |
-| On the timeline bar                      | Esc                       | Put the time back where the open file is                                           |
-| On the timeline bar                      | Drag or click             | Go to the time under the pointer when the button is released                       |
-| In the picker of a file's time zone      | ↓ or ↑                    | Move down or up through the listed zones and the filter field                      |
-| In the picker of a file's time zone      | Enter                     | In the filter field: read the file in the first listed zone or the typed offset    |
-| In the picker of a file's time zone      | Esc                       | Close the picker and keep the zone                                                 |
-| While a panel is open                    | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
+| Where                                    | Keys                      | Action                                                                              |
+| ---------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
+| Anywhere                                 | Cmd/Ctrl+K                | Go to the search pattern field                                                      |
+| Anywhere                                 | Cmd/Ctrl+B                | Show or hide the sidebar                                                            |
+| Anywhere                                 | Cmd/Ctrl+/                | Show or hide the shortcut list                                                      |
+| Anywhere                                 | Esc                       | Close the shortcut list                                                             |
+| Panels, from anywhere                    | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                        |
+| Panels, from anywhere                    | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                             |
+| Open file tabs, from anywhere            | Alt+]                     | Show the next tab of the strip (after the last, the first)                          |
+| Open file tabs, from anywhere            | Alt+[                     | Show the previous tab of the strip (before the first, the last)                     |
+| Open file tabs, from anywhere            | Alt+Q                     | Hold Alt: go back through the tabs as last used; releasing Alt shows the chosen tab |
+| Open file tabs, from anywhere            | Alt+Shift+Q               | Hold Alt: go forward through the tabs as last used                                  |
+| Open file tabs, from anywhere            | Alt+X                     | Close the tab shown and show the tab used before it                                 |
+| In the activity bar                      | ↓ or ↑                    | Move down or up through the panel buttons                                           |
+| In the files panel, while it is shown    | Alt+G                     | Group rotated logs: on or off                                                       |
+| In the files panel, while it is shown    | Alt+L                     | Show labels: on or off                                                              |
+| In the files panel, while it is shown    | Alt+V                     | Show the size or the date of each file                                              |
+| In the files panel, while it is shown    | Alt+N                     | Sort by name, or reverse a sort by name                                             |
+| In the files panel, while it is shown    | Alt+S                     | Sort by the size or date shown, or reverse that sort                                |
+| On the Size/Date switch                  | ← or →                    | Choose the value before or after the chosen one                                     |
+| In the file tree                         | ↓ or ↑                    | Go to the next or the previous row                                                  |
+| In the file tree                         | →                         | Open the folder, or go to its first row                                             |
+| In the file tree                         | ←                         | Close the folder, or go to the folder that holds the row                            |
+| In the file tree                         | Home or End               | Go to the first or the last row                                                     |
+| In the file tree                         | PageDown or PageUp        | Go one panel height down or up                                                      |
+| In the file tree                         | Enter or Space            | Open the file, or open or close the folder                                          |
+| In the file tree                         | Type a name               | Go to the next row whose name starts with the letters typed                         |
+| In the file tree                         | Esc                       | Go back to the open file                                                            |
+| In the search panel                      | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                   |
+| In the search panel                      | Alt+O                     | Switch Only opened files                                                            |
+| In a search pattern field or the max box | Enter                     | Run the search                                                                      |
+| On the open-file tabs                    | → or ←                    | Show the next or the previous tab, round the ends                                   |
+| On the open-file tabs                    | Home or End               | Show the first or the last tab                                                      |
+| On the open-file tabs                    | Delete or Backspace       | Close the tab and show the tab used before it                                       |
+| In the open file                         | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                           |
+| In the open file                         | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                              |
+| In the open file                         | Cmd/Alt+click             | On a chip: next anomaly of the selected category; with Shift, the previous one      |
+| In the go-to-line box                    | Enter                     | Jump to the typed line                                                              |
+| In the go-to-line box                    | Esc                       | Close the go-to-line box                                                            |
+| In the editor filter field               | Enter                     | Apply the filter to the open file                                                   |
+| In the editor filter field               | Esc                       | Close the filter bar (an applied filter stays)                                      |
+| On the timeline bar                      | ← or →                    | Move the time by 1/200 of the bar, to a whole second                                |
+| On the timeline bar                      | Shift+← or Shift+→        | Move the time by 1/20 of the bar, to a whole second                                 |
+| On the timeline bar                      | Home or End               | Move the time to the start or the end of the bar                                    |
+| On the timeline bar                      | Enter                     | Go to that time in the open file (also in the Go to time box)                       |
+| On the timeline bar                      | Esc                       | Put the time back where the open file is                                            |
+| On the timeline bar                      | Drag or click             | Go to the time under the pointer when the button is released                        |
+| In the picker of a file's time zone      | ↓ or ↑                    | Move down or up through the listed zones and the filter field                       |
+| In the picker of a file's time zone      | Enter                     | In the filter field: read the file in the first listed zone or the typed offset     |
+| In the picker of a file's time zone      | Esc                       | Close the picker and keep the zone                                                  |
+| While a panel is open                    | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts  |
+| While a panel is open                    | Alt+Esc or Esc            | Close the list of recently used tabs and stay on the tab shown                      |
 
 While a dialog is open (the shortcut list, the analysis, the API token
 prompt, the notice of a backend the viewer cannot read), the keys that
@@ -181,7 +186,19 @@ Alt+], Alt+[ and Alt+X act from anywhere, a text field or the editor
 too, while no dialog is open: Alt+] and Alt+[ go through the tabs in the
 order of the strip, round the ends, and Alt+X closes the tab shown and
 shows the tab used before it. With one tab open, Alt+] and Alt+[ leave
-the key to the browser. The browsers keep their own tab keys (Ctrl+Tab,
+the key to the browser.
+
+Alt+Q goes back to the tab used before, the way an operating system
+switches windows. Hold Alt and press Q: after a quarter of a second a
+list of the open tabs shows, the tab shown first and then the others as
+they were last used, with the tab used before chosen. Each further Q
+chooses the entry after it, Shift+Q the one before, round the ends, and
+releasing Alt shows the chosen tab; a click on an entry shows it too. A
+quick Alt+Q shows the tab used before without drawing the list. Esc, or
+switching to another window, closes the list and stays on the tab
+shown. While Alt is held after Alt+Q, the viewer's other keys wait. The
+order of use is not part of the link: a link opens with its tab first
+and the others in the order of the strip. The browsers keep their own tab keys (Ctrl+Tab,
 Ctrl+PageUp and PageDown, Cmd/Ctrl with a digit, Cmd/Ctrl+W), so the
 viewer does not use them.
 

@@ -89,6 +89,12 @@ export type TreeShortcutId =
  */
 export type FileTabsShortcutId = 'nextTab' | 'previousTab' | 'closeTab';
 
+/**
+ * The keys of the recent-tab switcher: Alt+Q opens it or moves it on,
+ * and Esc closes it while it is open.
+ */
+export type RecentTabsShortcutId = 'recentTab' | 'recentTabBack' | 'closeRecentTabs';
+
 /** The keys of the tab strip, which act on the focused tab. */
 export type TabStripShortcutId = 'tabStripMove' | 'tabStripEnds' | 'tabStripClose';
 
@@ -96,6 +102,7 @@ export type ShortcutId =
   | GlobalShortcutId
   | FilesPanelShortcutId
   | FileTabsShortcutId
+  | RecentTabsShortcutId
   | 'activityBarMove'
   | 'valueSwitchMove'
   | SearchPanelShortcutId
@@ -303,6 +310,21 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'fileTabs',
     description: 'Show the previous tab of the strip (before the first, the last)',
     chord: { code: 'BracketLeft', alt: true },
+  },
+  // Option+Q types "œ" on a Mac. The list of recent tabs closes when Alt
+  // is released.
+  {
+    id: 'recentTab',
+    scope: 'fileTabs',
+    description:
+      'Hold Alt: go back through the tabs as last used; releasing Alt shows the chosen tab',
+    chord: { code: 'KeyQ', alt: true, shift: false },
+  },
+  {
+    id: 'recentTabBack',
+    scope: 'fileTabs',
+    description: 'Hold Alt: go forward through the tabs as last used',
+    chord: { code: 'KeyQ', alt: true, shift: true },
   },
   {
     id: 'closeTab',
@@ -569,6 +591,14 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: "Close the list of a log chain's parts",
     chord: { key: 'Escape' },
   },
+  // Alt is still held while the list of recent tabs is open.
+  {
+    id: 'closeRecentTabs',
+    scope: 'openPanel',
+    description: 'Close the list of recently used tabs and stay on the tab shown',
+    chord: { key: 'Escape', alt: true },
+    otherChords: [{ key: 'Escape' }],
+  },
 ];
 
 /** The row with `id`. Throws on an unknown id, which is a programming error. */
@@ -690,6 +720,21 @@ export type FileTabsShortcutActions = ShortcutActions<FileTabsShortcutId>;
 export function handleFileTabsKey(
   event: KeyPress & { preventDefault(): void },
   actions: FileTabsShortcutActions,
+): boolean {
+  return runShortcutAmong(event, actions);
+}
+
+/** What each key of the recent-tab switcher does; an action returns whether it acted. */
+export type RecentTabsShortcutActions = ShortcutActions<RecentTabsShortcutId>;
+
+/**
+ * Run the recent-tab switcher's shortcut `event` is, among those
+ * `actions` holds. `preventDefault` is called only when the action
+ * acted, which also keeps the "œ" of Option+Q out of a text field.
+ */
+export function handleRecentTabsKey(
+  event: KeyPress & { preventDefault(): void },
+  actions: RecentTabsShortcutActions,
 ): boolean {
   return runShortcutAmong(event, actions);
 }

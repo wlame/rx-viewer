@@ -63,6 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   act while no dialog is open, also from a text field or the editor;
   Alt+] and Alt+[ need two tabs open. A tab's close button names Alt+X
   in its tooltip.
+- A recent-tab switcher on Alt+Q: hold Alt and press Q to go back to the
+  tab used before, Q again to go further back through the tabs as last
+  used (Shift+Q goes forward), and release Alt to show the chosen one.
+  Its list shows after a quarter of a second, so a quick Alt+Q switches
+  with nothing drawn; a click on an entry shows it, and Esc or a switch
+  to another window closes it without a change. The other keys wait
+  while it is open.
 - Arrow keys on the tab strip, which is now a tab list for the keyboard
   and screen readers: one Tab stop on the tab shown; with a tab focused
   ← and → show the tab beside it (round the ends), Home and End the

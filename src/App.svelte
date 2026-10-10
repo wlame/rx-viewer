@@ -11,6 +11,7 @@
   import StatusBar from './components/layout/StatusBar.svelte';
   import AnalyzeDialogHost from './components/tree/AnalyzeDialogHost.svelte';
   import KeyboardShortcuts from './components/common/KeyboardShortcuts.svelte';
+  import RecentTabsSwitcher from './components/layout/RecentTabsSwitcher.svelte';
   import Notifications from './components/common/Notifications.svelte';
   import TokenPrompt from './components/common/TokenPrompt.svelte';
   import ContractRefused from './components/common/ContractRefused.svelte';
@@ -55,6 +56,7 @@
   <!-- Before the shortcut list, which opens over it. -->
   <AnalyzeDialogHost />
   <KeyboardShortcuts />
+  <RecentTabsSwitcher />
   <Notifications />
   <TokenPrompt />
 </div>
