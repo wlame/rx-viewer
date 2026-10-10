@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { TOOLTIP_GAP_PX, TOOLTIP_ID } from '$lib/actions/tooltip';
 import {
+  registerModal,
   searchFocusRequested,
   shortcutsHelpOpen,
   sidebarTab,
@@ -206,6 +207,34 @@ describe('the keys of the activity bar', () => {
     expect(document.activeElement).toBe(files());
     expect(withMod.defaultPrevented).toBe(false);
     expect(composing.defaultPrevented).toBe(false);
+  });
+
+  // Enter and Space on a button are the browser's: it clicks the button
+  // when the key is left to it.
+  it('leaves ↓, ↑ and Enter to an open dialog, and a click changes nothing', async () => {
+    const { files, search, help } = mount();
+    files().focus();
+    const release = registerModal();
+    try {
+      const down = await keyDown(files(), { key: 'ArrowDown', code: 'ArrowDown' });
+      const up = await keyDown(files(), { key: 'ArrowUp', code: 'ArrowUp' });
+      const enter = await keyDown(files(), { key: 'Enter', code: 'Enter' });
+      await click(files());
+      await click(search());
+      await click(help());
+
+      expect([down.defaultPrevented, up.defaultPrevented, enter.defaultPrevented]).toEqual([
+        false,
+        false,
+        false,
+      ]);
+      expect(document.activeElement).toBe(files());
+      expect(get(sidebarVisible)).toBe(true);
+      expect(get(sidebarTab)).toBe('tree');
+      expect(get(shortcutsHelpOpen)).toBe(false);
+    } finally {
+      release();
+    }
   });
 });
 

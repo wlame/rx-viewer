@@ -4,14 +4,18 @@
   button shows its panel, or hides the side panel when that panel is the
   one shown. The buttons form one toolbar with one Tab stop: the button
   last focused, else the shown panel's; ↓ and ↑ move between them.
+  While a dialog is open, the bar does nothing: its keys and the click a
+  browser makes of Enter or Space are left to the dialog.
 -->
 <script lang="ts">
   import { tooltip } from '$lib/actions/tooltip';
   import {
     clickPanelButton,
+    modalOpen,
     shortcutsHelpOpen,
     sidebarTab,
     sidebarVisible,
+    type SidebarTab,
   } from '$lib/stores/layout';
   import { PANELS } from '$lib/utils/panels';
   import { isShortcut } from '$lib/utils/shortcuts';
@@ -42,7 +46,20 @@
   $: shownIndex = $sidebarVisible ? PANELS.findIndex((panel) => panel.id === $sidebarTab) : -1;
   $: tabStopIndex = focusedIndex ?? Math.max(shownIndex, 0);
 
+  /** A click on a panel's button: show its panel, or hide the side panel. */
+  function pressPanelButton(id: SidebarTab) {
+    if ($modalOpen) return;
+    clickPanelButton(id);
+  }
+
+  /** A click on the keyboard shortcuts button: open the shortcut list. */
+  function pressHelpButton() {
+    if ($modalOpen) return;
+    shortcutsHelpOpen.set(true);
+  }
+
   function handleKeydown(event: KeyboardEvent) {
+    if ($modalOpen) return;
     const move = MOVES.find((m) => m.key === event.key && isShortcut('activityBarMove', event));
     if (!move) return;
     const buttons = [...toolbar.querySelectorAll<HTMLElement>('button')];
@@ -71,7 +88,7 @@
         aria-pressed={isPressed}
         tabindex={index === tabStopIndex ? 0 : -1}
         use:tooltip={{ label: panel.label, shortcut: panel.shortcut, placement: 'right' }}
-        on:click={() => clickPanelButton(panel.id)}
+        on:click={() => pressPanelButton(panel.id)}
         on:focus={() => (focusedIndex = index)}
         on:keydown={handleKeydown}
       >
@@ -93,7 +110,7 @@
     aria-label="Keyboard shortcuts"
     tabindex={HELP_INDEX === tabStopIndex ? 0 : -1}
     use:tooltip={{ label: 'Keyboard shortcuts', shortcut: 'showShortcuts', placement: 'right' }}
-    on:click={() => shortcutsHelpOpen.set(true)}
+    on:click={pressHelpButton}
     on:focus={() => (focusedIndex = HELP_INDEX)}
     on:keydown={handleKeydown}
   >

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { get } from 'svelte/store';
   import { modal } from '$lib/actions/modal';
+  import { takeFocus } from '$lib/actions/takeFocus';
   import { modalOpen, shortcutsHelpOpen, showPanel, toggleSidebar } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
   import {
@@ -103,7 +104,11 @@
         </dl>
       {/each}
 
-      <button class="btn btn-primary w-full mt-4" on:click={() => shortcutsHelpOpen.set(false)}>
+      <button
+        class="btn btn-primary w-full mt-4"
+        use:takeFocus
+        on:click={() => shortcutsHelpOpen.set(false)}
+      >
         Close
       </button>
     </div>

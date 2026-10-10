@@ -6,12 +6,13 @@ import { get } from 'svelte/store';
 import { files, health, tree } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
-import { editorFocusRequested, registerModal } from '$lib/stores/layout';
+import { editorFocusRequested, registerModal, shortcutsHelpOpen } from '$lib/stores/layout';
 import { treeFocus, treeRows } from '$lib/stores/treeFocus';
 import { LOG_DIR, LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
 import { chainKey } from '$lib/utils/tabKey';
 import { visibleRows } from '$lib/utils/treeRows';
 import type { TreeSort } from '$lib/utils/treeSort';
+import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
 import FileTree from './FileTree.svelte';
 
 const FONTS = `${LOG_DIR}/fonts.log`;
@@ -288,6 +289,27 @@ describe('the file tree by keyboard', () => {
 });
 
 describe('the keys the tree leaves alone', () => {
+  // A dialog that does not take the focus can leave it on a row: the
+  // row's keys are the dialog's then, and the browser's.
+  it.each(['ArrowDown', ' ', 'Enter'])('leaves %j to an open dialog', async (key) => {
+    const { target } = await mountTree();
+    await openLogDir();
+    const openFile = vi.spyOn(files, 'openFile');
+    const row = focusRow(target, FONTS);
+    const release = registerModal();
+    try {
+      const event = press(row, key);
+      await tick();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.activeElement).toBe(row);
+      expect(get(treeFocus)).toBe(FONTS);
+      expect(openFile).not.toHaveBeenCalled();
+    } finally {
+      release();
+    }
+  });
+
   it.each([
     ['ArrowDown', { ctrlKey: true }],
     ['ArrowDown', { metaKey: true }],
@@ -634,5 +656,52 @@ describe('the rows the tree draws', () => {
 
     expect(icons.length).toBeGreaterThan(20);
     for (const icon of icons) expect(icon.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+});
+
+describe('the file tree under the shortcut list', () => {
+  let help: KeyboardShortcuts | null = null;
+
+  afterEach(() => {
+    help?.$destroy();
+    help = null;
+    shortcutsHelpOpen.set(false);
+  });
+
+  function closeButton(): HTMLButtonElement {
+    const found = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+      (button) => button.textContent?.trim() === 'Close',
+    );
+    if (!found) throw new Error('the shortcut list is not open');
+    return found;
+  }
+
+  it('gives the focus to the Close button on Cmd+/ from a row, and back to the row on Esc', async () => {
+    const { target } = await mountTree();
+    await openLogDir();
+    await files.openFile(FONTS);
+    help = new KeyboardShortcuts({
+      target: document.body.appendChild(document.createElement('div')),
+    });
+    const row = focusRow(target, FONTS);
+
+    press(row, '/', { code: 'Slash', metaKey: true });
+    await tick();
+    const close = closeButton();
+
+    expect(document.activeElement).toBe(close);
+
+    const down = press(close, 'ArrowDown');
+    await tick();
+
+    expect(down.defaultPrevented).toBe(false);
+    expect(get(treeFocus)).toBe(FONTS);
+
+    press(close, 'Escape');
+    await tick();
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(row);
+    expect(get(editorFocusRequested)).toBe(false);
   });
 });

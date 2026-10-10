@@ -81,8 +81,12 @@
     handleFilesPanelKey(event, actions);
   }
 
-  /** ← and → choose the value before or after the chosen one, and focus its button. */
+  /**
+   * ← and → choose the value before or after the chosen one, and focus
+   * its button; while a dialog is open, they are the dialog's.
+   */
   function handleValueKeydown(event: KeyboardEvent) {
+    if ($modalOpen) return;
     const move = MOVES.find((m) => m.key === event.key && isShortcut('valueSwitchMove', event));
     if (!move) return;
     event.preventDefault();

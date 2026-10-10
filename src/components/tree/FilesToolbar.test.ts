@@ -7,7 +7,7 @@ import { TOOLTIP_ID } from '$lib/actions/tooltip';
 import { health } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
-import { sidebarTab, sidebarVisible } from '$lib/stores/layout';
+import { registerModal, sidebarTab, sidebarVisible } from '$lib/stores/layout';
 import { LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
 import { startViewSync } from '$lib/viewState';
 import FilesToolbar from './FilesToolbar.svelte';
@@ -199,6 +199,21 @@ describe('the Size/Date switch of the files toolbar', () => {
 
     expect(event.defaultPrevented).toBe(false);
     expect(get(filesView).show).toBe('size');
+  });
+
+  it.each(['ArrowRight', 'ArrowLeft'])('leaves %s to an open dialog', async (key) => {
+    const { size } = await mount();
+    size()?.focus();
+    const release = registerModal();
+    try {
+      const event = await keyDown(size() as HTMLElement, { key });
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(get(filesView).show).toBe('size');
+      expect(document.activeElement).toBe(size());
+    } finally {
+      release();
+    }
   });
 });
 

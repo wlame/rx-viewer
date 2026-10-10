@@ -91,7 +91,7 @@ interchangeable backends, no vendoring.
 | `src/lib/stores/filesView.ts`, `treeFocus.ts`             | The files panel's labels, value and sort; the file tree's current row and Tab stop                                                                 |
 | `src/lib/stores/searchDraft.ts`, `trace.ts`               | The search form as the user left it; the search the URL names                                                                                      |
 | `src/lib/utils/shortcuts.ts`, `panels.ts`                 | The one shortcut table with its scoped key handlers; the side panel's panels, which the activity bar draws                                         |
-| `src/lib/actions/`                                        | Svelte actions: `tooltip` (label and keys on hover and focus), `modal` (counts an open modal dialog)                                               |
+| `src/lib/actions/`                                        | Svelte actions: `tooltip` (label and keys on hover and focus), `modal` (counts an open modal dialog), `takeFocus` (focus to a dialog, then back)   |
 | `src/lib/utils/icons.ts`                                  | The icon table (Lucide outlines); `src/components/common/Icon.svelte` draws it                                                                     |
 | `src/lib/utils/treeSort.ts`, `treeRows.ts`, `treeNav.ts`  | The files panel's sort, the rows the tree shows as one list, and the tree's key rules                                                              |
 | `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                                                                 |
@@ -263,11 +263,17 @@ separate comment above, or eslint reads every word as another rule.
 - Every element with `aria-modal="true"` carries `use:modal`
   (`actions/modal.ts`), which counts the dialog in `modalOpen`
   (`stores/layout.ts`) while it is in the page. While `modalOpen` holds,
-  the panel keys, Cmd/Ctrl+K, Cmd/Ctrl+B and the files panel's and the
-  search panel's keys do nothing and are not cancelled, so the keyboard
-  stays with the dialog. A source test (`actions/modal.test.ts`) fails
+  the panel keys, Cmd/Ctrl+K, Cmd/Ctrl+B and the keys of the activity
+  bar, the file tree, the Size/Date switch and the files and search
+  panels do nothing and are not cancelled, so the keyboard stays with
+  the dialog; a key handler outside a dialog checks it on its first
+  line, and a button whose Enter would act behind a dialog checks it in
+  its click handler. A source test (`actions/modal.test.ts`) fails
   when a component has more `aria-modal="true"` than `use:modal`, or the
-  other way round.
+  other way round. The shortcut list's Close button carries
+  `use:takeFocus` (`actions/takeFocus.ts`): it takes the focus when the
+  list opens and gives it back to the control that had it when the list
+  closes.
 - Icons are rows of `ICONS` in `utils/icons.ts`: Lucide 24×24 outlines as
   data (a tag and its attributes), drawn by `components/common/Icon.svelte`
   with `<svelte:element>`, never `{@html}`. The file's header holds

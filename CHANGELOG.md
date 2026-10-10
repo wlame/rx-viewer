@@ -72,7 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs it on load also when it shows Files, as it does when it shows
   Search.
 - Cmd/Ctrl+K no longer closes the shortcut list and goes to Search: the
-  list is a modal dialog now, which Esc or Cmd/Ctrl+/ closes.
+  list is a modal dialog now, which Esc or Cmd/Ctrl+/ closes. It takes
+  the focus to its Close button when it opens, and gives the focus back
+  to the control that had it when it closes.
 - The files panel orders each folder's rows itself, by name A to Z
   unless the link says otherwise, instead of keeping the backend's
   order; the search roots keep their configured order.
@@ -99,8 +101,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hide an open analysis dialog together with the files panel. While the
   shortcut list, the analysis, the API token prompt or the notice of a
   backend the viewer cannot read is open, they and every key that shows
-  a panel or acts in the files or search panel do nothing and are left
-  to the browser.
+  a panel or acts in the activity bar, the file tree, the Size/Date
+  switch or the files or search panel do nothing and are left to the
+  browser; a click that the browser makes of Enter on an activity bar
+  button does nothing either.
 
 ## [0.7.0] - 2026-10-09
 

@@ -96,12 +96,9 @@
     open: openTreeRow,
   };
 
-  /**
-   * Esc: ask the open file's editor for the focus. With no open tab, or
-   * while a dialog is open, the key is left alone.
-   */
+  /** Esc: ask the open file's editor for the focus. With no open tab, the key is left alone. */
   function focusEditor(): boolean {
-    if (get(files).openFiles.length === 0 || get(modalOpen)) return false;
+    if (get(files).openFiles.length === 0) return false;
     editorFocusRequested.set(true);
     return true;
   }
@@ -114,12 +111,14 @@
   }
 
   /**
-   * The tree's one key handler. A key with Ctrl, Cmd or Alt belongs to
-   * the shortcut table, a key an input method composes with to it, and a
-   * key outside the rows (a row's menu, the Retry button) to what has it.
-   * The key is cancelled only when it acted.
+   * The tree's one key handler. While a dialog is open, every key is the
+   * dialog's. A key with Ctrl, Cmd or Alt belongs to the shortcut table,
+   * a key an input method composes with to it, and a key outside the rows
+   * (a row's menu, the Retry button) to what has it. The key is cancelled
+   * only when it acted.
    */
   function handleKeydown(event: KeyboardEvent) {
+    if ($modalOpen) return;
     const currentId = rowIdOf(event.target);
     if (currentId === null) return;
     if (event.ctrlKey || event.metaKey || event.altKey || belongsToInputMethod(event)) return;
