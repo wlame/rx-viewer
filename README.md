@@ -70,7 +70,7 @@ way.
   back to the tab used before (held, through all of them as last used),
   and Alt+X closes the tab shown. The tab strip works from the keyboard
   as one Tab stop: ← and → show the tab beside, Home and End the first
-  and the last, Delete closes the tab.
+  and the last, Delete or Backspace closes the tab.
 - **Paged reading of large files.** The editor never loads a whole file:
   it asks `/v1/samples` for windows of 1,000 lines as you scroll and holds
   at most five of them. Line numbers are the file's own, also in gzip and
