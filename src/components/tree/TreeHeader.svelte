@@ -6,6 +6,16 @@
   Alt+N and Alt+S do the same from anywhere while the panel is shown and
   no dialog is open; at any other time the key is left alone.
 -->
+<script context="module" lang="ts">
+  /**
+   * The scrollbar gutter the tree's scroll box keeps, which the header
+   * keeps as well: a scrollbar that takes room narrows both by the same
+   * width, so each value stays under its column's name. An overlay
+   * scrollbar takes no room, and neither does its gutter.
+   */
+  export const COLUMN_GUTTER_CLASS = 'scrollbar-thin [scrollbar-gutter:stable]';
+</script>
+
 <script lang="ts">
   import { tooltip } from '$lib/actions/tooltip';
   import { filesPanelShown, filesView, sortFilesBy } from '$lib/stores/filesView';
@@ -66,8 +76,10 @@
 
 <svelte:window on:keydown={handleWindowKeydown} />
 
+<!-- The gutter needs a box that clips; py-1 leaves room for the focus outline inside it. -->
 <div
-  class="flex items-center justify-between px-2 py-0.5 text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted
+  class="flex items-center justify-between px-2 py-1 overflow-hidden {COLUMN_GUTTER_CLASS}
+         text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted
          border-b border-gh-border-default dark:border-gh-border-dark-default"
 >
   <!-- The names and the values keep their columns' edges: -mx-1 takes back the padding. -->

@@ -4,7 +4,7 @@
   import { filesView } from '$lib/stores/filesView';
   import { treeFocusRequested } from '$lib/stores/layout';
   import FilesToolbar from './FilesToolbar.svelte';
-  import TreeHeader from './TreeHeader.svelte';
+  import TreeHeader, { COLUMN_GUTTER_CLASS } from './TreeHeader.svelte';
   import TreeNode from './TreeNode.svelte';
   import Spinner from '../common/Spinner.svelte';
 
@@ -43,7 +43,7 @@
   <FilesToolbar />
   <TreeHeader />
 
-  <div class="flex-1 overflow-auto scrollbar-thin py-1" role="tree" bind:this={treeElement}>
+  <div class="flex-1 overflow-auto py-1 {COLUMN_GUTTER_CLASS}" role="tree" bind:this={treeElement}>
     {#if $tree.loading}
       <div class="flex items-center justify-center py-8">
         <Spinner size="md" />

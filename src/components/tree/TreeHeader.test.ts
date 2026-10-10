@@ -136,6 +136,17 @@ describe('the column header of the files panel', () => {
     expect(value().getAttribute('aria-label')).toBe('Sort by date, descending');
   });
 
+  // The gutter applies to a box that clips its overflow; it has the
+  // width of the tree's thin scrollbar.
+  it("reserves a gutter as wide as the tree's scrollbar, without scrolling", () => {
+    const { name } = mount();
+    const header = name().parentElement;
+
+    expect(header?.classList).toContain('[scrollbar-gutter:stable]');
+    expect(header?.classList).toContain('scrollbar-thin');
+    expect(header?.classList).toContain('overflow-hidden');
+  });
+
   it('stands outside the tree, as plain buttons', () => {
     const { target } = mount();
 

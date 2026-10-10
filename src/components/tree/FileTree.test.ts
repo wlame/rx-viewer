@@ -270,6 +270,22 @@ describe('the order of the files panel', () => {
     ).toBeTruthy();
   });
 
+  // A scrollbar that takes room narrows the tree's rows; the header must
+  // lose the same width, or the values stand left of their header.
+  it("reserves the tree's scrollbar gutter on its column header too", async () => {
+    const { target } = await mountLogDir(false);
+    const header = target.querySelector('button[aria-label^="Sort by name"]')?.parentElement;
+    const scrollBox = target.querySelector<HTMLElement>('[role="tree"]');
+    if (!header || !scrollBox) throw new Error('the files panel is not rendered');
+
+    for (const box of [header, scrollBox]) {
+      expect(box.classList).toContain('[scrollbar-gutter:stable]');
+      expect(box.classList).toContain('scrollbar-thin');
+    }
+    expect(scrollBox.classList).toContain('overflow-auto');
+    expect(header.classList).toContain('overflow-hidden');
+  });
+
   it('keeps the search roots in their configured order', async () => {
     serveRoots(['/zeta', '/alpha', '/mid']);
     await health.check();
