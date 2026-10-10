@@ -167,20 +167,47 @@
     return !focusedRow.isConnected && (active === null || active === document.body);
   }
 
+  /** The rows as the last look at them found them, to tell whether a row moved. */
+  let previousRows: readonly VisibleRow[] = [];
+
   /**
-   * When the current row is no longer shown, make the row that takes its
-   * place current (`fallbackFocus`): the chain row that shows it as a
-   * part, else the nearest folder above it, else the first row. The focus
-   * follows when the row had it. While the roots load or the tree shows
-   * its error, no row is drawn, and while a folder above the row loads its
-   * rows, the row may come back: the current row waits for them.
+   * Keep the focus on the row `id` after an update: a keyed list moves a
+   * row by taking it out and putting it back, which leaves the focus on no
+   * control. A row that moved to another place is scrolled into view. A
+   * focus on another control stays there.
+   */
+  function keepFocusOn(id: string, hasMoved: boolean) {
+    const active = document.activeElement;
+    const isFocusLost = active === null || active === document.body;
+    if (isFocusLost || (hasMoved && active === rowElement(id))) moveFocusTo(id);
+  }
+
+  /**
+   * After a change of the rows, keep the current row and the focus on it.
+   * A row still shown keeps the focus it had, also when a new order moved
+   * it. When the current row is no longer shown, the row that takes its
+   * place becomes current (`fallbackFocus`): the chain row that shows it
+   * as a part, else the nearest folder above it, else the first row; the
+   * focus follows when the row had it. While the roots load or the tree
+   * shows its error, no row is drawn, and while a folder above the row
+   * loads its rows, the row may come back: the current row waits for them.
    */
   function keepCurrentRow(rows: readonly VisibleRow[], current: string | null) {
-    if (current === null || rows.some((row) => row.id === current)) return;
+    const previous = previousRows;
+    previousRows = rows;
+    if (current === null) return;
+    // Read before the update draws the rows: a row that moves loses the focus.
+    const hadFocus = isFocusOnRows();
+    const index = rows.findIndex((row) => row.id === current);
+    if (index >= 0) {
+      const indexBefore = previous.findIndex((row) => row.id === current);
+      const hasMoved = indexBefore >= 0 && indexBefore !== index;
+      if (hadFocus) void tick().then(() => keepFocusOn(current, hasMoved));
+      return;
+    }
     if (isLoadingAbove(rows, current)) return;
     const folder = tree.nodeAt(chainDirectoryOf(chainHandleOf(current) ?? current));
     const next = fallbackFocus(rows, current, replacementRow(folder, current));
-    const hadFocus = isFocusOnRows();
     treeFocus.set(next);
     if (hadFocus && next !== null) void tick().then(() => moveFocusTo(next));
   }

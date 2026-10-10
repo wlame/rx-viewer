@@ -444,6 +444,94 @@ describe('the focused row going away', () => {
   });
 });
 
+describe('a new order of the rows', () => {
+  /** The place of the row `id` among the rows drawn. */
+  function placeOf(target: HTMLElement, id: string): number {
+    return rowsOf(target).findIndex((row) => row.dataset.rowId === id);
+  }
+
+  /** The rows `scrollIntoView` was called on. */
+  function scrolledRows(): unknown[] {
+    return vi.mocked(Element.prototype.scrollIntoView).mock.contexts;
+  }
+
+  const SIZE_DESC: TreeSort = { key: 'size', dir: 'desc' };
+
+  // A keyed list moves a row by taking it out and putting it back, which
+  // takes the focus from it; the tree gives it back.
+  it.each([
+    [
+      'Alt+N',
+      DEFAULT_FILES_VIEW.sort,
+      (row: HTMLElement) => press(row, 'Dead', { code: 'KeyN', altKey: true }),
+    ],
+    [
+      'Alt+S',
+      DEFAULT_FILES_VIEW.sort,
+      (row: HTMLElement) => press(row, 'ß', { code: 'KeyS', altKey: true }),
+    ],
+    [
+      'Alt+V on a size sort',
+      SIZE_DESC,
+      (row: HTMLElement) => press(row, '√', { code: 'KeyV', altKey: true }),
+    ],
+    [
+      'a click on the Size header',
+      DEFAULT_FILES_VIEW.sort,
+      (row: HTMLElement) =>
+        row.ownerDocument
+          .querySelector<HTMLButtonElement>('button[aria-label="Sort by size"]')
+          ?.click(),
+    ],
+  ] as const)(
+    'keeps the focus on the focused row through %s, and scrolls the row into view',
+    async (_name, sort, act) => {
+      const { target } = await mountTree();
+      filesView.set({ ...DEFAULT_FILES_VIEW, sort });
+      await openLogDir();
+      const row = focusRow(target, FONTS);
+      const placeBefore = placeOf(target, FONTS);
+
+      act(row);
+      await tick();
+      await tick();
+
+      expect(placeOf(target, FONTS)).not.toBe(placeBefore);
+      expect(document.activeElement).toBe(rowOf(target, FONTS));
+      expect(tabStops(target)).toEqual([FONTS]);
+      expect(scrolledRows()).toContain(rowOf(target, FONTS));
+    },
+  );
+
+  it('keeps the focus on the focused row through Alt+L, which moves no row', async () => {
+    const { target } = await mountTree();
+    await openLogDir();
+    const row = focusRow(target, FONTS);
+
+    press(row, '¬', { code: 'KeyL', altKey: true });
+    await tick();
+    await tick();
+
+    expect(get(filesView).labels).toBe(false);
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('leaves the focus on another control when the order changes', async () => {
+    const { target } = await mountTree();
+    await openLogDir();
+    focusRow(target, FONTS);
+    const outside = document.body.appendChild(document.createElement('button'));
+    outside.focus();
+    await tick();
+
+    filesView.set({ ...DEFAULT_FILES_VIEW, sort: SIZE_DESC });
+    await tick();
+    await tick();
+
+    expect(document.activeElement).toBe(outside);
+  });
+});
+
 describe('→ on a folder that is loading or fails to load', () => {
   it('keeps the focus on a folder whose rows are loading, asks once, and goes in once they arrive', async () => {
     const { target, backend } = await mountTree();
