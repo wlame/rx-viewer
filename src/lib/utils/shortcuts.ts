@@ -19,6 +19,7 @@ export const SHORTCUT_SCOPES = {
   fileTree: 'In the file tree',
   searchPanel: 'In the search panel',
   searchField: 'In a search pattern field or the max box',
+  tabStrip: 'On the open-file tabs',
   filePane: 'In the open file',
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
@@ -81,6 +82,9 @@ export type TreeShortcutId =
   | 'treeTypeName'
   | 'treeToEditor';
 
+/** The keys of the tab strip, which act on the focused tab. */
+export type TabStripShortcutId = 'tabStripMove' | 'tabStripEnds' | 'tabStripClose';
+
 export type ShortcutId =
   | GlobalShortcutId
   | FilesPanelShortcutId
@@ -88,6 +92,7 @@ export type ShortcutId =
   | 'valueSwitchMove'
   | SearchPanelShortcutId
   | 'runSearch'
+  | TabStripShortcutId
   | 'gotoLine'
   | 'gotoJump'
   | 'gotoClose'
@@ -334,6 +339,28 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'searchField',
     description: 'Run the search',
     chord: { key: 'Enter', shift: false },
+  },
+  {
+    id: 'tabStripMove',
+    scope: 'tabStrip',
+    description: 'Show the next or the previous tab, round the ends',
+    chord: { key: 'ArrowRight' },
+    otherChords: [{ key: 'ArrowLeft' }],
+  },
+  {
+    id: 'tabStripEnds',
+    scope: 'tabStrip',
+    description: 'Show the first or the last tab',
+    chord: { key: 'Home' },
+    otherChords: [{ key: 'End' }],
+  },
+  // A Mac's keyboard prints "delete" on the key that sends Backspace.
+  {
+    id: 'tabStripClose',
+    scope: 'tabStrip',
+    description: 'Close the tab and show the tab used before it',
+    chord: { key: 'Delete' },
+    otherChords: [{ key: 'Backspace' }],
   },
   {
     id: 'treeMove',

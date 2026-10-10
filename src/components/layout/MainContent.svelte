@@ -6,19 +6,17 @@
   import { notifications } from '$lib/stores/notifications';
   import { timeCursor } from '$lib/stores/timeCursor';
   import { timeStash } from '$lib/stores/timeStash';
-  import { chainTopLines } from '$lib/stores/chainTopLines';
-  import { chainTabCaption } from '$lib/utils/chainPane';
   import { FILE_ZONES_FULL, fileZoneOf } from '$lib/utils/fileZones';
   import { timeJumpFeature } from '$lib/utils/timeline';
   import { STASH_ADD_LABEL, STASH_REFUSALS, stashAddRefusal } from '$lib/utils/timeStash';
   import EditorPane from '../editor/EditorPane.svelte';
-  import FileBadges from '../common/FileBadges.svelte';
+  import TabStrip, { tabElementId } from './TabStrip.svelte';
   import TimeCursorIndicator from './TimeCursorIndicator.svelte';
   import TimeStashRow from './TimeStashRow.svelte';
   import TimelineBar from './TimelineBar.svelte';
 
-  let draggedIndex: number | null = null;
-  let dragOverIndex: number | null = null;
+  /** The id of the editor area, the tab panel every tab of the strip controls. */
+  const TAB_PANEL_ID = 'rx-tab-panel';
 
   // The same rule picks the file the URL names, so the two cannot differ.
   $: activeFile = activeOpenFile($files);
@@ -57,61 +55,6 @@
   function addCursorToStash(instantMs: number) {
     const outcome = timeStash.add(instantMs);
     if (outcome !== 'added') notifications.info(STASH_REFUSALS[outcome]);
-  }
-
-  function selectTab(index: number) {
-    const file = $files.openFiles[index];
-    if (file) {
-      files.setActiveFile(file.path);
-    }
-  }
-
-  // Closing the active tab shows the most recently used remaining one (the files store).
-  function handleClose(index: number, event: Event) {
-    event.stopPropagation();
-    files.closeFile($files.openFiles[index].path);
-  }
-
-  // Drag and drop handlers
-  function handleDragStart(event: DragEvent, index: number) {
-    draggedIndex = index;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-    }
-  }
-
-  function handleDragOver(event: DragEvent, index: number) {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-    dragOverIndex = index;
-  }
-
-  function handleDragLeave() {
-    dragOverIndex = null;
-  }
-
-  function handleDrop(event: DragEvent, dropIndex: number) {
-    event.preventDefault();
-
-    if (draggedIndex === null || draggedIndex === dropIndex) {
-      draggedIndex = null;
-      dragOverIndex = null;
-      return;
-    }
-
-    // Reorder files (the activeFilePath in store stays the same,
-    // so the correct tab remains active after reordering)
-    files.reorderFiles(draggedIndex, dropIndex);
-
-    draggedIndex = null;
-    dragOverIndex = null;
-  }
-
-  function handleDragEnd() {
-    draggedIndex = null;
-    dragOverIndex = null;
   }
 </script>
 
@@ -152,70 +95,7 @@
     <div
       class="flex items-center bg-gh-canvas-subtle dark:bg-gh-canvas-dark-subtle border-b border-gh-border-default dark:border-gh-border-dark-default"
     >
-      <div
-        data-tab-strip
-        class="flex-1 min-w-0 flex items-center gap-0.5 px-2 py-1 overflow-x-auto scrollbar-hide"
-      >
-        <!-- Each tab by its key: a chain and the file at its handle are two tabs. -->
-        {#each $files.openFiles as file, index (file.path)}
-          <button
-            draggable="true"
-            class="flex items-center gap-2 px-3 py-1.5 rounded-t
-                 transition-colors text-sm whitespace-nowrap cursor-pointer
-                 {index === validActiveIndex
-              ? 'bg-gh-canvas-default dark:bg-gh-canvas-dark-default border border-b-0 border-gh-border-default dark:border-gh-border-dark-default'
-              : 'bg-transparent hover:bg-gh-canvas-inset dark:hover:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted'}
-                 {dragOverIndex === index
-              ? 'border-l-2 border-gh-accent-fg dark:border-gh-accent-dark-fg'
-              : ''}"
-            on:click={() => selectTab(index)}
-            on:dragstart={(e) => handleDragStart(e, index)}
-            on:dragover={(e) => handleDragOver(e, index)}
-            on:dragleave={handleDragLeave}
-            on:drop={(e) => handleDrop(e, index)}
-            on:dragend={handleDragEnd}
-          >
-            {#if file.chain}
-              <!-- A chain's caption names the part of its top line: syslog [3/12]. -->
-              {@const shown = chainTabCaption(
-                file.name,
-                file.chain,
-                $chainTopLines.get(file.path) ?? null,
-              )}
-              <span class="font-medium truncate max-w-[240px]" title={shown.title}>
-                {shown.caption}
-              </span>
-            {:else}
-              <span class="font-medium truncate max-w-[200px]" title={file.path}>
-                {file.name}
-              </span>
-            {/if}
-            <FileBadges
-              isCompressed={file.isCompressed}
-              compressionFormat={file.compressionFormat}
-              isIndexed={null}
-              indexBuild={file.backgroundIndexBuild}
-            />
-            <button
-              class="p-0.5 rounded hover:bg-gh-danger-subtle dark:hover:bg-gh-danger-dark-subtle
-                   hover:text-gh-danger-fg dark:hover:text-gh-danger-dark-fg
-                   transition-colors"
-              title="Close"
-              on:click={(e) => handleClose(index, e)}
-            >
-              <svg
-                class="w-3.5 h-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </button>
-        {/each}
-      </div>
+      <TabStrip panelId={TAB_PANEL_ID} />
       {#if $timeCursor !== null}
         <div class="shrink-0 pl-1 pr-2">
           <TimeCursorIndicator
@@ -242,7 +122,12 @@
     <!-- The active tab's editor, built again for each tab key (`path`, see
          utils/tabKey.ts) so no state of one tab reaches another; each tab's
          own state is kept in paneMemory under its key. -->
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <div
+      id={TAB_PANEL_ID}
+      role="tabpanel"
+      aria-labelledby={tabElementId(validActiveIndex)}
+      class="flex-1 min-h-0 overflow-hidden"
+    >
       {#if activeFile}
         {#key activeFile.path}
           <EditorPane file={activeFile} hideHeader={false} isActive={true} />

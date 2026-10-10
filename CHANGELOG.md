@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file as a part, the file of a chain, or the folder above. A new order
   keeps the focus on its row and scrolls the row into view. Rows carry
   their level, set size and position for screen readers.
+- Arrow keys on the tab strip, which is now a tab list for the keyboard
+  and screen readers: one Tab stop on the tab shown; with a tab focused
+  ← and → show the tab beside it (round the ends), Home and End the
+  first and the last, and Delete or Backspace closes it. A tab's close
+  button stands beside the tab instead of inside it and is no Tab stop,
+  and the strip scrolls a tab shown from elsewhere into view.
 
 ### Changed
 

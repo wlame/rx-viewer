@@ -476,6 +476,12 @@ describe('the shortcut list', () => {
     ],
     ['searchField', 'In a search pattern field or the max box', ['runSearch'], ['Enter']],
     [
+      'tabStrip',
+      'On the open-file tabs',
+      ['tabStripMove', 'tabStripEnds', 'tabStripClose'],
+      ['→ or ←', 'Home or End', 'Delete or Backspace'],
+    ],
+    [
       'fileTree',
       'In the file tree',
       [

@@ -65,7 +65,10 @@ way.
   back to the open file. A file the backend marks as not text is not
   opened.
 - **Tabs** for the open files, reordered by drag and drop. Each tab keeps
-  its own filter bar and scroll position.
+  its own filter bar and scroll position. Closing the active tab shows
+  the tab used before it. The tab strip works from the keyboard as one
+  Tab stop: ← and → show the tab beside, Home and End the first and the
+  last, Delete closes the tab.
 - **Paged reading of large files.** The editor never loads a whole file:
   it asks `/v1/samples` for windows of 1,000 lines as you scroll and holds
   at most five of them. Line numbers are the file's own, also in gzip and
@@ -137,6 +140,9 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In the search panel                      | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
 | In the search panel                      | Alt+O                     | Switch Only opened files                                                           |
 | In a search pattern field or the max box | Enter                     | Run the search                                                                     |
+| On the open-file tabs                    | → or ←                    | Show the next or the previous tab, round the ends                                  |
+| On the open-file tabs                    | Home or End               | Show the first or the last tab                                                     |
+| On the open-file tabs                    | Delete or Backspace       | Close the tab and show the tab used before it                                      |
 | In the open file                         | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
 | In the open file                         | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
 | In the open file                         | Cmd/Alt+click             | On a chip: next anomaly of the selected category; with Shift, the previous one     |
@@ -175,6 +181,13 @@ Enter or Space does. Letters typed within half a second make one name,
 and the same letter typed again goes on to the next row that starts with
 it. Esc goes back to the open file or chain, when one is open. A key
 with Ctrl, Cmd or Alt is never the tree's.
+
+The tab strip is one Tab stop too, on the tab shown. With a tab focused,
+← and → show the tab beside it, round the ends, Home and End the first
+and the last tab, and Delete (or the Backspace key, which a Mac prints
+as "delete") closes it and shows the tab used before it. The keyboard
+reaches each tab's close button through Delete only; the button is not
+a Tab stop.
 
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, and a
 test fails when this table lacks one of its keys or holds one it lacks.
