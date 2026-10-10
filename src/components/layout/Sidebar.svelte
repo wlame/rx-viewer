@@ -1,10 +1,18 @@
 <script lang="ts">
+  import type { ComponentType } from 'svelte';
   import { settings } from '$lib/stores';
-  import { sidebarTab as activeTab, sidebarVisible } from '$lib/stores/layout';
+  import { sidebarTab, sidebarVisible, type SidebarTab } from '$lib/stores/layout';
+  import { PANELS } from '$lib/utils/panels';
   import FileTree from '../tree/FileTree.svelte';
   import SearchPanel from '../search/SearchPanel.svelte';
 
   export let width: number;
+
+  /** The view of each panel the activity bar switches between. */
+  const PANEL_VIEWS: Readonly<Record<SidebarTab, ComponentType>> = {
+    tree: FileTree,
+    search: SearchPanel,
+  };
 
   let isResizing = false;
   let startX = 0;
@@ -44,37 +52,15 @@
   style="width: {width}px"
   style:display={$sidebarVisible ? null : 'none'}
 >
-  <!-- Tabs -->
-  <div class="flex border-b border-gh-border-default dark:border-gh-border-dark-default">
-    <button
-      class="flex-1 px-4 py-2 text-sm font-medium
-             {$activeTab === 'tree'
-        ? 'text-gh-fg-default dark:text-gh-fg-dark-default border-b-2 border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis'
-        : 'text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
-      on:click={() => activeTab.set('tree')}
-    >
-      Files
-    </button>
-    <button
-      class="flex-1 px-4 py-2 text-sm font-medium
-             {$activeTab === 'search'
-        ? 'text-gh-fg-default dark:text-gh-fg-dark-default border-b-2 border-gh-accent-emphasis dark:border-gh-accent-dark-emphasis'
-        : 'text-gh-fg-muted dark:text-gh-fg-dark-muted hover:text-gh-fg-default dark:hover:text-gh-fg-dark-default'}"
-      on:click={() => activeTab.set('search')}
-    >
-      Search
-    </button>
-  </div>
-
-  <!-- Content. The tree is hidden rather than destroyed while Search is
-       shown, so its expanded folders and an open Analyze dialog stay. -->
+  <!-- Every panel stays mounted and the one not shown is hidden, so the
+       tree keeps its expanded folders and an open Analyze dialog, and
+       the search form its unsent patterns and options. -->
   <div class="flex-1 overflow-hidden">
-    <div class="h-full" hidden={$activeTab !== 'tree'}>
-      <FileTree />
-    </div>
-    {#if $activeTab === 'search'}
-      <SearchPanel />
-    {/if}
+    {#each PANELS as panel (panel.id)}
+      <div class="h-full" hidden={$sidebarTab !== panel.id}>
+        <svelte:component this={PANEL_VIEWS[panel.id]} />
+      </div>
+    {/each}
   </div>
 
   <!-- Resize handle -->

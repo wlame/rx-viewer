@@ -255,6 +255,7 @@ describe('the shortcut list', () => {
       ['showFiles', 'showSearch'],
       ['Alt+1 or ⌘/Ctrl+Shift+E', 'Alt+2 or ⌘/Ctrl+Shift+F'],
     ],
+    ['activityBar', 'In the activity bar', ['activityBarMove'], ['↓ or ↑']],
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
     [
       'openPanel',

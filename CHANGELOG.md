@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Panel keys from anywhere: Alt+1 or Cmd/Ctrl+Shift+E shows the files
-  panel and moves the focus to the file tree (its selected row, else its
-  first row); Alt+2 or Cmd/Ctrl+Shift+F shows the search panel and moves
-  the focus to the first pattern field. Both show a hidden side panel,
-  and neither acts while the shortcut list is open.
+- The side panel's Files and Search tabs are an activity bar at the
+  window's left edge: a button for Files, one for Search and one for the
+  keyboard shortcuts, each with a tooltip that names its key. A click on
+  the shown panel's button hides the side panel; ↓ and ↑ move between
+  the buttons. From anywhere, Alt+1 or Cmd/Ctrl+Shift+E shows Files and
+  moves the focus to the file tree (its selected row, else its first
+  row), and Alt+2 or Cmd/Ctrl+Shift+F shows Search and moves the focus to
+  the first pattern field; both show a hidden side panel, and neither
+  acts while the shortcut list is open. The Search panel keeps its unsent
+  patterns and options while Files is shown. Links keep `tab=files` and
+  `tab=search`.
 
 ## [0.7.0] - 2026-10-09
 

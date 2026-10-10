@@ -40,6 +40,12 @@ way.
 
 ## Features
 
+- **Activity bar** at the window's left edge: a button for each panel of
+  the side panel (Files, Search) and one for the keyboard shortcuts. A
+  click on the shown panel's button hides the side panel. Alt+1 or
+  Cmd/Ctrl+Shift+E shows Files and Alt+2 or Cmd/Ctrl+Shift+F shows
+  Search, each with the focus in it. A panel keeps its state while
+  another is shown.
 - **File tree** of the backend's search roots, with sizes, compression and
   index badges. A file the backend marks as not text is not opened.
 - **Tabs** for the open files, reordered by drag and drop. Each tab keeps
@@ -68,9 +74,10 @@ way.
   log (`app.log`, `app.log.1`, `app.log.2.gz`, …) open as one text, in
   time order: see [Log chains](#log-chains).
 - **The URL holds the view.** A link or a reload reopens the file at its
-  line, with its highlighting, filter and anomaly category, the sidebar
-  tab and the search. Back and Forward step through the files opened, the
-  searches run and the tabs switched. See
+  line, with its highlighting, filter and anomaly category, the panel
+  the side panel shows and the search. Back and Forward step through the
+  files opened, the searches run and the panels switched in the activity
+  bar. See
   [Link parameters](#link-parameters).
 - **The equivalent command.** The status bar shows the `rx` command the
   backend reports for the last answer, with a copy button and a list of
@@ -91,6 +98,7 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | Anywhere                            | Esc                       | Close the shortcut list                                                            |
 | Panels, from anywhere               | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
 | Panels, from anywhere               | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
+| In the activity bar                 | ↓ or ↑                    | Move down or up through the panel buttons                                          |
 | In the file tree                    | Enter or Space            | Open the file, or open or close the folder                                         |
 | In a search pattern field           | Enter                     | Run the search                                                                     |
 | In a search pattern field           | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
@@ -201,7 +209,7 @@ An unknown or invalid value is read as absent.
 | `highlight`                                   | `1` or `0`: syntax highlighting on or off; absent, the file's size decides                                           |
 | `filter`, `filter_mode`                       | The editor's regex filter and what it does: `highlight` (default), `hide` or `show`                                  |
 | `category`                                    | The anomaly category marked in the file                                                                              |
-| `tab`                                         | The sidebar tab: `files` or `search`                                                                                 |
+| `tab`                                         | The panel the side panel shows: `files` or `search`                                                                  |
 | `chains`                                      | `1`: chain mode on; `0`: off; absent, the mode chosen last                                                           |
 | `regexp`                                      | A search pattern, once per pattern                                                                                   |
 | `max_results`, `only_opened`                  | The search's cap (1 to 10,000, default 100) and "Only opened files"                                                  |

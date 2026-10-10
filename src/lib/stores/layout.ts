@@ -1,4 +1,4 @@
-import { writable, type Writable } from 'svelte/store';
+import { get, writable, type Writable } from 'svelte/store';
 import type { SidebarTab } from '../utils/urlState';
 
 export type { SidebarTab };
@@ -44,6 +44,17 @@ export function showPanel(id: SidebarTab, focus: boolean): void {
   sidebarVisible.set(true);
   sidebarTab.set(id);
   if (focus) FOCUS_REQUESTS[id].set(true);
+}
+
+/**
+ * A click on a panel's button in the activity bar: hide the side panel
+ * when it shows that panel, else show the panel. The focus stays on the
+ * button.
+ */
+export function clickPanelButton(id: SidebarTab): void {
+  const isShown = get(sidebarVisible) && get(sidebarTab) === id;
+  if (isShown) sidebarVisible.set(false);
+  else showPanel(id, false);
 }
 
 /** Show or hide the sidebar. */

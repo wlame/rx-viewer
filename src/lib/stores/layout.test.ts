@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import {
+  clickPanelButton,
   searchFocusRequested,
   showPanel,
   sidebarTab,
@@ -48,6 +49,33 @@ describe('layout', () => {
     expect(get(sidebarVisible)).toBe(true);
     expect(get(sidebarTab)).toBe('search');
     expect(get(searchFocusRequested)).toBe(false);
+  });
+
+  it('clickPanelButton on the shown panel hides the side panel and keeps the panel', () => {
+    sidebarTab.set('search');
+
+    clickPanelButton('search');
+
+    expect(get(sidebarVisible)).toBe(false);
+    expect(get(sidebarTab)).toBe('search');
+  });
+
+  it('clickPanelButton on another panel shows it and leaves the focus on the button', () => {
+    clickPanelButton('search');
+
+    expect(get(sidebarVisible)).toBe(true);
+    expect(get(sidebarTab)).toBe('search');
+    expect(get(searchFocusRequested)).toBe(false);
+  });
+
+  it('clickPanelButton on the panel a hidden side panel was on shows the side panel', () => {
+    sidebarTab.set('search');
+    sidebarVisible.set(false);
+
+    clickPanelButton('search');
+
+    expect(get(sidebarVisible)).toBe(true);
+    expect(get(sidebarTab)).toBe('search');
   });
 
   it('toggleSidebar hides and shows the sidebar', () => {

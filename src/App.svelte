@@ -5,6 +5,7 @@
   import { contractRefused } from '$lib/stores/health';
   import { linkView, loadView, startViewSync } from '$lib/viewState';
   import Header from './components/layout/Header.svelte';
+  import ActivityBar from './components/layout/ActivityBar.svelte';
   import Sidebar from './components/layout/Sidebar.svelte';
   import MainContent from './components/layout/MainContent.svelte';
   import StatusBar from './components/layout/StatusBar.svelte';
@@ -44,6 +45,7 @@
   <Header />
 
   <div class="flex-1 flex min-h-0">
+    <ActivityBar />
     <Sidebar width={$settings.sidebarWidth} />
     <MainContent />
   </div>

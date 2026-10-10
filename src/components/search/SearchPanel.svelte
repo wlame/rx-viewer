@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { get } from 'svelte/store';
   import { trace, tree, files, health, backendHas } from '$lib/stores';
   import { searchRequest } from '$lib/stores/trace';
@@ -25,12 +26,20 @@
   let toggles: Toggles = { ...DEFAULT_SEARCH_TOGGLES };
   let patternInputs: HTMLInputElement[] = [];
 
-  // Cmd/Ctrl+K asks for the pattern field, possibly before this panel
-  // existed; the request waits here until the field is there.
-  $: if ($searchFocusRequested && patternInputs[0]) {
-    patternInputs[0].focus();
-    patternInputs[0].select();
+  // Cmd/Ctrl+K or a panel key asks for the pattern field; the request
+  // waits here until the field is there.
+  $: if ($searchFocusRequested && patternInputs[0]) void focusFirstPattern();
+
+  /**
+   * Focus the first pattern field and select its text. The panel just
+   * shown around the field is drawn in the update after this one, and a
+   * field in a hidden panel takes no focus.
+   */
+  async function focusFirstPattern() {
     searchFocusRequested.set(false);
+    await tick();
+    patternInputs[0]?.focus();
+    patternInputs[0]?.select();
   }
 
   // A backend that does not list the matching flags ignores them, so the
@@ -41,12 +50,11 @@
   $: searchRoots = $tree.roots.map((r) => r.path);
   $: hasRoots = searchRoots.length > 0;
 
-  // The form shows the current search. The panel is rebuilt each time
-  // its tab opens, and a link or Back can set a search from outside it,
-  // so the form follows `searchRequest`. A search that has no answer yet
-  // (a link on page load, an entry Back moved to) runs once the
-  // backend's health says which parameters it takes and the paths to
-  // search are known.
+  // The form shows the current search. A link or Back can set a search
+  // from outside the panel, so the form follows `searchRequest`. A
+  // search that has no answer yet (a link on page load, an entry Back
+  // moved to) runs once the backend's health says which parameters it
+  // takes and the paths to search are known.
   let restorePending = false;
   let shownRequest: SearchState | null = null;
 

@@ -1,0 +1,145 @@
+// @vitest-environment jsdom
+import '$lib/testing/matchMediaStub';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { get } from 'svelte/store';
+import { health, tree } from '$lib/stores';
+import {
+  clickPanelButton,
+  searchFocusRequested,
+  shortcutsHelpOpen,
+  sidebarTab,
+  sidebarVisible,
+  treeFocusRequested,
+} from '$lib/stores/layout';
+import { searchRequest } from '$lib/stores/trace';
+import { LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
+import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
+import Sidebar from './Sidebar.svelte';
+
+let mounted: (Sidebar | KeyboardShortcuts)[] = [];
+
+/** The side panel and the window's key handler, over a backend with one search root. */
+async function mount() {
+  serveLogDir(new LogDirBackend({ features: [] }));
+  await health.check();
+  await tree.loadRoots();
+  const target = document.createElement('div');
+  document.body.appendChild(target);
+  mounted = [
+    new Sidebar({ target, props: { width: 300 } }),
+    new KeyboardShortcuts({ target: document.body }),
+  ];
+  await tick();
+  return {
+    target,
+    pattern: () => target.querySelector<HTMLInputElement>('input[aria-label="Regex pattern 1"]'),
+    tree: () => target.querySelector<HTMLElement>('[role="tree"]'),
+    firstRow: () => target.querySelector<HTMLElement>('[role="treeitem"]'),
+  };
+}
+
+async function typeValue(input: HTMLInputElement, value: string) {
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await tick();
+}
+
+/** Press a key on a control outside the side panel, then let the focus requests run. */
+async function pressAnywhere(init: KeyboardEventInit) {
+  const elsewhere = document.body.appendChild(document.createElement('button'));
+  elsewhere.focus();
+  const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+  elsewhere.dispatchEvent(event);
+  await tick();
+  await tick();
+  await tick();
+  return event;
+}
+
+afterEach(() => {
+  for (const component of mounted) component.$destroy();
+  mounted = [];
+  sidebarTab.set('tree');
+  sidebarVisible.set(true);
+  shortcutsHelpOpen.set(false);
+  treeFocusRequested.set(false);
+  searchFocusRequested.set(false);
+  searchRequest.set(null);
+  vi.unstubAllGlobals();
+  document.body.replaceChildren();
+});
+
+describe('the side panel', () => {
+  it('keeps both panels in the page and hides the one not shown', async () => {
+    const { pattern, tree: fileTree } = await mount();
+
+    expect(fileTree()?.closest('[hidden]')).toBeNull();
+    expect(pattern()?.closest('[hidden]')).not.toBeNull();
+
+    clickPanelButton('search');
+    await tick();
+
+    expect(fileTree()).not.toBeNull();
+    expect(fileTree()?.closest('[hidden]')).not.toBeNull();
+    expect(pattern()?.closest('[hidden]')).toBeNull();
+  });
+
+  it('keeps the unsent search pattern when Files is shown and then Search again', async () => {
+    const { pattern } = await mount();
+    clickPanelButton('search');
+    await tick();
+    const field = pattern();
+    if (!field) throw new Error('the pattern field is not rendered');
+    await typeValue(field, 'ERROR [0-9]+');
+
+    clickPanelButton('tree');
+    await tick();
+    clickPanelButton('search');
+    await tick();
+
+    expect(pattern()).toBe(field);
+    expect(field.value).toBe('ERROR [0-9]+');
+  });
+
+  it('is not drawn while hidden, and keeps its panels', async () => {
+    const { target, pattern } = await mount();
+    const aside = target.querySelector('aside');
+
+    sidebarVisible.set(false);
+    await tick();
+
+    expect(aside?.style.display).toBe('none');
+    expect(pattern()).not.toBeNull();
+  });
+});
+
+describe('the panel keys over the side panel', () => {
+  it('Alt+2 shows a hidden side panel on Search and focuses the first pattern field', async () => {
+    const { pattern } = await mount();
+    sidebarVisible.set(false);
+    await tick();
+
+    const event = await pressAnywhere({ key: '™', code: 'Digit2', altKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(get(sidebarVisible)).toBe(true);
+    expect(pattern()?.closest('[hidden]')).toBeNull();
+    expect(document.activeElement).toBe(pattern());
+    expect(get(searchFocusRequested)).toBe(false);
+  });
+
+  it('Alt+1 shows Files and focuses the first row of the tree', async () => {
+    const { firstRow } = await mount();
+    sidebarTab.set('search');
+    await tick();
+
+    const event = await pressAnywhere({ key: '¡', code: 'Digit1', altKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(get(sidebarTab)).toBe('tree');
+    expect(firstRow()?.textContent).toContain(LOG_ROOT.slice(1));
+    expect(document.activeElement).toBe(firstRow());
+    expect(get(treeFocusRequested)).toBe(false);
+  });
+});

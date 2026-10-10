@@ -13,6 +13,7 @@ import { SEARCH_TOGGLES } from './searchToggles';
 export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
   panels: 'Panels, from anywhere',
+  activityBar: 'In the activity bar',
   filesPanel: 'In the files panel, while it is shown',
   fileTree: 'In the file tree',
   searchPanel: 'In the search panel',
@@ -48,6 +49,7 @@ export type GlobalShortcutId =
 
 export type ShortcutId =
   | GlobalShortcutId
+  | 'activityBarMove'
   | 'runSearch'
   | `toggle:${string}`
   | 'gotoLine'
@@ -231,6 +233,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: 'Show the search panel and go to the first pattern field',
     chord: { code: 'Digit2', alt: true },
     otherChords: [{ key: 'f', mod: true, shift: true }],
+  },
+  {
+    id: 'activityBarMove',
+    scope: 'activityBar',
+    description: 'Move down or up through the panel buttons',
+    chord: { key: 'ArrowDown' },
+    otherChords: [{ key: 'ArrowUp' }],
   },
   {
     id: 'runSearch',
