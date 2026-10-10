@@ -1,5 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { formatSize, formatNumber, formatCount, formatServerTime, formatStatistic } from './format';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import {
+  formatSize,
+  formatNumber,
+  formatCount,
+  formatFileTime,
+  formatServerTime,
+  formatStatistic,
+} from './format';
 
 describe('formatSize', () => {
   it.each([
@@ -88,5 +95,55 @@ describe('formatServerTime', () => {
 
   it('shows text that is not a time unchanged', () => {
     expect(formatServerTime('yesterday')).toBe('yesterday');
+  });
+});
+
+// The browser's zone is the process's here: `TZ` set at run time moves
+// every local time of the dates made after it.
+describe('formatFileTime', () => {
+  const zoneBefore = process.env.TZ;
+  const NOW = new Date('2026-06-01T12:00:00Z');
+
+  function useZone(zone: string) {
+    process.env.TZ = zone;
+  }
+
+  beforeEach(() => useZone('Europe/Berlin'));
+
+  afterEach(() => {
+    if (zoneBefore === undefined) delete process.env.TZ;
+    else process.env.TZ = zoneBefore;
+  });
+
+  it('runs in the zone the test sets', () => {
+    expect(new Date('2026-10-08T12:31:07Z').getTimezoneOffset()).toBe(-120);
+  });
+
+  it('shows a time of this year as month, day and minute, and the full time with its offset', () => {
+    expect(formatFileTime('2026-10-08T12:31:07.123456Z', NOW)).toEqual({
+      text: 'Oct 8 14:31',
+      full: '2026-10-08 14:31:07 +02:00',
+    });
+  });
+
+  it('shows a time of another year as its date', () => {
+    expect(formatFileTime('2025-12-27T09:05:00.000000Z', NOW)).toEqual({
+      text: '2025-12-27',
+      full: '2025-12-27 10:05:00 +01:00',
+    });
+  });
+
+  it("judges the year in the browser's zone", () => {
+    expect(formatFileTime('2025-12-31T23:30:00Z', NOW).text).toBe('Jan 1 00:30');
+  });
+
+  it('writes an offset west of UTC with its minutes', () => {
+    useZone('America/St_Johns');
+
+    expect(formatFileTime('2026-10-08T12:31:07Z', NOW).full).toBe('2026-10-08 10:01:07 -02:30');
+  });
+
+  it.each(['', 'yesterday', '2026-13-45T99:00:00Z'])('shows nothing for %j', (value) => {
+    expect(formatFileTime(value, NOW)).toEqual({ text: '', full: '' });
   });
 });

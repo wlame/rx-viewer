@@ -39,7 +39,13 @@ function chainEntry(fields: Partial<ChainEntry> = {}): ChainEntry {
 }
 
 function mount(chain: ChainEntry = chainEntry()) {
-  const row: ChainRow = { type: 'chain', key: chainKey(chain.path), chain, level: 1 };
+  const row: ChainRow = {
+    type: 'chain',
+    key: chainKey(chain.path),
+    chain,
+    level: 1,
+    modifiedAt: null,
+  };
   const target = document.createElement('div');
   document.body.appendChild(target);
   mounted = new ChainTreeNode({ target, props: { row } });

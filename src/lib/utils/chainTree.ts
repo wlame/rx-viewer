@@ -21,6 +21,12 @@ export interface ChainRow {
   key: TabKey;
   chain: ChainEntry;
   level: number;
+  /**
+   * The newest modification time of its parts the directory's listing
+   * gives (`modified_at` of the files named in `chain.parts`), as the
+   * listing writes it; null when none of them has one.
+   */
+  modifiedAt: string | null;
 }
 
 /** A row of the files panel: a folder or file the tree lists, or a chain. */
@@ -61,9 +67,50 @@ function isFolder(node: TreeNode): boolean {
   return node.type === 'directory';
 }
 
-/** The row of one chain. */
-function chainRow(chain: ChainEntry, level: number): ChainRow {
-  return { type: 'chain', key: chainKey(chain.path), chain, level };
+/** The row of one chain, with the newest time of its parts among `times`. */
+function chainRow(
+  chain: ChainEntry,
+  level: number,
+  times: ReadonlyMap<string, PartTime>,
+): ChainRow {
+  return {
+    type: 'chain',
+    key: chainKey(chain.path),
+    chain,
+    level,
+    modifiedAt: newestPartTime(chain, times),
+  };
+}
+
+/** A file's modification time as the listing writes it, and the instant it names. */
+interface PartTime {
+  text: string;
+  ms: number;
+}
+
+/**
+ * The modification times of a directory's files by name. A folder is no
+ * part, and a file without a readable time is left out. Times are
+ * compared as instants, never as text: a time may name its zone.
+ */
+function fileTimes(files: readonly TreeNode[]): Map<string, PartTime> {
+  const times = new Map<string, PartTime>();
+  for (const file of files) {
+    if (file.modified_at === null) continue;
+    const ms = Date.parse(file.modified_at);
+    if (!Number.isNaN(ms)) times.set(file.name, { text: file.modified_at, ms });
+  }
+  return times;
+}
+
+/** The newest of the times `times` holds for the parts of `chain`, or null. */
+function newestPartTime(chain: ChainEntry, times: ReadonlyMap<string, PartTime>): string | null {
+  let newest: PartTime | null = null;
+  for (const part of chain.parts) {
+    const time = times.get(part);
+    if (time !== undefined && (newest === null || time.ms > newest.ms)) newest = time;
+  }
+  return newest?.text ?? null;
 }
 
 /**
@@ -98,7 +145,8 @@ export function shownChildren(directory: TreeNode, options: ShownChildrenOptions
   const files = directory.children.filter((child) => !isFolder(child));
   const partNames = new Set(chains.flatMap((chain) => chain.parts));
   const level = directory.level + 1;
-  const rows = chains.map((chain) => chainRow(chain, level));
+  const times = fileTimes(files);
+  const rows = chains.map((chain) => chainRow(chain, level, times));
   return [
     ...directory.children.filter(isFolder),
     ...placeAmongFiles(

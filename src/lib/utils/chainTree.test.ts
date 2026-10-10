@@ -213,6 +213,68 @@ describe('shownChildren on a directory that mixes chains with look-alikes', () =
   });
 });
 
+describe("a chain row's time", () => {
+  /** A file of `DIR` last modified at `time`, or with no time. */
+  function timedFile(name: string, time: string | null): TreeEntry {
+    return treeEntry(`${DIR}/${name}`, 'file', { is_text: true, size: 10, modified_at: time });
+  }
+
+  /** The time of the chain row of `app.log` among `entries`, its parts `parts`. */
+  function chainTime(entries: TreeEntry[], parts = ['app.log.2.gz', 'app.log.1', 'app.log']) {
+    const rows = shownChildren(directory(DIR, entries, [chain('app.log', parts)]), ON);
+    return rows.find(isChainRow)?.modifiedAt;
+  }
+
+  it('is the newest time of its parts', () => {
+    const time = chainTime([
+      timedFile('app.log', '2026-10-08T12:31:07.123456Z'),
+      timedFile('app.log.1', '2026-10-07T23:59:59.000000Z'),
+      timedFile('app.log.2.gz', '2026-10-06T23:59:59.000000Z'),
+    ]);
+
+    expect(time).toBe('2026-10-08T12:31:07.123456Z');
+  });
+
+  it('skips a part without a time', () => {
+    const time = chainTime([
+      timedFile('app.log', null),
+      timedFile('app.log.1', '2026-10-07T23:59:59.000000Z'),
+      timedFile('app.log.2.gz', '2026-10-06T23:59:59.000000Z'),
+    ]);
+
+    expect(time).toBe('2026-10-07T23:59:59.000000Z');
+  });
+
+  it('is null when no part has a time', () => {
+    expect(chainTime([timedFile('app.log', null), timedFile('app.log.1', null)])).toBeNull();
+  });
+
+  it('is null when the tree lists none of its parts', () => {
+    expect(chainTime([timedFile('notes.txt', '2026-10-08T00:00:00Z')])).toBeNull();
+  });
+
+  it('counts no file the listing does not name as a part, and no folder', () => {
+    const time = chainTime([
+      treeEntry(`${DIR}/app.log.2.gz`, 'directory', { modified_at: '2026-10-09T08:00:00Z' }),
+      timedFile('app.log', '2026-10-08T12:31:07.123456Z'),
+      timedFile('app.log.1.gz', '2026-10-09T09:00:00Z'),
+      timedFile('notes.txt', '2026-10-09T10:00:00Z'),
+    ]);
+
+    expect(time).toBe('2026-10-08T12:31:07.123456Z');
+  });
+
+  // Text order would put 14:00+02:00 (12:00 UTC) after 13:00 UTC.
+  it('compares the times, not their text', () => {
+    const time = chainTime([
+      timedFile('app.log', '2026-10-08T14:00:00+02:00'),
+      timedFile('app.log.1', '2026-10-08T13:00:00Z'),
+    ]);
+
+    expect(time).toBe('2026-10-08T13:00:00Z');
+  });
+});
+
 describe('chainBadges', () => {
   const texts = (entry: ChainEntry, described: Parameters<typeof chainBadges>[1] = null) =>
     chainBadges(entry, described).map((badge) => badge.text);
