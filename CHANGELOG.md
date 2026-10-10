@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first pattern field; both show a hidden side panel, and neither
   acts while the shortcut list is open. The Search panel keeps its unsent
   patterns and options while Files is shown. Links keep `tab=files` and
-  `tab=search`.
+  `tab=search`; a link that names a search runs it on load also when it
+  shows Files, as it does when it shows Search.
 
 ## [0.7.0] - 2026-10-09
 

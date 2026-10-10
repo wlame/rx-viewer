@@ -3,7 +3,7 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
-import { health, tree } from '$lib/stores';
+import { health, trace, tree } from '$lib/stores';
 import {
   clickPanelButton,
   searchFocusRequested,
@@ -66,6 +66,7 @@ afterEach(() => {
   treeFocusRequested.set(false);
   searchFocusRequested.set(false);
   searchRequest.set(null);
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
@@ -100,6 +101,18 @@ describe('the side panel', () => {
 
     expect(pattern()).toBe(field);
     expect(field.value).toBe('ERROR [0-9]+');
+  });
+
+  // The search panel is mounted while Files is shown, so a link that
+  // names a search and `tab=files` runs it on load, as with `tab=search`.
+  it("runs a link's search on load while Files is shown", async () => {
+    const search = vi.spyOn(trace, 'search').mockResolvedValue(null);
+    searchRequest.set({ patterns: ['ERROR'], maxResults: 100, onlyOpenedFiles: false, flags: {} });
+
+    await mount();
+
+    expect(get(sidebarTab)).toBe('tree');
+    expect(search).toHaveBeenCalledWith([LOG_ROOT], ['ERROR'], { maxResults: 100, flags: {} });
   });
 
   it('is not drawn while hidden, and keeps its panels', async () => {
