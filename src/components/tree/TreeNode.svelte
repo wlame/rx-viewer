@@ -5,16 +5,22 @@
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
   import { openTreeFile } from '$lib/fileOpening';
   import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
-  import { formatSize } from '$lib/utils/format';
+  import { formatCount, formatSize } from '$lib/utils/format';
   import { isShortcut } from '$lib/utils/shortcuts';
+  import type { ValueColumn } from '$lib/utils/urlState';
   import FileIcon from './FileIcon.svelte';
   import Spinner from '../common/Spinner.svelte';
   import FileBadges from '../common/FileBadges.svelte';
   import AnalyzeDialog from './AnalyzeDialog.svelte';
   import ChainTreeNode from './ChainTreeNode.svelte';
   import TreeContextMenu from './TreeContextMenu.svelte';
+  import ValueCell from './ValueCell.svelte';
 
   export let node: TreeNodeType;
+  /** Whether the row shows its labels (compression, `idx`); its value and name stay either way. */
+  export let showLabels = true;
+  /** The value the row shows right of its name. */
+  export let show: ValueColumn = 'size';
 
   // In chain mode a folder shows one row per log chain in place of its
   // parts; the node keeps every entry, so the mode changes no state.
@@ -22,6 +28,21 @@
 
   $: isSelected = $tree.selectedPath === node.path;
   $: indentPx = node.level * 16;
+  $: sizeText = node.type === 'directory' ? itemCount(node) : fileSize(node);
+
+  /**
+   * A folder's size column: how many entries it holds. A count the
+   * listing leaves out shows nothing, rather than failing the tree.
+   */
+  function itemCount(folder: TreeNodeType): string {
+    const count = folder.children_count;
+    return typeof count === 'number' ? formatCount(count, 'item') : '';
+  }
+
+  /** A file's size column; a size the listing leaves out shows nothing. */
+  function fileSize(file: TreeNodeType): string {
+    return typeof file.size === 'number' ? formatSize(file.size) : '';
+  }
 
   let showContextMenu = false;
   let contextMenuX = 0;
@@ -133,25 +154,16 @@
       {node.name}
     </span>
 
-    <!-- Badges for files -->
-    {#if node.type === 'file'}
-      <span class="flex items-center gap-1 flex-shrink-0">
-        <FileBadges
-          isCompressed={node.is_compressed}
-          compressionFormat={node.compression_format}
-          isIndexed={node.is_indexed}
-        />
-        {#if node.size !== null}
-          <span class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle ml-1">
-            {formatSize(node.size)}
-          </span>
-        {/if}
-      </span>
-    {:else if node.children_count !== null}
-      <span class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle">
-        {node.children_count}
-      </span>
+    <!-- Labels of a file -->
+    {#if showLabels && node.type === 'file'}
+      <FileBadges
+        isCompressed={node.is_compressed}
+        compressionFormat={node.compression_format}
+        isIndexed={node.is_indexed}
+      />
     {/if}
+
+    <ValueCell {show} size={sizeText} modifiedAt={node.modified_at} />
   </div>
 
   <!-- Children -->
@@ -159,9 +171,9 @@
     <div role="group">
       {#each rows as child (rowKey(child))}
         {#if isChainRow(child)}
-          <ChainTreeNode row={child} />
+          <ChainTreeNode row={child} {showLabels} {show} />
         {:else}
-          <svelte:self node={child} />
+          <svelte:self node={child} {showLabels} {show} />
         {/if}
       {/each}
     </div>

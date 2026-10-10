@@ -144,12 +144,27 @@ describe('KeyboardShortcuts help groups', () => {
     expect(rows).toContain('Alt+2 or ⌘/Ctrl+Shift+F');
   });
 
+  it('lists the files panel keys under "In the files panel, while it is shown"', async () => {
+    const { target } = await openHelp();
+
+    const heading = [...target.querySelectorAll('h3')].find(
+      (h) => h.textContent?.trim() === 'In the files panel, while it is shown',
+    );
+    const rows = heading?.nextElementSibling?.textContent ?? '';
+
+    expect(rows).toContain('Group rotated logs: on or off');
+    expect(rows).toContain('Alt+G');
+    expect(rows).toContain('Show labels: on or off');
+    expect(rows).toContain('Alt+L');
+    expect(rows).toContain('Show the size or the date of each file');
+    expect(rows).toContain('Alt+V');
+  });
+
   it('lists no group that has no shortcut', async () => {
     const { target } = await openHelp();
 
     const titles = [...target.querySelectorAll('h3')].map((h) => h.textContent?.trim());
 
-    expect(titles).not.toContain('In the files panel, while it is shown');
     expect(titles).not.toContain('In the search panel');
     for (const heading of target.querySelectorAll('h3')) {
       expect(heading.nextElementSibling?.querySelectorAll('dt').length).toBeGreaterThan(0);

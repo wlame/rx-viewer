@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A toolbar at the top of the files panel, in place of the "Search
+  Roots" heading: Group rotated logs and Show labels as icon toggles,
+  and a Size | Date switch for the value right of each name. Show labels
+  off hides the compression, `idx` and chain marks of every row. Date
+  shows a file's or folder's modification time in the browser's time
+  zone (`Oct 8 14:31` in the current year, `2025-12-27` before), with
+  the full time and its UTC offset in the cell's tooltip; a chain's row
+  shows the newest time of its parts. A folder's size reads `24 items`.
+  Alt+G, Alt+L and Alt+V do the same while the files panel is shown and
+  no dialog is open, and ← and → move between Size and Date. The link
+  keeps the choices as `labels=0` and `show=date`.
+
 ### Changed
 
 - The side panel's Files and Search tabs are an activity bar at the

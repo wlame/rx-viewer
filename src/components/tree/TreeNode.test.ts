@@ -14,6 +14,8 @@ import {
   treeEntry,
 } from '$lib/testing/fakeLogDir';
 import type { TreeNode as TreeNodeType } from '$lib/types';
+import { formatFileTime } from '$lib/utils/format';
+import type { ValueColumn } from '$lib/utils/urlState';
 import TreeNode from './TreeNode.svelte';
 
 let row: TreeNode | null = null;
@@ -73,6 +75,53 @@ describe('TreeNode keys', () => {
       expect(event.defaultPrevented).toBe(false);
     },
   );
+});
+
+describe('TreeNode of a file', () => {
+  const FILE = {
+    ...treeEntry('/logs/app.log.2.gz', 'file', {
+      is_text: true,
+      is_compressed: true,
+      compression_format: 'gzip',
+      is_indexed: true,
+      size: 3 * 1024,
+      modified_at: '2026-10-08T12:31:07.123456Z',
+    }),
+    level: 1,
+    expanded: false,
+    loading: false,
+    children: [],
+  } as TreeNodeType;
+
+  function mountFile(props: { showLabels?: boolean; show?: ValueColumn } = {}) {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    row = new TreeNode({ target, props: { node: FILE, ...props } });
+    return {
+      badges: () => [...target.querySelectorAll('.badge')].map((b) => b.textContent?.trim()),
+      value: () => target.querySelector('[data-value-cell]')?.textContent?.trim(),
+    };
+  }
+
+  it('shows its labels and its size', () => {
+    const { badges, value } = mountFile();
+
+    expect(badges()).toEqual(['gzip', 'idx']);
+    expect(value()).toBe('3.0 KB');
+  });
+
+  it('shows no label with the labels off, and keeps its size', () => {
+    const { badges, value } = mountFile({ showLabels: false });
+
+    expect(badges()).toEqual([]);
+    expect(value()).toBe('3.0 KB');
+  });
+
+  it('shows its time when the date is shown', () => {
+    const { value } = mountFile({ show: 'date' });
+
+    expect(value()).toBe(formatFileTime('2026-10-08T12:31:07.123456Z').text);
+  });
 });
 
 describe('TreeNode of a folder in chain mode', () => {

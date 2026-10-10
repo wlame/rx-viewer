@@ -2,8 +2,9 @@
   /**
    * A log chain's row in the files panel, in place of its parts: its
    * name, its marks (`chain · N`, `idx`, missing and unreadable parts,
-   * too many parts, and `invalid` once a description said so) and its
-   * size. A click or Enter opens the chain's tab; the context menu
+   * too many parts, and `invalid` once a description said so) unless the
+   * labels are off, and its value: its size, or the newest time of its
+   * parts. A click or Enter opens the chain's tab; the context menu
    * indexes its parts. The parts are not listed: they are reached by
    * turning chain mode off, or from the parts list of the chain's tab.
    */
@@ -12,9 +13,15 @@
   import { chainBadges, type ChainBadgeTone, type ChainRow } from '$lib/utils/chainTree';
   import { formatSize } from '$lib/utils/format';
   import { isShortcut } from '$lib/utils/shortcuts';
+  import type { ValueColumn } from '$lib/utils/urlState';
   import TreeContextMenu from './TreeContextMenu.svelte';
+  import ValueCell from './ValueCell.svelte';
 
   export let row: ChainRow;
+  /** Whether the row shows its marks; its name and value stay either way. */
+  export let showLabels = true;
+  /** The value the row shows right of its name. */
+  export let show: ValueColumn = 'size';
 
   /** How each tone of mark looks. */
   const TONE_CLASSES: Record<ChainBadgeTone, string> = {
@@ -35,6 +42,8 @@
   $: indentPx = row.level * 16;
   $: badges = chainBadges(chain, $tree.describedChains.get(chain.path) ?? null);
   $: menuItems = chainMenuItems(chain);
+  // A chain of too many parts is not read as one text; its sum is not shown.
+  $: sizeText = chain.too_many_parts ? '' : formatSize(chain.size);
 
   let showContextMenu = false;
   let contextMenuX = 0;
@@ -95,7 +104,6 @@
            hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
            {isSelected ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
     style="padding-left: {indentPx + 8}px"
-    title={chain.path}
     on:click={open}
     on:keydown={handleKeydown}
     on:contextmenu={handleContextMenu}
@@ -115,28 +123,26 @@
       <path d="M4 6v14a2 2 0 002 2h10" />
     </svg>
 
-    <!-- The name keeps at least 40% of a narrow row; the marks and the
-         size give way first, clipped at the row's end. -->
-    <span class="truncate flex-1 min-w-[40%]">{chain.name}</span>
+    <!-- The name keeps at least 40% of a narrow row; the marks give way
+         first, clipped where the value's column starts. The path is the
+         name's tooltip, not the row's, so it does not cover the time's. -->
+    <span class="truncate flex-1 min-w-[40%]" title={chain.path}>{chain.name}</span>
 
-    <span class="flex items-center gap-1 min-w-0 overflow-hidden">
-      {#each badges as badge (badge.text)}
-        <span
-          data-chain-badge
-          class="badge text-[10px] py-0 flex-shrink-0 {TONE_CLASSES[badge.tone]}"
-          title={badge.title}
-        >
-          {badge.text}
-        </span>
-      {/each}
-      {#if !chain.too_many_parts}
-        <span
-          class="text-xs text-gh-fg-subtle dark:text-gh-fg-dark-subtle ml-1 flex-shrink-0 whitespace-nowrap"
-        >
-          {formatSize(chain.size)}
-        </span>
-      {/if}
-    </span>
+    {#if showLabels}
+      <span class="flex items-center gap-1 min-w-0 overflow-hidden">
+        {#each badges as badge (badge.text)}
+          <span
+            data-chain-badge
+            class="badge text-[10px] py-0 flex-shrink-0 {TONE_CLASSES[badge.tone]}"
+            title={badge.title}
+          >
+            {badge.text}
+          </span>
+        {/each}
+      </span>
+    {/if}
+
+    <ValueCell {show} size={sizeText} modifiedAt={row.modifiedAt} />
   </div>
 </div>
 

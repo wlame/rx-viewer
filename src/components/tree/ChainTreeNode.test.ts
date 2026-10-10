@@ -8,7 +8,9 @@ import { indexChain } from '$lib/indexTasks';
 import { FakeChain } from '$lib/testing/fakeChain';
 import type { ChainEntry } from '$lib/types';
 import type { ChainRow } from '$lib/utils/chainTree';
+import { formatFileTime } from '$lib/utils/format';
 import { chainKey } from '$lib/utils/tabKey';
+import type { ValueColumn } from '$lib/utils/urlState';
 import ChainTreeNode from './ChainTreeNode.svelte';
 
 vi.mock('$lib/indexTasks', async (importOriginal) => ({
@@ -38,17 +40,29 @@ function chainEntry(fields: Partial<ChainEntry> = {}): ChainEntry {
   };
 }
 
-function mount(chain: ChainEntry = chainEntry()) {
+/** What the files panel gives a chain row besides the chain. */
+interface RowView {
+  modifiedAt?: string | null;
+  showLabels?: boolean;
+  show?: ValueColumn;
+}
+
+function mount(chain: ChainEntry = chainEntry(), view: RowView = {}) {
   const row: ChainRow = {
     type: 'chain',
     key: chainKey(chain.path),
     chain,
     level: 1,
-    modifiedAt: null,
+    modifiedAt: view.modifiedAt ?? null,
   };
   const target = document.createElement('div');
   document.body.appendChild(target);
-  mounted = new ChainTreeNode({ target, props: { row } });
+  const props = {
+    row,
+    ...(view.showLabels === undefined ? {} : { showLabels: view.showLabels }),
+    ...(view.show === undefined ? {} : { show: view.show }),
+  };
+  mounted = new ChainTreeNode({ target, props });
   const item = target.querySelector<HTMLElement>('[role="treeitem"]');
   if (!item) throw new Error('the chain row is not rendered');
   const badges = () =>
@@ -60,7 +74,8 @@ function mount(chain: ChainEntry = chainEntry()) {
     [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map((b) =>
       b.textContent?.trim(),
     );
-  return { target, item, badges, menuItems };
+  const value = () => item.querySelector<HTMLElement>('[data-value-cell]')?.textContent?.trim();
+  return { target, item, badges, menuItems, value };
 }
 
 async function openMenu(item: HTMLElement) {
@@ -109,6 +124,29 @@ describe('ChainTreeNode', () => {
 
     const tooMany = mount(chainEntry({ parts: [], too_many_parts: true, missing_count: 0 }));
     expect(tooMany.badges().map((b) => b.text)).toEqual(['chain', 'too many parts']);
+  });
+
+  it('shows no mark with the labels off, and keeps its size', () => {
+    const { badges, value } = mount(chainEntry(), { showLabels: false });
+
+    expect(badges()).toEqual([]);
+    expect(value()).toBe('2.0 KB');
+  });
+
+  it('shows the newest time of its parts when the date is shown', () => {
+    const modifiedAt = '2026-10-08T12:31:07.123456Z';
+
+    const { value } = mount(chainEntry(), { modifiedAt, show: 'date' });
+
+    expect(value()).toBe(formatFileTime(modifiedAt).text);
+  });
+
+  it('shows no time when no part has one, and no size for a chain of too many parts', () => {
+    expect(mount(chainEntry(), { show: 'date' }).value()).toBe('');
+    mounted?.$destroy();
+
+    const tooMany = chainEntry({ parts: [], too_many_parts: true, missing_count: 0 });
+    expect(mount(tooMany).value()).toBe('');
   });
 
   it('marks the chain invalid once a description said so, with its reasons', async () => {

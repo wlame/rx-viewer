@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { backendHas, health, tree } from '$lib/stores';
-  import { chainMode } from '$lib/stores/chainMode';
-  import { switchChainMode } from '$lib/stores/chainModeSwitch';
+  import { tree } from '$lib/stores';
+  import { filesView } from '$lib/stores/filesView';
   import { treeFocusRequested } from '$lib/stores/layout';
+  import FilesToolbar from './FilesToolbar.svelte';
   import TreeNode from './TreeNode.svelte';
   import Spinner from '../common/Spinner.svelte';
 
@@ -12,9 +12,6 @@
   const ANY_ROW = '[role="treeitem"]';
 
   let treeElement: HTMLElement | null = null;
-
-  // The switch is offered only by a backend that serves log chains.
-  $: canGroupChains = backendHas('log_chains', $health);
 
   // A panel key asks for the tree's focus, possibly while the roots load;
   // the request waits for them.
@@ -42,31 +39,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <div
-    class="flex items-center gap-2 px-3 py-2 border-b border-gh-border-default dark:border-gh-border-dark-default"
-  >
-    <h2
-      class="flex-1 text-xs font-semibold uppercase tracking-wide text-gh-fg-muted dark:text-gh-fg-dark-muted"
-    >
-      Search Roots
-    </h2>
-    {#if canGroupChains}
-      <label
-        class="flex items-center gap-1 text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted cursor-pointer"
-        title="Show the files of each rotated log (app.log, app.log.1, app.log.2.gz, …) as one log chain"
-      >
-        <input
-          type="checkbox"
-          role="switch"
-          aria-label="Group rotated logs"
-          aria-checked={$chainMode}
-          checked={$chainMode}
-          on:change={(e) => void switchChainMode(e.currentTarget.checked)}
-        />
-        Group rotated logs
-      </label>
-    {/if}
-  </div>
+  <FilesToolbar />
 
   <div class="flex-1 overflow-auto scrollbar-thin py-1" role="tree" bind:this={treeElement}>
     {#if $tree.loading}
@@ -90,7 +63,7 @@
       </div>
     {:else}
       {#each $tree.roots as node (node.path)}
-        <TreeNode {node} />
+        <TreeNode {node} showLabels={$filesView.labels} show={$filesView.show} />
       {/each}
     {/if}
   </div>

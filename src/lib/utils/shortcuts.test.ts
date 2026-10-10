@@ -7,6 +7,7 @@ import {
   chordKeys,
   chordLabel,
   detectPlatform,
+  handleFilesPanelKey,
   handleGlobalKey,
   isShortcut,
   shortcutKeys,
@@ -118,6 +119,69 @@ describe('handleGlobalKey', () => {
       expect(event.preventDefault).not.toHaveBeenCalled();
     }
     expect(ran).toEqual([]);
+  });
+});
+
+describe('handleFilesPanelKey', () => {
+  /** Actions for the three files panel keys, each acting unless told not to. */
+  function filesActions(acting = true) {
+    const ran: string[] = [];
+    const act = (id: string) => () => {
+      ran.push(id);
+      return acting;
+    };
+    return {
+      ran,
+      actions: {
+        toggleChainMode: act('toggleChainMode'),
+        toggleLabels: act('toggleLabels'),
+        switchValue: act('switchValue'),
+      },
+    };
+  }
+
+  // A Mac types the Option symbol as the key; the code names the letter.
+  it.each([
+    ['toggleChainMode', '©', 'KeyG'],
+    ['toggleLabels', '¬', 'KeyL'],
+    ['switchValue', '√', 'KeyV'],
+  ])('runs %s for Alt+%s and keeps the key from the browser', (id, key, code) => {
+    const { actions, ran } = filesActions();
+    const event = press(key, { code, altKey: true });
+
+    expect(handleFilesPanelKey(event, actions)).toBe(true);
+    expect(ran).toEqual([id]);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('leaves the key to the browser when the action did nothing', () => {
+    const { actions, ran } = filesActions(false);
+    const event = press('©', { code: 'KeyG', altKey: true });
+
+    expect(handleFilesPanelKey(event, actions)).toBe(false);
+    expect(ran).toEqual(['toggleChainMode']);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('matches only the keys it is given actions for', () => {
+    const { actions, ran } = filesActions();
+    const event = press('©', { code: 'KeyG', altKey: true });
+
+    expect(handleFilesPanelKey(event, { toggleLabels: actions.toggleLabels })).toBe(false);
+    expect(ran).toEqual([]);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['G without Alt', press('g', { code: 'KeyG' })],
+    ['Cmd+Alt+G', press('©', { code: 'KeyG', altKey: true, metaKey: true })],
+    ['Alt+G of an input method', press('©', { code: 'KeyG', altKey: true, isComposing: true })],
+  ])('leaves %s alone', (_name, event) => {
+    const { actions, ran } = filesActions();
+
+    expect(handleFilesPanelKey(event, actions)).toBe(false);
+    expect(ran).toEqual([]);
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 });
 
@@ -256,6 +320,13 @@ describe('the shortcut list', () => {
       ['Alt+1 or ⌘/Ctrl+Shift+E', 'Alt+2 or ⌘/Ctrl+Shift+F'],
     ],
     ['activityBar', 'In the activity bar', ['activityBarMove'], ['↓ or ↑']],
+    [
+      'filesPanel',
+      'In the files panel, while it is shown',
+      ['toggleChainMode', 'toggleLabels', 'switchValue'],
+      ['Alt+G', 'Alt+L', 'Alt+V'],
+    ],
+    ['valueSwitch', 'On the Size/Date switch', ['valueSwitchMove'], ['← or →']],
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
     [
       'openPanel',
@@ -293,9 +364,7 @@ describe('the shortcut list', () => {
   it('lists no group for a place that has no shortcut yet', () => {
     const groups = shortcutsByScope();
 
-    expect(SHORTCUT_SCOPES.filesPanel).toBe('In the files panel, while it is shown');
     expect(SHORTCUT_SCOPES.searchPanel).toBe('In the search panel');
-    expect(groups.map((g) => g.scope)).not.toContain('filesPanel');
     expect(groups.map((g) => g.scope)).not.toContain('searchPanel');
     expect(groups.every((g) => g.shortcuts.length > 0)).toBe(true);
   });
@@ -349,6 +418,7 @@ describe('shortcutKeys', () => {
     expect(shortcutKeys('gotoLine', 'other')).toEqual([[':'], ['Ctrl', 'G']]);
     expect(shortcutKeys('focusSearch', 'mac')).toEqual([['⌘', 'K']]);
     expect(shortcutKeys('toggle:matchCase', 'other')).toEqual([['Alt', 'C']]);
+    expect(shortcutKeys('toggleChainMode', 'mac')).toEqual([['⌥', 'G']]);
   });
 
   it('gives no keys for a row that is a mouse gesture', () => {

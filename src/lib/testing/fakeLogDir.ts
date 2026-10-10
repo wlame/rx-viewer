@@ -143,6 +143,9 @@ function chainFiles(chain: ChainSpec): FileSpec[] {
 
 const ALL_FILES: FileSpec[] = [...CHAINS.flatMap(chainFiles), ...SINGLE_FILES];
 
+/** The modification time of every file of the directory, as `/v1/tree` writes one. */
+export const LOG_FILE_TIME = '2026-03-08T09:15:42.123456Z';
+
 /** The invented size of a file: 0 when it is empty, else a few hundred bytes from its name. */
 function sizeOf(file: FileSpec): number {
   if (file.empty) return 0;
@@ -186,6 +189,7 @@ function fileEntry(dir: string, file: FileSpec): TreeEntry {
     is_compressed: isGzip,
     compression_format: isGzip ? 'gzip' : null,
     is_indexed: false,
+    modified_at: LOG_FILE_TIME,
     size: sizeOf(file),
   });
 }

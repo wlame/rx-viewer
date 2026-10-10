@@ -15,6 +15,7 @@ export const SHORTCUT_SCOPES = {
   panels: 'Panels, from anywhere',
   activityBar: 'In the activity bar',
   filesPanel: 'In the files panel, while it is shown',
+  valueSwitch: 'On the Size/Date switch',
   fileTree: 'In the file tree',
   searchPanel: 'In the search panel',
   searchField: 'In a search pattern field',
@@ -47,9 +48,19 @@ export interface KeyChord {
 export type GlobalShortcutId =
   'focusSearch' | 'showFiles' | 'showSearch' | 'toggleSidebar' | 'showShortcuts' | 'closeDialog';
 
+/**
+ * The shortcuts of the files panel, which act while it is shown. An id is
+ * matched only when the handler is given an action for it, so an id
+ * without a row in the table (the sort keys) is never looked up.
+ */
+export type FilesPanelShortcutId =
+  'toggleChainMode' | 'toggleLabels' | 'switchValue' | 'sortByName' | 'sortByValue';
+
 export type ShortcutId =
   | GlobalShortcutId
+  | FilesPanelShortcutId
   | 'activityBarMove'
+  | 'valueSwitchMove'
   | 'runSearch'
   | `toggle:${string}`
   | 'gotoLine'
@@ -240,6 +251,32 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: 'Move down or up through the panel buttons',
     chord: { key: 'ArrowDown' },
     otherChords: [{ key: 'ArrowUp' }],
+  },
+  // Alt+letter is matched by the key's code: on a Mac Option+G types "©".
+  {
+    id: 'toggleChainMode',
+    scope: 'filesPanel',
+    description: 'Group rotated logs: on or off',
+    chord: { code: 'KeyG', alt: true },
+  },
+  {
+    id: 'toggleLabels',
+    scope: 'filesPanel',
+    description: 'Show labels: on or off',
+    chord: { code: 'KeyL', alt: true },
+  },
+  {
+    id: 'switchValue',
+    scope: 'filesPanel',
+    description: 'Show the size or the date of each file',
+    chord: { code: 'KeyV', alt: true },
+  },
+  {
+    id: 'valueSwitchMove',
+    scope: 'valueSwitch',
+    description: 'Choose the value before or after the chosen one',
+    chord: { key: 'ArrowLeft' },
+    otherChords: [{ key: 'ArrowRight' }],
   },
   {
     id: 'runSearch',
@@ -446,6 +483,29 @@ export function handleGlobalKey(
 ): boolean {
   const id = GLOBAL_IDS.find((candidate) => isShortcut(candidate, event));
   if (!id || !actions[id]()) return false;
+  event.preventDefault();
+  return true;
+}
+
+/**
+ * What each files panel shortcut does; an id without an action is not
+ * matched. An action returns whether it acted.
+ */
+export type FilesPanelShortcutActions = Partial<Record<FilesPanelShortcutId, () => boolean>>;
+
+/**
+ * Run the files panel shortcut `event` is, among those `actions` holds.
+ * The caller decides whether the panel's keys apply at all (the panel is
+ * shown, no dialog is open). `preventDefault` is called only when the
+ * action acted.
+ */
+export function handleFilesPanelKey(
+  event: KeyPress & { preventDefault(): void },
+  actions: FilesPanelShortcutActions,
+): boolean {
+  const ids = Object.keys(actions) as FilesPanelShortcutId[];
+  const id = ids.find((candidate) => isShortcut(candidate, event));
+  if (!id || !actions[id]?.()) return false;
   event.preventDefault();
   return true;
 }

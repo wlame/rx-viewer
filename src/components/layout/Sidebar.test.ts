@@ -12,6 +12,8 @@ import {
   sidebarVisible,
   treeFocusRequested,
 } from '$lib/stores/layout';
+import { chainMode } from '$lib/stores/chainMode';
+import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
 import { searchRequest } from '$lib/stores/trace';
 import { LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
 import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
@@ -164,42 +166,43 @@ describe('the panel keys over the side panel', () => {
   });
 });
 
+/**
+ * Open the analysis of a file from its row's context menu, as a user
+ * does, with the backend holding the answer so the dialog stays open;
+ * the focus goes to its Close button.
+ */
+async function openAnalysisFromTree(features: string[] = []) {
+  const backend = new LogDirBackend({ features });
+  backend.hold('/v1/index');
+  const { target } = await mount(backend);
+  rowNamed(target, 'logs')?.click();
+  await vi.waitFor(() => expect(rowNamed(target, 'agentctl.log')).toBeDefined());
+  rowNamed(target, 'agentctl.log')?.dispatchEvent(
+    new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+  );
+  await tick();
+  const analyze = [...target.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent?.trim() === 'Analyze',
+  );
+  analyze?.click();
+  await tick();
+  const dialog = target.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+  const closeButton = dialog?.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
+  if (!dialog || !closeButton) throw new Error('the analysis dialog did not open');
+  closeButton.focus();
+  return { target, dialog, closeButton };
+}
+
+/** Press a key on `element`, then let the reactive updates run. */
+async function keyDown(element: HTMLElement, init: KeyboardEventInit) {
+  const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+  element.dispatchEvent(event);
+  await tick();
+  await tick();
+  return event;
+}
+
 describe('the analysis dialog in the files panel', () => {
-  /**
-   * Open the analysis of a file from its row's context menu, as a user
-   * does, with the backend holding the answer so the dialog stays open;
-   * the focus goes to its Close button.
-   */
-  async function openAnalysisFromTree() {
-    const backend = new LogDirBackend({ features: [] });
-    backend.hold('/v1/index');
-    const { target } = await mount(backend);
-    rowNamed(target, 'logs')?.click();
-    await vi.waitFor(() => expect(rowNamed(target, 'agentctl.log')).toBeDefined());
-    rowNamed(target, 'agentctl.log')?.dispatchEvent(
-      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
-    );
-    await tick();
-    const analyze = [...target.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent?.trim() === 'Analyze',
-    );
-    analyze?.click();
-    await tick();
-    const dialog = target.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
-    const closeButton = dialog?.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
-    if (!dialog || !closeButton) throw new Error('the analysis dialog did not open');
-    closeButton.focus();
-    return { target, dialog, closeButton };
-  }
-
-  async function keyDown(element: HTMLElement, init: KeyboardEventInit) {
-    const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
-    element.dispatchEvent(event);
-    await tick();
-    await tick();
-    return event;
-  }
-
   it.each([
     ['Alt+2', { key: '™', code: 'Digit2', altKey: true }],
     ['Cmd+Shift+F', { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true }],
@@ -232,5 +235,88 @@ describe('the analysis dialog in the files panel', () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(get(sidebarTab)).toBe('search');
+  });
+});
+
+/**
+ * The files panel's keys belong to it only while it is shown and no
+ * dialog owns the keyboard; otherwise they change nothing and the key is
+ * left to the browser.
+ */
+describe('the files panel keys while something else owns the keyboard', () => {
+  const FILES_KEYS: [string, KeyboardEventInit][] = [
+    ['Alt+G', { key: '©', code: 'KeyG', altKey: true }],
+    ['Alt+L', { key: '¬', code: 'KeyL', altKey: true }],
+    ['Alt+V', { key: '√', code: 'KeyV', altKey: true }],
+  ];
+
+  afterEach(() => {
+    chainMode.set(false);
+    filesView.set(DEFAULT_FILES_VIEW);
+  });
+
+  function expectNothingChanged(event: KeyboardEvent) {
+    expect(event.defaultPrevented).toBe(false);
+    expect(get(chainMode)).toBe(false);
+    expect(get(filesView)).toEqual(DEFAULT_FILES_VIEW);
+  }
+
+  it.each(FILES_KEYS)('%s acts while Files is shown', async (_name, init) => {
+    await mount(new LogDirBackend({ features: ['log_chains'] }));
+
+    const event = await pressAnywhere(init);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it.each(FILES_KEYS)(
+    '%s does nothing from the pattern field while Search is shown',
+    async (_name, init) => {
+      const { pattern } = await mount(new LogDirBackend({ features: ['log_chains'] }));
+      clickPanelButton('search');
+      await tick();
+      const field = pattern();
+      if (!field) throw new Error('the pattern field is not rendered');
+      field.focus();
+
+      expectNothingChanged(await keyDown(field, init));
+    },
+  );
+
+  it.each(FILES_KEYS)('%s does nothing while the side panel is hidden', async (_name, init) => {
+    await mount(new LogDirBackend({ features: ['log_chains'] }));
+    sidebarVisible.set(false);
+    await tick();
+
+    expectNothingChanged(await pressAnywhere(init));
+  });
+
+  it.each(FILES_KEYS)('%s does nothing while the shortcut list is open', async (_name, init) => {
+    await mount(new LogDirBackend({ features: ['log_chains'] }));
+    shortcutsHelpOpen.set(true);
+    await tick();
+
+    expectNothingChanged(await pressAnywhere(init));
+  });
+
+  it.each(FILES_KEYS)('%s does nothing while the analysis dialog is open', async (_name, init) => {
+    const { closeButton } = await openAnalysisFromTree(['log_chains']);
+
+    expectNothingChanged(await keyDown(closeButton, init));
+    expect(document.activeElement).toBe(closeButton);
+  });
+
+  it('leaves Alt+G of an input method alone', async () => {
+    await mount(new LogDirBackend({ features: ['log_chains'] }));
+
+    expectNothingChanged(
+      await pressAnywhere({ key: '©', code: 'KeyG', altKey: true, isComposing: true }),
+    );
+  });
+
+  it('leaves Alt+G to the browser on a backend without log chains', async () => {
+    await mount(new LogDirBackend({ features: [] }));
+
+    expectNothingChanged(await pressAnywhere({ key: '©', code: 'KeyG', altKey: true }));
   });
 });

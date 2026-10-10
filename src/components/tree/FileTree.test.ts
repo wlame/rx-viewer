@@ -3,10 +3,21 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
+import { TOOLTIP_DELAY_MS, TOOLTIP_ID } from '$lib/actions/tooltip';
 import { health, tree } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
+import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
 import { treeFocusRequested } from '$lib/stores/layout';
-import { LOG_DIR, LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
+import {
+  CHAIN_NAMES,
+  LOG_DIR,
+  LOG_FILE_TIME,
+  LOG_ROOT,
+  LogDirBackend,
+  logDirChains,
+  serveLogDir,
+} from '$lib/testing/fakeLogDir';
+import { formatFileTime, formatSize } from '$lib/utils/format';
 import FileTree from './FileTree.svelte';
 
 let mounted: FileTree | null = null;
@@ -18,10 +29,7 @@ async function mount(features: string[], backend = new LogDirBackend({ features 
   document.body.appendChild(target);
   mounted = new FileTree({ target });
   await tick();
-  return {
-    target,
-    toggle: () => target.querySelector<HTMLInputElement>('input[role="switch"]'),
-  };
+  return { target };
 }
 
 /** The tree row of `path`. */
@@ -42,49 +50,129 @@ afterEach(() => {
   mounted?.$destroy();
   mounted = null;
   chainMode.set(false);
+  filesView.set(DEFAULT_FILES_VIEW);
   tree.selectPath(null);
   treeFocusRequested.set(false);
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
 
-describe('the chain mode switch of the files panel', () => {
-  it('is not shown while the backend serves no log chains', async () => {
-    const { toggle } = await mount([]);
+/** The log directory in the panel, expanded, in chain mode or not. */
+async function mountLogDir(mode: boolean) {
+  const mounted = await mount(['log_chains']);
+  chainMode.set(mode);
+  await tree.loadRoots();
+  await tree.toggleExpanded(LOG_DIR);
+  await tick();
+  const { target } = mounted;
+  return {
+    target,
+    labelsButton: () => target.querySelector<HTMLButtonElement>('button[aria-label="Show labels"]'),
+    dateButton: () =>
+      [...target.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(
+        (radio) => radio.textContent?.trim() === 'Date',
+      ),
+    fileBadges: () => target.querySelectorAll('[role="tree"] .badge:not([data-chain-badge])'),
+    chainBadges: () => target.querySelectorAll('[data-chain-badge]'),
+  };
+}
 
-    expect(toggle()).toBeNull();
+/** The value cell of the tree row of `path`, or of the chain row named `chain`. */
+function valueOf(target: HTMLElement, row: { path?: string; chain?: string }): HTMLElement | null {
+  const item = row.chain
+    ? target.querySelector<HTMLElement>(`[data-chain="${row.chain}"]`)
+    : rowOf(target, row.path ?? '');
+  return item?.querySelector<HTMLElement>('[data-value-cell]') ?? null;
+}
+
+describe('the labels of the files panel', () => {
+  it('hides every badge of the file rows with Show labels, and brings them back', async () => {
+    const { labelsButton, fileBadges } = await mountLogDir(false);
+    const shown = fileBadges().length;
+    expect(shown).toBeGreaterThan(0);
+
+    labelsButton()?.click();
+    await tick();
+    expect(fileBadges()).toHaveLength(0);
+
+    labelsButton()?.click();
+    await tick();
+    expect(fileBadges()).toHaveLength(shown);
   });
 
-  it('is a labelled switch, off by default', async () => {
-    const { toggle } = await mount(['log_chains']);
+  it('hides every badge of the chain rows with Show labels, and brings them back', async () => {
+    const { labelsButton, chainBadges } = await mountLogDir(true);
+    const shown = chainBadges().length;
+    expect(shown).toBeGreaterThanOrEqual(CHAIN_NAMES.length);
 
-    const input = toggle();
-    expect(input?.labels?.[0]?.textContent?.trim()).toBe('Group rotated logs');
-    expect(input?.checked).toBe(false);
-    expect(input?.getAttribute('aria-checked')).toBe('false');
+    labelsButton()?.click();
+    await tick();
+    expect(chainBadges()).toHaveLength(0);
+
+    labelsButton()?.click();
+    await tick();
+    expect(chainBadges()).toHaveLength(shown);
   });
 
-  it('turns chain mode on and off', async () => {
-    const { toggle } = await mount(['log_chains']);
+  it('keeps the value and the dimmed name of a file that is not text', async () => {
+    const { target, labelsButton } = await mountLogDir(false);
+    const path = `${LOG_DIR}/failures`;
 
-    toggle()?.click();
+    labelsButton()?.click();
     await tick();
-    expect(get(chainMode)).toBe(true);
-    expect(toggle()?.checked).toBe(true);
 
-    toggle()?.click();
-    await tick();
-    expect(get(chainMode)).toBe(false);
+    const name = rowOf(target, path)?.querySelector('span.truncate');
+    expect(name?.className).toContain('opacity-50');
+    expect(valueOf(target, { path })?.textContent?.trim()).toBe(
+      formatSize(tree.nodeAt(path)?.size ?? -1),
+    );
+  });
+});
+
+describe('the value column of the files panel', () => {
+  it("shows a file's size, a folder's item count and a chain's size", async () => {
+    const { target } = await mountLogDir(true);
+    const chain = logDirChains().find((c) => c.name === 'pkg.log');
+
+    expect(valueOf(target, { path: `${LOG_DIR}/fonts.log` })?.textContent?.trim()).toBe(
+      formatSize(tree.nodeAt(`${LOG_DIR}/fonts.log`)?.size ?? -1),
+    );
+    expect(valueOf(target, { path: `${LOG_DIR}/pkgcache` })?.textContent?.trim()).toBe('0 items');
+    expect(valueOf(target, { path: LOG_ROOT })?.textContent?.trim()).toBe('1 item');
+    expect(valueOf(target, { chain: 'pkg.log' })?.textContent?.trim()).toBe(
+      formatSize(chain?.size ?? -1),
+    );
   });
 
-  it('shows the mode a link set', async () => {
-    const { toggle } = await mount(['log_chains']);
+  it("shows a file's and a chain's time once Date is chosen, and nothing for a folder without one", async () => {
+    const { target, dateButton } = await mountLogDir(true);
 
-    chainMode.set(true);
+    dateButton()?.click();
     await tick();
 
-    expect(toggle()?.checked).toBe(true);
-    expect(toggle()?.getAttribute('aria-checked')).toBe('true');
+    const shown = formatFileTime(LOG_FILE_TIME).text;
+    expect(valueOf(target, { path: `${LOG_DIR}/fonts.log` })?.textContent?.trim()).toBe(shown);
+    expect(valueOf(target, { chain: 'pkg.log' })?.textContent?.trim()).toBe(shown);
+    expect(valueOf(target, { path: `${LOG_DIR}/pkgcache` })?.textContent?.trim()).toBe('');
+  });
+
+  it('spells the time out in full in the tooltip of its cell', async () => {
+    const { target, dateButton } = await mountLogDir(false);
+    dateButton()?.click();
+    await tick();
+    const cell = valueOf(target, { path: `${LOG_DIR}/fonts.log` });
+
+    vi.useFakeTimers();
+    try {
+      cell?.dispatchEvent(new MouseEvent('mouseenter'));
+      vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe(
+      formatFileTime(LOG_FILE_TIME).full,
+    );
   });
 });
 
