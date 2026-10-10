@@ -46,6 +46,11 @@ way.
   Cmd/Ctrl+Shift+E shows Files and Alt+2 or Cmd/Ctrl+Shift+F shows
   Search, each with the focus in it. A panel keeps its state while
   another is shown.
+- **Tooltips with the keys.** A control of the activity bar, the files
+  panel's toolbar and column header, or the search options line shows
+  its name and its shortcut after half a second of hover, and at once
+  when the keyboard focuses it. Keys are written as the platform prints
+  them: `⌥G` on a Mac, `Alt+G` elsewhere. Esc hides the tooltip.
 - **File tree** of the backend's search roots. Its toolbar groups rotated
   logs into chains (Alt+G), shows or hides the labels of the rows (the
   compression, index and chain marks; Alt+L), and switches the value
@@ -91,9 +96,9 @@ way.
   time order: see [Log chains](#log-chains).
 - **The URL holds the view.** A link or a reload reopens the file at its
   line, with its highlighting, filter and anomaly category, the panel
-  the side panel shows and the search. Back and Forward step through the
-  files opened, the searches run and the panels switched in the activity
-  bar. See
+  the side panel shows, the files panel's chain mode, labels, value and
+  order, and the search. Back and Forward step through the files opened,
+  the searches run and the panels switched in the activity bar. See
   [Link parameters](#link-parameters).
 - **The equivalent command.** The status bar shows the `rx` command the
   backend reports for the last answer, with a copy button and a list of
@@ -134,7 +139,7 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In a search pattern field or the max box | Enter                     | Run the search                                                                     |
 | In the open file                         | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
 | In the open file                         | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
-| In the open file                         | Cmd/Alt+click on a chip   | Next anomaly of the selected category; with Shift, the previous one                |
+| In the open file                         | Cmd/Alt+click             | On a chip: next anomaly of the selected category; with Shift, the previous one     |
 | In the go-to-line box                    | Enter                     | Jump to the typed line                                                             |
 | In the go-to-line box                    | Esc                       | Close the go-to-line box                                                           |
 | In the editor filter field               | Enter                     | Apply the filter to the open file                                                  |
@@ -151,16 +156,17 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | While a panel is open                    | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
 
 While a dialog is open (the shortcut list, the analysis, the API token
-prompt), the keys that show a panel or the sidebar, Alt+1, Alt+2,
-Cmd/Ctrl+Shift+E or F, Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the
-keyboard stays with the dialog. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act
-only while the files panel is shown and no dialog is open; otherwise the
-key is left to the browser. Alt+G acts only on a backend that serves log
-chains. Alt+C, Alt+W, Alt+R and Alt+O act wherever the focus is in the
-search panel, a pattern field or not, while no dialog is open; a toggle
-that is disabled leaves the key to the browser (the match toggles on a
-backend that takes no match options, Only opened files while it is off
-and no file is open).
+prompt, the notice of a backend the viewer cannot read), the keys that
+show a panel or the sidebar, Alt+1, Alt+2, Cmd/Ctrl+Shift+E or F,
+Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the keyboard stays with the
+dialog, so Cmd/Ctrl+K does not close the shortcut list; Esc or
+Cmd/Ctrl+/ does. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act only while the
+files panel is shown and no dialog is open; otherwise the key is left to
+the browser. Alt+G acts only on a backend that serves log chains. Alt+C,
+Alt+W, Alt+R and Alt+O act wherever the focus is in the search panel, a
+pattern field or not, while no dialog is open; a toggle that is disabled
+leaves the key to the browser (the match toggles on a backend that takes
+no match options, Only opened files while it is off and no file is open).
 
 The file tree is one Tab stop. Tab enters it on the row that had the
 focus last, else on the open file's row, else on the first row, and Tab
@@ -170,8 +176,8 @@ and the same letter typed again goes on to the next row that starts with
 it. Esc goes back to the open file or chain, when one is open. A key
 with Ctrl, Cmd or Alt is never the tree's.
 
-The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
-is the one to trust if the two ever differ.
+The table in the app is generated from `src/lib/utils/shortcuts.ts`, and a
+test fails when this table lacks one of its keys or holds one it lacks.
 
 ## Log chains
 
@@ -186,18 +192,18 @@ shows.
 **Chain mode.** The "Group rotated logs" toggle in the files panel's
 toolbar (or Alt+G) turns it on; it is off by default. The link holds it as
 `chains=1`; a link without it opens with the mode off, whatever mode was
-chosen before. With the mode on, each folder shows one row per
-chain in place of its parts, with its name, `chain · N` (its parts), its
-size, `idx` once every part but the active file is indexed, and marks for
+chosen before. With the mode on, each folder shows one row per chain in
+place of its parts, with its name, `chain · N` (its parts), its size,
+`idx` once every part but the active file is indexed, and marks for
 missing or unreadable parts, a chain of more than 10,000 parts, and an
 invalid chain. With the date shown, a chain's row shows the newest
-modification time of its parts. Every file that is not a part stays listed. The parts
-themselves are not listed: turn the mode off to see them, or open the
-parts list in the chain's tab. A click or Enter opens the chain's tab;
-the row's menu indexes or re-indexes the parts. Turning the mode off
-turns each chain's tab into the file tab of the part that holds its line,
-at that line; turning it on turns the file tabs of parts into their
-chain's tab at the same line.
+modification time of its parts. Every file that is not a part stays
+listed. The parts themselves are not listed: turn the mode off to see
+them, or open the parts list in the chain's tab. A click or Enter opens
+the chain's tab; the row's menu indexes or re-indexes the parts. Turning
+the mode off turns each chain's tab into the file tab of the part that
+holds its line, at that line; turning it on turns the file tabs of parts
+into their chain's tab at the same line.
 
 **The chain's tab.** Opening a chain starts the index builds of its
 parts. Until they end the chain is _pending_: the tab shows each part's
@@ -260,8 +266,8 @@ An unknown or invalid value is read as absent.
 | `highlight`                                   | `1` or `0`: syntax highlighting on or off; absent, the file's size decides                                           |
 | `filter`, `filter_mode`                       | The editor's regex filter and what it does: `highlight` (default), `hide` or `show`                                  |
 | `category`                                    | The anomaly category marked in the file                                                                              |
-| `tab`                                         | The panel the side panel shows: `files` or `search`                                                                  |
-| `chains`                                      | `1`: chain mode on; absent, off                                                                                      |
+| `tab`                                         | The panel the side panel shows: `files` or `search`; absent, Search for a link that holds a search, else Files       |
+| `chains`                                      | `1`: chain mode on; absent, off, whatever mode was chosen before                                                     |
 | `labels`                                      | `0`: the files panel hides the labels of its rows; absent, it shows them                                             |
 | `show`                                        | `date`: the files panel shows each row's modification time; absent, its size                                         |
 | `sort`                                        | The files panel's order: `name-desc`, `size-asc`, `size-desc`, `date-asc` or `date-desc`; absent, `name-asc`         |
@@ -389,7 +395,7 @@ header shows and the backends read to name the bundle they cache:
 
 Each backend accepts a range of viewer versions and does not install a
 release outside it. Today rx-go (`internal/frontend/compat.go`) accepts
-`0.2.0 <= v < 0.8.0`, and rx-python, which is paused, `0.2.0 <= v < 0.4.0`.
+`0.2.0 <= v < 0.9.0`, and rx-python, which is paused, `0.2.0 <= v < 0.4.0`.
 A minor version past that range needs a backend release that widens it
 first; see the parity rules in `AGENTS.md`.
 

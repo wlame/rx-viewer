@@ -330,17 +330,67 @@ describe('belongsToInputMethod', () => {
   });
 });
 
-describe('the shortcut list', () => {
-  // The README's table is written by hand; the app's list is built from this table.
-  it('has rows in the README table for every place a shortcut works', () => {
-    const readme = readFileSync(resolve(__dirname, '../../../README.md'), 'utf-8').split('\n');
-    const missing = shortcutsByScope()
-      .map((group) => group.title)
-      .filter((title) => !readme.some((line) => line.startsWith(`| ${title} `)));
+/**
+ * The keys of a label or of a README cell, one string each: the README
+ * spells the command key out (`Cmd`, where the app draws `⌘`), writes a
+ * literal key in backticks, and joins the keys of one action with `or` or
+ * a comma, which are no part of a key.
+ */
+function keysOf(text: string): string[] {
+  return text
+    .replace(/⌘/g, 'Cmd')
+    .replace(/`/g, '')
+    .split(/,\s+|\s+or\s+/)
+    .map((key) => key.trim())
+    .filter((key) => key !== '');
+}
+
+/** The README's "Keyboard shortcuts" table: where each row works, and its keys. */
+function readmeShortcutRows(): { where: string; keys: string[] }[] {
+  const readme = readFileSync(resolve(__dirname, '../../../README.md'), 'utf-8').split('\n');
+  const afterHeading = readme.slice(
+    readme.findIndex((line) => line.startsWith('### Keyboard shortcuts')) + 1,
+  );
+  const nextHeading = afterHeading.findIndex((line) => line.startsWith('#'));
+  return afterHeading
+    .slice(0, nextHeading)
+    .filter((line) => line.startsWith('|'))
+    .map((line) => line.split('|').map((cell) => cell.trim()))
+    .filter(([, where]) => where !== 'Where' && !/^-+$/.test(where))
+    .map(([, where, keys]) => ({ where, keys: keysOf(keys) }));
+}
+
+describe('the README keyboard shortcut table', () => {
+  // The README's table is written by hand; the app's list is built from the table.
+  it('holds every key of the shortcut table under the place it works in', () => {
+    const rows = readmeShortcutRows();
+    const missing = SHORTCUTS.flatMap((shortcut) => {
+      const where = SHORTCUT_SCOPES[shortcut.scope];
+      const written = rows.filter((row) => row.where === where).flatMap((row) => row.keys);
+      return keysOf(shortcutLabel(shortcut))
+        .filter((key) => !written.includes(key))
+        .map((key) => `${where}: ${key} (${shortcut.id})`);
+    });
 
     expect(missing).toEqual([]);
   });
 
+  it('holds no key the shortcut table lacks under that place', () => {
+    const known = SHORTCUTS.map((shortcut) => ({
+      where: SHORTCUT_SCOPES[shortcut.scope],
+      keys: keysOf(shortcutLabel(shortcut)),
+    }));
+    const stale = readmeShortcutRows().flatMap((row) =>
+      row.keys
+        .filter((key) => !known.some((s) => s.where === row.where && s.keys.includes(key)))
+        .map((key) => `${row.where}: ${key}`),
+    );
+
+    expect(stale).toEqual([]);
+  });
+});
+
+describe('the shortcut list', () => {
   // The file tree hands each of these keys to its key rules; a key the
   // tree acts on without a row would be missing from the help.
   it.each([
