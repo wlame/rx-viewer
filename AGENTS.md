@@ -87,9 +87,15 @@ interchangeable backends, no vendoring.
 | `src/lib/utils/urlState.ts`, `src/lib/viewState.ts`       | The view in the URL (no router): one parse/serialize table per key; URL written from stores                                                        |
 | `src/lib/utils/monacoLanguage.ts`, `monacoLogLanguage.ts` | Monaco language registration and the log grammar                                                                                                   |
 | `src/components/editor/`                                  | `MonacoEditor.svelte`, `EditorPane.svelte` (paged large-file viewing), `EditorHeader.svelte` (name, line readout, chips, toolbar)                  |
-| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome, shared widgets                                                                                              |
+| `src/components/tree/`, `search/`, `layout/`, `common/`   | Tree, search form and results, chrome (the activity bar, `Sidebar.svelte`), shared widgets                                                         |
+| `src/lib/stores/filesView.ts`, `treeFocus.ts`             | The files panel's labels, value and sort; the file tree's current row and Tab stop                                                                 |
+| `src/lib/stores/searchDraft.ts`, `trace.ts`               | The search form as the user left it; the search the URL names                                                                                      |
+| `src/lib/utils/shortcuts.ts`, `panels.ts`                 | The one shortcut table with its scoped key handlers; the side panel's panels, which the activity bar draws                                         |
+| `src/lib/actions/`                                        | Svelte actions: `tooltip` (label and keys on hover and focus), `modal` (counts an open modal dialog)                                               |
+| `src/lib/utils/icons.ts`                                  | The icon table (Lucide outlines); `src/components/common/Icon.svelte` draws it                                                                     |
+| `src/lib/utils/treeSort.ts`, `treeRows.ts`, `treeNav.ts`  | The files panel's sort, the rows the tree shows as one list, and the tree's key rules                                                              |
 | `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                                                                 |
-| `.github/workflows/`                                      | `ci.yml` (build) and `build-release.yml` (tag → `dist.tar.gz` release)                                                                             |
+| `.github/workflows/`                                      | `ci.yml` (build) and `release.yml` (tag → `dist.tar.gz` release)                                                                                   |
 
 ## Build, run, test
 
@@ -162,7 +168,7 @@ separate comment above, or eslint reads every word as another rule.
   only module that writes the view to `history` (`apiToken.ts` only strips
   the token); `viewState.ts` writes the URL from the stores and restores
   the stores from a URL. A component never writes the URL. A change of a
-  key that is a step (open a file, run a search, switch the sidebar tab)
+  key that is a step (open a file, run a search, show another panel)
   is a `pushState`, every other change a `replaceState`, and `popstate`
   restores the entry. `line` is the file's anchor line, whose rule is in
   `utils/anchorLine.ts`.
@@ -175,8 +181,9 @@ separate comment above, or eslint reads every word as another rule.
   share state. Code that reads a file (samples, index, time range) takes
   the file's path, which is its key.
 - Log chains act only while `chainModeOn` holds (`stores/chainMode.ts`:
-  the "Group rotated logs" switch, `chains=1`, and `log_chains` in
-  `/health`), and only through the `/v1/logs` routes. The files panel
+  the "Group rotated logs" toggle button, `chains=1`, and `log_chains` in
+  `/health`), and only through the `/v1/logs` routes. The mode is not
+  remembered: a link without `chains=1` opens with it off. The files panel
   shows a chain's row in place of its parts (`utils/chainTree.ts`) and
   never lists the parts; they are reached by turning the mode off or from
   the parts list of the chain's tab. A chain's tab (`stores/chainTabs.ts`)
@@ -214,7 +221,87 @@ separate comment above, or eslint reads every word as another rule.
   `src/lib/utils/shortcuts.ts`. The key handlers ask it whether a key is
   theirs and the help dialog (Cmd/Ctrl+/) lists it, so add a shortcut
   there, never as a bare `event.key` check. A handler calls
-  `preventDefault` only when it acted.
+  `preventDefault` only when it acted. A row belongs to a scope
+  (`SHORTCUT_SCOPES`, in the help's order: anywhere, panels, activity
+  bar, files panel, Size/Date switch, file tree, search panel, search
+  field, then the editor's and the dialogs'); the help lists a scope
+  only once it has a row. The README's table lists the same rows, and a
+  test fails when the two differ: change both in one commit.
+  - A scope's handler is a pure function that is given only the actions
+    of the controls that call it, and matches the ids it is given:
+    `handleGlobalKey` (`KeyboardShortcuts.svelte`, on the window in the
+    capture phase, since Monaco binds Cmd/Ctrl+K and Cmd/Ctrl+/ itself),
+    `handleFilesPanelKey` (`FilesToolbar.svelte` and `TreeHeader.svelte`,
+    each with its own controls' actions, acting only while
+    `filesPanelShown` holds and no modal dialog is open) and
+    `handleSearchPanelKey` (the search panel's root element, wherever the
+    focus is inside it). The file tree has one `keydown` on `role="tree"`:
+    it checks the chord rows with `isShortcut`, then gives the other keys
+    to `treeKeyAction`. An Alt+letter or Alt+digit row matches by `code`,
+    because a Mac's Option changes `key` (`©`, `¡`, `Dead`). The keys
+    shown on a Mac (`⌥G`) or elsewhere (`Alt+G`) come from
+    `shortcutKeys(id, platform)`.
+  - The one exception to the one-table rule: Esc hides a tooltip through
+    a local chord (`HIDE_KEY` in `actions/tooltip.ts`), not through a
+    row. The help lists what a key does in the viewer, and the tooltip's
+    Esc does nothing else; it does not cancel the key, so a dialog around
+    the trigger still closes on the same press.
+- The side panel is an activity bar (`components/layout/ActivityBar.svelte`)
+  and a host (`Sidebar.svelte`). `PANELS` (`utils/panels.ts`) has a row per
+  panel (id, label, icon, the shortcut row that shows it) and
+  `Sidebar.svelte` has its view in `PANEL_VIEWS`, so a further panel is
+  one row and one view. Every panel stays mounted and the one not shown
+  is `hidden`: the tree keeps its open folders and an open analysis
+  dialog, the search form its unsent edits, and a link's search runs on
+  load whichever panel is shown. Change the panel only through
+  `showPanel(id, focus)` and `clickPanelButton(id)` (`stores/layout.ts`).
+  A focus request (`treeFocusRequested`, `searchFocusRequested`,
+  `editorFocusRequested`) is a flag that the target answers after the
+  next update and resets, so a panel is drawn before it takes the focus.
+  The `tab` key of the URL holds the panel.
+- Every element with `aria-modal="true"` carries `use:modal`
+  (`actions/modal.ts`), which counts the dialog in `modalOpen`
+  (`stores/layout.ts`) while it is in the page. While `modalOpen` holds,
+  the panel keys, Cmd/Ctrl+K, Cmd/Ctrl+B and the files panel's and the
+  search panel's keys do nothing and are not cancelled, so the keyboard
+  stays with the dialog. A source test (`actions/modal.test.ts`) fails
+  when a component has more `aria-modal="true"` than `use:modal`, or the
+  other way round.
+- Icons are rows of `ICONS` in `utils/icons.ts`: Lucide 24×24 outlines as
+  data (a tag and its attributes), drawn by `components/common/Icon.svelte`
+  with `<svelte:element>`, never `{@html}`. The file's header holds
+  Lucide's ISC notice, the Lucide version the shapes come from, and the
+  MIT notice of Feather, from which `search`, `arrow-up` and `arrow-down`
+  derive. A shape from another source brings its own notice and version
+  into that header.
+- `use:tooltip={{ label, shortcut?, detail?, placement? }}`
+  (`actions/tooltip.ts`) is the viewer's tooltip. It shares one
+  `#rx-tooltip` element, appears after 500 ms of hover and at once when
+  the keyboard focuses the control (`:focus-visible`), and shows the keys
+  of the shortcut row it names; give a control a tooltip that names its
+  row rather than writing keys in its label. It sets text with
+  `textContent` only, so a label may hold a file name.
+- `stores/filesView.ts` holds what the files panel shows: its labels, its
+  value column and its sort. The URL holds all three (`labels=0`,
+  `show=date`, `sort=<key>-<dir>`) and `viewState.ts` keeps them equal.
+  The panel orders every folder's rows itself: `utils/treeSort.ts` sorts
+  (folders first, names without case and with numbers read as numbers,
+  an unknown value last) and `shownChildren` (`utils/chainTree.ts`)
+  applies it with the chain rows. `utils/treeRows.ts` lists the rows on
+  screen, depth first, as `VisibleRow`s, and `utils/treeNav.ts` decides
+  from those rows what a key does (`treeKeyAction`, `fallbackFocus`);
+  both are pure, and the tree's view and its ARIA levels read the same
+  list. `stores/treeFocus.ts` joins them to the page: the current row,
+  the visible rows and the tree's one Tab stop. When the focused row goes
+  (a folder closes, a mode or a sort moves it) `fallbackFocus` names the
+  row that takes its place.
+- `stores/searchDraft.ts` holds the search panel's form (patterns,
+  toggles, Only opened files, and the max box's text as typed) and
+  outlives the panel. `searchRequest` (`stores/trace.ts`) is the search
+  the URL names. A run builds it from the draft, after `parseMaxResults`
+  has read the max: 1 to 10,000, refused and never changed. A link or Back
+  fills the draft from it (`draftFromSearch`), except for the search
+  already run, so an unsent edit survives a step through files.
 - Monaco is code-split into its own chunk (about 3.3 MB, 860 KB gzip). Check the
   bundle delta before adding Monaco features.
 - Large files are never loaded whole. The editor requests windows through
@@ -261,6 +348,10 @@ separate comment above, or eslint reads every word as another rule.
   `<svelte:window>`. A test whose component reaches `$lib/stores`
   imports `$lib/testing/matchMediaStub` first.
 - Names: `describe(unit) / it("scenario returns expected")`.
+- Some tests read the repository's own files and fail when a rule is
+  broken: `src/lib/testing/releasePath.test.ts` (recipes and workflows),
+  `src/lib/actions/modal.test.ts` (modal dialogs) and the README table
+  test in `src/lib/utils/shortcuts.test.ts`.
 - End-to-end smoke against a real backend is manual until a Playwright job
   exists; record the manual check in the pull request or final report.
 - The completion gate before you say "done":
