@@ -300,7 +300,7 @@ describe('the URL follows the view', () => {
     expect(urlParams().get('file')).toBe('/logs/small.log');
   });
 
-  it('names the sidebar tab, the search and the offsets switch', () => {
+  it('names the panel shown, the search and the offsets switch', () => {
     searchRequest.set({
       patterns: ['ERROR'],
       maxResults: DEFAULT_MAX_RESULTS,
@@ -552,7 +552,7 @@ describe('Back and Forward', () => {
     await vi.waitFor(() => expect(get(searchRequest)).toBeNull());
   });
 
-  it('returns to the sidebar tab of the previous step', async () => {
+  it('returns to the panel of the previous step', async () => {
     sidebarTab.set('search');
     expect(browser.entries).toEqual(['', '?tab=search']);
 

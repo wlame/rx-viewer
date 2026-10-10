@@ -30,7 +30,7 @@ import type { ChainTab, OpenFile, TreeNode } from './types';
  *
  * `startViewSync` writes the URL from the stores: the URL is a
  * projection of the view, so no component writes it. A change that is a
- * step (opening a file, running a search, switching the sidebar tab)
+ * step (opening a file, running a search, showing another panel)
  * adds a history entry; any other change rewrites the current one.
  * `restoreView` does the reverse and brings the stores to the view a URL
  * describes, on page load and when Back or Forward moves through the
@@ -413,8 +413,8 @@ export async function loadView(view: ViewState): Promise<void> {
 /**
  * Bring the app to the view a URL describes: chain mode (the open tabs
  * turned over to it, `stores/chainModeSwitch.ts`), the files panel's
- * labels, value and sort, the results switch, the search, the sidebar tab and
- * the file. The stash and the file zones
+ * labels, value and sort, the results switch, the search, the panel the side
+ * panel shows and the file. The stash and the file zones
  * stay as they are. Resolves when the file's lines are
  * loaded. A later restore supersedes this one: Back pressed twice ends
  * on the second entry even when the first one's file is slower.

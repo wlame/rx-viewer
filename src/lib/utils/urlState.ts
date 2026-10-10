@@ -5,13 +5,13 @@
  * active file or log chain, the line its view is anchored on or the
  * time it jumped to (in a chain, with the fingerprint of the files that
  * line was read in), its highlighting, filter and anomaly category, the
- * sidebar tab, whether rotated logs are grouped into chains, whether the
- * files panel shows its labels, which value it shows and how it sorts
- * its rows, the last search, whether its results show byte offsets, the
- * timestamps stash, and the time zones chosen for files and chains. Each
- * key has one row in `CODECS`, which reads it as untrusted input (a missing or invalid
- * value gives that key's default) and writes it back, leaving a value at
- * its default out of the link.
+ * panel the side panel shows, whether rotated logs are grouped into
+ * chains, whether the files panel shows its labels, which value it shows
+ * and how it sorts its rows, the last search, whether its results show
+ * byte offsets, the timestamps stash, and the time zones chosen for files
+ * and chains. Each key has one row in `CODECS`, which reads it as
+ * untrusted input (a missing or invalid value gives that key's default)
+ * and writes it back, leaving a value at its default out of the link.
  *
  * This module is the only place that writes the view to `history`.
  * Secrets stay out of it: the API token arrives in the hash and is moved
@@ -30,7 +30,7 @@ import { isChainKey } from './tabKey';
 import { normalizeStash } from './timeStash';
 import { DEFAULT_SORT, SORT_DIRS, SORT_KEYS, sortForShown, type TreeSort } from './treeSort';
 
-/** The sidebar's two tabs. */
+/** The panels of the side panel: Files (`tree`) and Search. The URL's `tab` key names one. */
 export type SidebarTab = 'tree' | 'search';
 
 /** The value the files panel shows beside each row's name. */
@@ -337,10 +337,10 @@ function serializeSearch(search: SearchState | null): Param[] {
   return out;
 }
 
-/** A tab's name in the URL, which is the label the user sees. */
+/** A panel's name in the URL, which is the label the user sees. */
 const TAB_PARAM_VALUES: Record<SidebarTab, string> = { tree: 'files', search: 'search' };
 
-/** The tab a link opens when it names none: a link with a search opens on its results. */
+/** The panel a link opens when it names none: a link with a search opens on its results. */
 function defaultTab(hasSearch: boolean): SidebarTab {
   return hasSearch ? 'search' : 'tree';
 }
@@ -569,7 +569,7 @@ function isStepKey<K extends keyof ViewState>(
 /**
  * How the change from `previous` to `next` reaches history: a push when
  * any key changed in a way that is a step (opening a file or a chain,
- * running a search, switching the sidebar tab, a jump by time),
+ * running a search, showing another panel, a jump by time),
  * otherwise a replace (the line and its part, the highlighting, the
  * filter, the category, chain mode, the files panel's labels, value and
  * sort, the offsets switch, the stash, the file zones).

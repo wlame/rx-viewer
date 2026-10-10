@@ -69,6 +69,8 @@ const FIRST_ORDERS: Readonly<Record<SortKey, { folders: FirstOrder; others: Firs
  */
 const NAME_ORDER = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+// The same test as `isChainRow` in `chainTree.ts`. That module imports this
+// one, so importing it back would make a cycle.
 function isChain(row: TreeRow): row is ChainRow {
   return row.type === 'chain' && 'chain' in row;
 }

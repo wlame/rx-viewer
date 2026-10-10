@@ -58,7 +58,7 @@ function serveTree(roots: string[] = ['/logs']) {
   return spy;
 }
 
-describe('the tree when the Files tab is shown again', () => {
+describe('the tree when the Files panel is shown again', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('keeps the expanded folders and asks for nothing', async () => {

@@ -7,9 +7,11 @@ import { commandLog } from './commands';
 import { files } from './files';
 
 /**
- * The search the user last ran, as the search panel's form held it, or
- * null for none. The URL carries it, and the panel reads its form from
- * it, so a link or Back can bring a search back.
+ * The search the URL names: the one the user last ran, or the one a link
+ * or Back brought in; null for none. The search panel's form is
+ * `searchDraft`, which may hold edits not yet sent. A link or Back fills
+ * the form with this search too, and the panel runs it when it has no
+ * answer yet.
  */
 export const searchRequest = writable<SearchState | null>(null);
 

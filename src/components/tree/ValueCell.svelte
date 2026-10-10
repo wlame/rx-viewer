@@ -15,6 +15,9 @@
   /** The row's modification time as the listing writes it, or null without one. */
   export let modifiedAt: string | null;
 
+  // Tailwind reads the width from this text, so it is a literal class. The
+  // column header's value button (`TreeHeader.svelte`) is this wide plus
+  // its own padding: change the two together.
   const CELL_CLASS =
     'w-[11ch] flex-shrink-0 text-right text-xs tabular-nums whitespace-nowrap overflow-hidden ' +
     'text-gh-fg-subtle dark:text-gh-fg-dark-subtle';

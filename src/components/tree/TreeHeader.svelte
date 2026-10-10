@@ -82,7 +82,9 @@
          text-xs text-gh-fg-muted dark:text-gh-fg-dark-muted
          border-b border-gh-border-default dark:border-gh-border-dark-default"
 >
-  <!-- The names and the values keep their columns' edges: -mx-1 takes back the padding. -->
+  <!-- The names and the values keep their columns' edges: -mx-1 takes back the padding.
+       The value button is as wide as a row's value cell (11ch, `ValueCell.svelte`) plus
+       its padding, 0.5rem: change the two together. -->
   <button
     type="button"
     class="-ml-1 {BUTTON_CLASS} {sort.key === 'name' ? SORTED_CLASS : ''}"

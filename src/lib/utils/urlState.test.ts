@@ -165,12 +165,12 @@ describe('parseViewState', () => {
     expect(parseViewState(`?file=/a.log&highlight=${value}`).highlight).toBe(expected);
   });
 
-  it('opens the Search tab for a link that carries a search and names no tab', () => {
+  it('opens the Search panel for a link that carries a search and names no panel', () => {
     expect(parseViewState('?regexp=error').tab).toBe('search');
     expect(parseViewState('?file=/a.log').tab).toBe('tree');
   });
 
-  it('keeps the Files tab a link asks for even with a search', () => {
+  it('keeps the Files panel a link asks for even with a search', () => {
     expect(parseViewState('?regexp=error&tab=files').tab).toBe('tree');
   });
 
@@ -248,9 +248,9 @@ describe('serializeViewState and parseViewState', () => {
         ],
       }),
     ],
-    ['a search on its tab', view({ search: plainSearch, tab: 'search' })],
-    ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
-    ['the Search tab with no search', view({ tab: 'search' })],
+    ['a search on its panel', view({ search: plainSearch, tab: 'search' })],
+    ['a search on the Files panel', view({ search: plainSearch, tab: 'tree' })],
+    ['the Search panel with no search', view({ tab: 'search' })],
     ['labels off and the dates shown', view({ labels: false, show: 'date' })],
     ['sorted by name, Z to A', view({ sort: { key: 'name', dir: 'desc' } })],
     ['the dates shown, oldest first', view({ show: 'date', sort: { key: 'date', dir: 'asc' } })],
@@ -472,7 +472,7 @@ describe('historyModeFor', () => {
         mode: 'replace',
       },
       {
-        name: 'switching the sidebar tab',
+        name: 'showing another panel',
         previous: DEFAULT_VIEW,
         next: view({ tab: 'search' }),
         mode: 'push',
