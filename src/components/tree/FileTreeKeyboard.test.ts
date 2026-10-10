@@ -505,7 +505,14 @@ describe('the rows the tree draws', () => {
       await tick();
 
       const shown = rowsOf(target).map((row) => row.dataset.rowId);
+      const byName = visibleRows(get(tree).roots, {
+        chainModeOn: true,
+        sort: DEFAULT_FILES_VIEW.sort,
+      }).map((r) => r.id);
 
+      // The order must differ from the name order, or a tree that ignores
+      // the sort would pass.
+      expect(shown).not.toEqual(byName);
       expect(shown).toEqual(
         visibleRows(get(tree).roots, { chainModeOn: true, sort }).map((r) => r.id),
       );

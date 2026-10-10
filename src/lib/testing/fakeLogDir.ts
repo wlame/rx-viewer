@@ -143,8 +143,30 @@ function chainFiles(chain: ChainSpec): FileSpec[] {
 
 const ALL_FILES: FileSpec[] = [...CHAINS.flatMap(chainFiles), ...SINGLE_FILES];
 
-/** The modification time of every file of the directory, as `/v1/tree` writes one. */
+/**
+ * The modification time of the directory's newest files, as `/v1/tree`
+ * writes one: every active file and every file of no chain.
+ */
 export const LOG_FILE_TIME = '2026-03-08T09:15:42.123456Z';
+
+const DAY_MS = 86_400_000;
+/** The epoch second a dated part's name ends with (`…-20260302-1772409600.gz`). */
+const DATED_PART = /-(\d{10})\.gz$/;
+/** The number a numbered part's name ends with (`app.log.3`, `app.log.3.gz`). */
+const NUMBERED_PART = /\.(\d+)(\.gz)?$/;
+
+/**
+ * A file's modification time as rotation leaves it: a dated part at its
+ * day, a part numbered N that many days before `LOG_FILE_TIME`, any other
+ * file at `LOG_FILE_TIME`. So an order by date is not the order by name.
+ */
+function timeOf(file: FileSpec): string {
+  const dated = DATED_PART.exec(file.name);
+  if (dated) return new Date(Number(dated[1]) * 1000).toISOString();
+  const days = Number(NUMBERED_PART.exec(file.name)?.[1] ?? 0);
+  if (days === 0) return LOG_FILE_TIME;
+  return new Date(Date.parse(LOG_FILE_TIME) - days * DAY_MS).toISOString();
+}
 
 /** The invented size of a file: 0 when it is empty, else a few hundred bytes from its name. */
 function sizeOf(file: FileSpec): number {
@@ -189,7 +211,7 @@ function fileEntry(dir: string, file: FileSpec): TreeEntry {
     is_compressed: isGzip,
     compression_format: isGzip ? 'gzip' : null,
     is_indexed: false,
-    modified_at: LOG_FILE_TIME,
+    modified_at: timeOf(file),
     size: sizeOf(file),
   });
 }
