@@ -113,7 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The analysis dialog stays on screen over every panel until its Close,
   its backdrop or Esc closes it. Back or Forward to a view of the Search
   panel used to hide it with the files panel until Files was shown
-  again.
+  again. It also stays open when its folder closes or the tree reloads;
+  it used to close with its row.
 - One Esc with the shortcut list open over the analysis dialog closes
   only the list; it used to close both.
 
