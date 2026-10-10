@@ -121,7 +121,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closing the active tab shows the tab used before it, not its left
   neighbour: the viewer keeps the open tabs in the order they were used,
   from a click, a link, a jump, a search result or a key. A tab that a
-  chain mode switch turns into another keeps its place in that order.
+  chain mode switch turns into another keeps its place in that order,
+  and when the switch closes the active chain tab (it showed no line of
+  a part yet), the tab used before it is shown.
 
 ### Fixed
 

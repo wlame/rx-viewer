@@ -133,17 +133,30 @@ async function isReadable(chain: ChainEntry): Promise<boolean> {
   return false;
 }
 
+/** What turning the tabs over did: which tabs became which, and the tab to show after it. */
+interface TabTurn {
+  replacements: TabReplacement[];
+  /** The tab the active one became; null when the active tab closed. */
+  active: TabKey | null;
+}
+
 /**
- * Run `turn`, which opens and closes tabs and returns which tabs became
- * which, as one change of the view that rewrites its entry. Each tab
- * that replaced others then takes their place in the order the tabs were
- * used in, which the opening and closing inside `turn` disturbed.
+ * Run `turn`, which opens and closes tabs, as one change of the view
+ * that rewrites its entry. Each tab that replaced others then takes their
+ * place in the order the tabs were used in, which the opening and closing
+ * inside `turn` disturbed, and the tab the active one became is shown;
+ * when the active tab closed, the most recently used open tab is.
  */
-function turnTabs(turn: () => TabReplacement[]): void {
+function turnTabs(turn: () => TabTurn): void {
   const recentBefore = get(files).recentTabs;
   turningTabs += 1;
   try {
-    files.setRecentOrder(replaceInRecent(recentBefore, turn()));
+    const { replacements, active } = turn();
+    const order = replaceInRecent(recentBefore, replacements);
+    const isOpen = (key: TabKey) => placeOf(key) >= 0;
+    const shown = active ?? order.find(isOpen) ?? null;
+    if (shown !== null) files.setActiveFile(shown);
+    files.setRecentOrder(order);
   } finally {
     turningTabs -= 1;
   }
@@ -219,8 +232,7 @@ async function turnChainsIntoFiles(generation: number): Promise<void> {
       revealed ??= path;
       if (isActive && path !== null) revealed = path;
     }
-    if (active !== null) files.setActiveFile(active);
-    return replacements;
+    return { replacements, active };
   });
 
   if (revealed !== null) loads.push(tree.expandToPath(revealed));
@@ -355,8 +367,7 @@ async function turnPartsIntoChains(generation: number): Promise<void> {
       if (turnFilesIntoChain(merge, loads)) replacements.push({ from: merge.members, to: key });
       if (active !== null && merge.members.includes(active)) active = key;
     }
-    if (active !== null) files.setActiveFile(active);
-    return replacements;
+    return { replacements, active };
   });
   await Promise.all(loads);
 }

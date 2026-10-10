@@ -243,6 +243,55 @@ describe('switching chain mode off and on', () => {
     expect(get(files).recentTabs).toEqual(['/l/notes.txt', '/l/other.txt', KEY]);
   });
 
+  it('shows the most recently used tab when the active chain tab closes for knowing no part', async () => {
+    // A chain whose parts are all empty knows no part, so its tab closes.
+    const empty = new FakeChain({
+      dir: '/first',
+      name: 'app.log',
+      state: 'ready',
+      parts: [
+        { name: 'app.log.1', lines: 0 },
+        { name: 'app.log', lines: 0, isActive: true },
+      ],
+    });
+    const other = new FakeChain({
+      dir: '/second',
+      name: 'db.log',
+      state: 'ready',
+      parts: [
+        { name: 'db.log.1', lines: 100 },
+        { name: 'db.log', lines: 100, isActive: true },
+      ],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) =>
+        (decodeURIComponent(url).includes('/second') ? other : empty).fetch(url, init),
+      ),
+    );
+    await health.check();
+    chainMode.set(true);
+    const emptyKey = chainKey('/first/app.log');
+    const otherKey = chainKey('/second/db.log');
+    await files.openChain('/second/db.log', {
+      position: { kind: 'local', part: 'db.log.1', line: 10 },
+    });
+    await files.openFile('/second/notes.txt');
+    await files.openChain('/first/app.log');
+    expect(openTab(emptyKey).chain?.anchor).toBeNull();
+    expect(get(files).recentTabs).toEqual([emptyKey, '/second/notes.txt', otherKey]);
+
+    await switchChainMode(false);
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual([
+      '/second/db.log.1',
+      '/second/notes.txt',
+    ]);
+    // db.log.1 took the place of the least recently used tab.
+    expect(get(files).activeFilePath).toBe('/second/notes.txt');
+    expect(get(files).recentTabs).toEqual(['/second/notes.txt', '/second/db.log.1']);
+  });
+
   it('holds only the open tabs, each once, in the recent order after each switch', async () => {
     await serve();
     await files.openFile('/l/app.log.3.gz', { scrollToLine: 10 });
