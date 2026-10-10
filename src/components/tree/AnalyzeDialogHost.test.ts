@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import '$lib/testing/matchMediaStub';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
@@ -69,6 +71,14 @@ describe('AnalyzeDialogHost', () => {
     expect(target.querySelector('h2')?.textContent).toContain('Analysis: worker.log.3.gz');
     expect(analyzeFile).toHaveBeenCalledTimes(2);
     expect(analyzeFile).toHaveBeenLastCalledWith('/logs/worker.log.3.gz', expect.anything());
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(1);
+    expect(get(modalOpen)).toBe(true);
+
+    target.querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.click();
+    await tick();
+
+    expect(document.querySelectorAll('[aria-modal="true"]')).toHaveLength(0);
+    expect(get(modalOpen)).toBe(false);
   });
 
   it('keeps a new dialog open when the analysis of the one it replaced fails', async () => {
@@ -98,5 +108,17 @@ describe('AnalyzeDialogHost', () => {
     await tick();
 
     expect(get(modalOpen)).toBe(false);
+  });
+});
+
+describe('the app', () => {
+  // A tree row only names the file in the store; without the host in the
+  // app, Analyze would do nothing.
+  it('draws the analysis dialog host, before the shortcut list that opens over it', () => {
+    const app = readFileSync(resolve(__dirname, '../../App.svelte'), 'utf-8');
+    const host = app.indexOf('<AnalyzeDialogHost />');
+
+    expect(host).toBeGreaterThan(-1);
+    expect(host).toBeLessThan(app.indexOf('<KeyboardShortcuts />'));
   });
 });
