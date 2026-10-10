@@ -169,6 +169,9 @@ describe('the max box', () => {
 
       expect(maxBox().getAttribute('aria-invalid')).toBe('true');
       expect(maxBox().className).toContain('border-gh-danger-emphasis');
+      // The box keeps the focus after a refused run: red while focused too.
+      expect(maxBox().className).toContain('focus:border-gh-danger-emphasis');
+      expect(maxBox().className).toContain('dark:focus:border-gh-danger-dark-emphasis');
       expect(rule()?.textContent?.trim()).toBe('max: 1 to 10,000');
       expect(rule()?.getAttribute('role')).toBeNull();
       expect(maxBox().getAttribute('aria-describedby')).toContain(rule()?.id);

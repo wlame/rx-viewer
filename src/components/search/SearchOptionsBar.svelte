@@ -43,8 +43,10 @@
     'focus-visible:outline-gh-accent-emphasis dark:focus-visible:outline-gh-accent-dark-emphasis';
   const SEPARATOR_CLASS = 'w-px h-4 bg-gh-border-default dark:bg-gh-border-dark-default';
   const MAX_BOX_CLASS = 'input px-1.5 py-0.5 text-xs font-mono';
+  // Red also while focused, over the accent border `.input` gives a focused field.
   const INVALID_CLASS =
     'border-gh-danger-emphasis dark:border-gh-danger-dark-emphasis ' +
+    'focus:border-gh-danger-emphasis dark:focus:border-gh-danger-dark-emphasis ' +
     'focus:ring-gh-danger-emphasis dark:focus:ring-gh-danger-dark-emphasis';
 
   let maxBox: HTMLInputElement;
