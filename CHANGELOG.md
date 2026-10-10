@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-10
+
 ### Added
 
 - Tooltips that name a control and its key. The activity bar's buttons,
