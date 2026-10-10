@@ -77,8 +77,18 @@ describe('editorThemeFor', () => {
 
 describe('parseSettings', () => {
   it('keeps every known setting with a valid value', () => {
-    const stored = { theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai', chainMode: true };
+    const stored = { theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai' };
     expect(parseSettings(stored)).toEqual(stored);
+  });
+
+  // An older viewer kept the chain mode chosen last; a link now names it.
+  it('ignores the chain mode an older viewer stored', () => {
+    const stored = { theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai', chainMode: true };
+
+    const parsed = parseSettings(stored);
+
+    expect(parsed).toEqual({ theme: 'dark', sidebarWidth: 320, monacoTheme: 'monokai' });
+    expect(parsed).not.toHaveProperty('chainMode');
   });
 
   // "vs-dark" was a picker entry that followed the app theme like "vs".

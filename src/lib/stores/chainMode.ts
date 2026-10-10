@@ -4,8 +4,7 @@ import { backendHas, health, type HealthState } from './health';
 /**
  * Whether the viewer groups rotated logs into log chains: the URL's
  * `chains=1`, off by default. Back and Forward restore it with the rest
- * of the view, and a link that does not name it opens in the mode the
- * view was last in (`settings.chainMode`, kept by `startViewSync`).
+ * of the view; a link without `chains=1` opens with it off.
  *
  * The choice alone turns nothing on: a chain feature acts only while the
  * backend also serves log chains (`chainModeOn`).

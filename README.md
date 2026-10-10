@@ -140,8 +140,8 @@ shows.
 
 **Chain mode.** The "Group rotated logs" switch in the files panel's
 header turns it on; it is off by default. The link holds it as
-`chains=1`, and a link that does not name it opens in the mode chosen
-last in this browser. With the mode on, each folder shows one row per
+`chains=1`; a link without it opens with the mode off, whatever mode was
+chosen before. With the mode on, each folder shows one row per
 chain in place of its parts, with its name, `chain · N` (its parts), its
 size, `idx` once every part but the active file is indexed, and marks for
 missing or unreadable parts, a chain of more than 10,000 parts, and an
@@ -215,7 +215,7 @@ An unknown or invalid value is read as absent.
 | `filter`, `filter_mode`                       | The editor's regex filter and what it does: `highlight` (default), `hide` or `show`                                  |
 | `category`                                    | The anomaly category marked in the file                                                                              |
 | `tab`                                         | The panel the side panel shows: `files` or `search`                                                                  |
-| `chains`                                      | `1`: chain mode on; `0`: off; absent, the mode chosen last                                                           |
+| `chains`                                      | `1`: chain mode on; absent, off                                                                                      |
 | `regexp`                                      | A search pattern, once per pattern                                                                                   |
 | `max_results`, `only_opened`                  | The search's cap (1 to 10,000, default 100) and "Only opened files"                                                  |
 | `ignore_case`, `word_regexp`, `fixed_strings` | The search's matching toggles                                                                                        |

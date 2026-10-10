@@ -28,7 +28,7 @@ describe('settings', () => {
     expect(get(settings)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('reads the chain mode chosen last back', async () => {
+  it('loads the defaults over the chain mode an older viewer stored', async () => {
     const stored = JSON.stringify({ ...DEFAULT_SETTINGS, chainMode: true });
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
@@ -37,17 +37,8 @@ describe('settings', () => {
 
     const { settings } = await import('./settings');
 
-    expect(get(settings).chainMode).toBe(true);
-  });
-
-  it('opens in chain mode off, and keeps a mode set for the page, when storage is refused', async () => {
-    blockStorage();
-    const { settings } = await import('./settings');
-    expect(get(settings).chainMode).toBe(false);
-
-    settings.update((s) => ({ ...s, chainMode: true }));
-
-    expect(get(settings).chainMode).toBe(true);
+    expect(get(settings)).toEqual(DEFAULT_SETTINGS);
+    expect(get(settings)).not.toHaveProperty('chainMode');
   });
 
   it('keeps a change for the page when storage refuses to save it', async () => {

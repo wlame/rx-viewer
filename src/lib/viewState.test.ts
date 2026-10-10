@@ -10,7 +10,7 @@ import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { chainMode } from './stores/chainMode';
 import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
-import { fileViewOf, linkView, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
+import { fileViewOf, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
 import { switchChainMode } from './stores/chainModeSwitch';
 import {
   DEFAULT_MAX_RESULTS,
@@ -1481,7 +1481,7 @@ describe('the chain mode switch in the URL', () => {
     stubWindow('?file=%2Fl%2Fapp.log.1&line=20');
     await health.check();
 
-    await loadView(linkView(window.location.search, false));
+    await loadView(readViewState());
 
     expect(get(files).openFiles.map((f) => f.path)).toEqual(['/l/app.log.1']);
   });
@@ -1573,28 +1573,7 @@ describe('chain mode in the URL', () => {
   });
 });
 
-describe('chain mode of a link that does not name it', () => {
-  it.each([
-    ['?chains=1', false, true],
-    ['?chains=0', true, false],
-    ['?file=%2Flogs%2Fa.log', true, true],
-    ['?file=%2Flogs%2Fa.log', false, false],
-    ['?chains=yes', true, true],
-  ])('opens %j with the mode last chosen %s in chain mode %s', (query, remembered, expected) => {
-    expect(linkView(query, remembered).chains).toBe(expected);
-  });
-
-  it('keeps the rest of the link as it reads', () => {
-    expect(linkView('?file=%2Flogs%2Fa.log&line=5', true)).toEqual({
-      ...DEFAULT_VIEW,
-      file: '/logs/a.log',
-      line: 5,
-      chains: true,
-    });
-  });
-});
-
-describe('the chain mode remembered for a link that does not name it', () => {
+describe('chain mode is not remembered', () => {
   let stopSync: () => void = () => {};
 
   beforeEach(() => {
@@ -1606,34 +1585,41 @@ describe('the chain mode remembered for a link that does not name it', () => {
     stopSync = () => {};
     resetStores();
     chainMode.set(false);
-    settings.update((current) => ({ ...current, chainMode: false }));
+    delete (globalThis as { localStorage?: unknown }).localStorage;
     vi.unstubAllGlobals();
   });
 
-  it('is the mode the view is in, whatever set it, once the URL follows the view', async () => {
+  // An older viewer kept the mode chosen last in its stored settings and
+  // opened a link without `chains` in it.
+  it('opens a link without chains with chain mode off, whatever an older viewer stored', async () => {
+    const stored = JSON.stringify({ theme: 'system', chainMode: true });
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: () => stored, setItem: () => {} },
+    });
+    vi.resetModules();
+    const fresh = {
+      settings: (await import('./stores/settings')).settings,
+      chainMode: (await import('./stores/chainMode')).chainMode,
+      loadView: (await import('./viewState')).loadView,
+      readViewState: (await import('./utils/urlState')).readViewState,
+    };
+    stubWindow('?tab=search');
+
+    await fresh.loadView(fresh.readViewState());
+
+    expect(get(fresh.chainMode)).toBe(false);
+    expect(get(fresh.settings)).not.toHaveProperty('chainMode');
+  });
+
+  it('keeps no chain mode in the settings when the mode changes', async () => {
     stubWindow('?chains=1');
     await loadView(readViewState());
     stopSync = startViewSync();
-    expect(get(settings).chainMode).toBe(true);
 
-    // Back to an entry written while the mode was off.
-    await restoreView(DEFAULT_VIEW);
-    expect(get(settings).chainMode).toBe(false);
-
+    chainMode.set(false);
     chainMode.set(true);
-    expect(get(settings).chainMode).toBe(true);
-  });
 
-  // The address the view writes leaves an off mode out: a reload of it
-  // must open off, not in a mode chosen earlier.
-  it('opens a reload of the address it wrote in the same mode', async () => {
-    settings.update((current) => ({ ...current, chainMode: true }));
-    stubWindow('?chains=0');
-
-    await loadView(linkView(window.location.search, get(settings).chainMode));
-    stopSync = startViewSync();
-
-    expect(window.location.search).toBe('');
-    expect(linkView(window.location.search, get(settings).chainMode).chains).toBe(false);
+    expect(get(settings)).not.toHaveProperty('chainMode');
   });
 });

@@ -18,7 +18,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   sidebarWidth: 280,
   monacoTheme: 'vs',
-  chainMode: false,
 };
 
 /** The other of the two looks. */
@@ -62,7 +61,6 @@ const IS_VALID: { [K in keyof AppSettings]: (value: unknown) => value is AppSett
   sidebarWidth: (value): value is number =>
     typeof value === 'number' && Number.isFinite(value) && value > 0,
   monacoTheme: (value): value is MonacoTheme => MONACO_THEMES.some((t) => t.id === value),
-  chainMode: (value): value is boolean => typeof value === 'boolean',
 };
 
 /**

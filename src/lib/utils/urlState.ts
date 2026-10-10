@@ -412,7 +412,8 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
       tab === defaultTab(view.search !== null) ? [] : [['tab', TAB_PARAM_VALUES[tab]]],
     isStep: (previous, next) => next !== previous,
   },
-  // Turning chain mode on or off rewrites the current entry.
+  // Turning chain mode on or off rewrites the current entry. A link
+  // without `chains=1` opens with the mode off.
   chains: {
     names: ['chains'],
     parse: (params) => isOn(params.get('chains')),
@@ -455,15 +456,6 @@ function parseKey<K extends keyof ViewState>(key: K, params: URLSearchParams): V
 
 function serializeKey<K extends keyof ViewState>(key: K, view: ViewState): Param[] {
   return CODECS[key].serialize(view[key], view);
-}
-
-/**
- * Whether a query string names chain mode: true or false for `chains=`
- * `1` or `0` (`true`, `false`), null when it does not say (absent or
- * unreadable), so that the mode chosen last applies.
- */
-export function chainModeInLink(query: string): boolean | null {
-  return optionalBoolean(new URLSearchParams(query).get('chains'));
 }
 
 /** The view a query string (`?a=b…`, with or without the `?`) describes. */

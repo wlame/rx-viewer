@@ -5,15 +5,12 @@ import { activeOpenFile, defaultSyntaxHighlighting, files } from './stores/files
 import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
-import { settings } from './stores/settings';
 import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
 import {
   DEFAULT_VIEW,
-  chainModeInLink,
   historyModeFor,
-  parseViewState,
   readViewState,
   serializeViewState,
   writeViewState,
@@ -151,9 +148,7 @@ let restoreGeneration = 0;
 
 /**
  * Keep the address bar equal to the view, and the view equal to the
- * entry Back or Forward moves to; and keep the chain mode the view is in
- * as the one a link that does not name it opens in. Returns the
- * function that stops all three.
+ * entry Back or Forward moves to. Returns the function that stops both.
  */
 export function startViewSync(): () => void {
   // A restore and a chain mode switch turning tabs over rewrite the entry.
@@ -161,14 +156,6 @@ export function startViewSync(): () => void {
     const isRewrite = runningRestores > 0 || isTurningTabs();
     const mode = isRewrite ? 'replace' : historyModeFor(readViewState(), view);
     writeViewState(view, mode);
-  });
-
-  // The address the view writes leaves an off mode out, so the mode a
-  // link without `chains` opens in has to be the one the view is in,
-  // whatever set it (the switch, a link, Back), for a reload of any
-  // address the view wrote to show the same mode.
-  const stopRemembering = chainMode.subscribe((on) => {
-    if (get(settings).chainMode !== on) settings.update((s) => ({ ...s, chainMode: on }));
   });
 
   const restoreEntry = () => {
@@ -185,7 +172,6 @@ export function startViewSync(): () => void {
 
   return () => {
     stopWriting();
-    stopRemembering();
     window.removeEventListener('popstate', restoreEntry);
   };
 }
@@ -393,16 +379,6 @@ async function restoreFile(view: ViewState, isCurrent: () => boolean): Promise<v
   files.setRegexFilter(path, view.filter);
   files.setSelectedAnomalyCategory(path, view.category);
   await shown.loaded;
-}
-
-/**
- * The view a page opens with: the one its query string describes, in
- * the chain mode the view was last in (`rememberedChainMode`) when the
- * link does not name the mode. A link that names it wins.
- */
-export function linkView(query: string, rememberedChainMode: boolean): ViewState {
-  const view = parseViewState(query);
-  return chainModeInLink(query) === null ? { ...view, chains: rememberedChainMode } : view;
 }
 
 /**

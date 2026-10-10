@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   historyModeFor,
-  chainModeInLink,
   parseViewState,
   serializeViewState,
   readViewState,
@@ -630,21 +629,6 @@ describe('a log chain in the URL', () => {
 
   it('leaves chain mode off for a link without it', () => {
     expect(parseViewState('?file=%2Fa.log').chains).toBe(false);
-  });
-
-  it.each([
-    ['?chains=1', true],
-    ['?chains=true', true],
-    ['?chains=0', false],
-    ['?chains=false', false],
-    ['?chains=yes', null],
-    ['?chains=constructor', null],
-    ['?chains=__proto__', null],
-    ['?chains=hasOwnProperty', null],
-    ['?file=%2Fa.log', null],
-    ['', null],
-  ])('says whether the link %j names chain mode: %s', (query, expected) => {
-    expect(chainModeInLink(query)).toBe(expected);
   });
 
   // The files panel never lists a chain's parts: they are reached by

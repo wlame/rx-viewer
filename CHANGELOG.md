@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key is left to the browser, so the focus stays in the dialog. Before,
   Cmd/Ctrl+K closed the shortcut list and went to Search, and Cmd/Ctrl+K
   or Cmd/Ctrl+B hid an open analysis dialog with the files panel.
+- Group rotated logs is off unless the link turns it on with `chains=1`.
+  The viewer no longer remembers the mode chosen last for a link that
+  does not name it, and ignores the mode an earlier version stored.
 
 ## [0.7.0] - 2026-10-09
 
