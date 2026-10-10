@@ -38,6 +38,7 @@
     class="w-4 h-4 flex-shrink-0 text-gh-accent-fg dark:text-gh-accent-dark-fg"
     viewBox="0 0 24 24"
     fill="currentColor"
+    aria-hidden="true"
   >
     {#if node.expanded}
       <path d="M20 18a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v1H4v9h16v-3" />
@@ -52,6 +53,7 @@
     fill="none"
     stroke="currentColor"
     stroke-width="2"
+    aria-hidden="true"
   >
     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
     <path d="M14 2v6h6" />

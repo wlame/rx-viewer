@@ -8,16 +8,21 @@
    * indexes its parts. The parts are not listed: they are reached by
    * turning chain mode off, or from the parts list of the chain's tab.
    */
-  import { files, notifications, tree } from '$lib/stores';
+  import { notifications, tree } from '$lib/stores';
+  import { openTreeRow } from '$lib/fileOpening';
   import { chainMenuItems, indexChain, type TreeMenuAction } from '$lib/indexTasks';
+  import { treeTabStop } from '$lib/stores/treeFocus';
   import { chainBadges, type ChainBadgeTone, type ChainRow } from '$lib/utils/chainTree';
   import { formatSize } from '$lib/utils/format';
-  import { isShortcut } from '$lib/utils/shortcuts';
   import type { ValueColumn } from '$lib/utils/urlState';
   import TreeContextMenu from './TreeContextMenu.svelte';
+  import { TREE_ROW_FOCUS_CLASS } from './treeRowStyle';
   import ValueCell from './ValueCell.svelte';
 
   export let row: ChainRow;
+  /** How many rows share the chain's folder, and the row's place among them (from 1). */
+  export let setSize = 1;
+  export let posInSet = 1;
   /** Whether the row shows its marks; its name and value stay either way. */
   export let showLabels = true;
   /** The value the row shows right of its name. */
@@ -49,16 +54,10 @@
   let contextMenuX = 0;
   let contextMenuY = 0;
 
+  // The keys of the row are the tree's (FileTree.svelte), which open the
+  // chain's tab the same way.
   function open() {
-    tree.selectPath(row.key);
-    void files.openChain(chain.path);
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (isShortcut('openTreeItem', event)) {
-      event.preventDefault();
-      open();
-    }
+    openTreeRow(row.key);
   }
 
   /** A chain with no action of its own keeps the browser's own menu. */
@@ -95,20 +94,25 @@
 </script>
 
 <div class="select-none">
+  <!-- The tree's key handler (FileTree.svelte) answers the keys of every row. -->
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div
     role="treeitem"
-    tabindex="0"
+    tabindex={row.key === $treeTabStop ? 0 : -1}
+    data-row-id={row.key}
+    aria-level={row.level + 1}
+    aria-setsize={setSize}
+    aria-posinset={posInSet}
     aria-selected={isSelected}
     data-chain={chain.name}
-    class="flex items-center gap-1 px-2 py-0.5 cursor-pointer text-sm
+    class="flex items-center gap-1 px-2 py-0.5 cursor-pointer text-sm {TREE_ROW_FOCUS_CLASS}
            hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
            {isSelected ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
     style="padding-left: {indentPx + 8}px"
     on:click={open}
-    on:keydown={handleKeydown}
     on:contextmenu={handleContextMenu}
   >
-    <span class="w-4 h-4 flex-shrink-0" />
+    <span class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
 
     <!-- Stacked pages: several files read as one -->
     <svg

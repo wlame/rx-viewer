@@ -260,19 +260,23 @@ export interface LogDirBackendOptions {
   features?: string[];
   /** The status `/v1/logs/chains` answers with in place of the listing. */
   chainsStatus?: number;
+  /** Directories whose `/v1/tree` listing fails with a 500. */
+  failingDirs?: string[];
 }
 
 /**
  * A backend that serves `LOG_ROOT` holding `LOG_DIR`, through a stubbed
  * `fetch`. Every other directory is empty and has no chains. Each
  * request's path and query is recorded; `hold` keeps the answers of one
- * route waiting until `release` is called.
+ * route waiting until `release` is called, and `hide` leaves an entry of
+ * `LOG_DIR` out of the listings that follow.
  */
 export class LogDirBackend {
   readonly requests: string[] = [];
   private readonly options: LogDirBackendOptions;
   private held = new Set<string>();
   private waiting: (() => void)[] = [];
+  private hidden = new Set<string>();
 
   constructor(options: LogDirBackendOptions = {}) {
     this.options = options;
@@ -281,6 +285,11 @@ export class LogDirBackend {
   /** Keep the answers of `pathname` (such as `/v1/logs/chains`) until `release`. */
   hold(pathname: string): void {
     this.held.add(pathname);
+  }
+
+  /** Leave the entry at `path` out of its directory's listings from now on. */
+  hide(path: string): void {
+    this.hidden.add(path);
   }
 
   /** Answer every held request, and hold no more. */
@@ -309,10 +318,19 @@ export class LogDirBackend {
             treeResponse('', [treeEntry(LOG_ROOT, 'directory', { children_count: 1 })], true),
           );
         }
+        if (this.options.failingDirs?.includes(path)) {
+          return answer(500, { detail: 'the directory cannot be listed' });
+        }
         if (path === LOG_ROOT) {
           return answer(200, treeResponse(path, [treeEntry(LOG_DIR, 'directory')]));
         }
-        return answer(200, treeResponse(path, path === LOG_DIR ? logDirEntries() : []));
+        return answer(
+          200,
+          treeResponse(
+            path,
+            path === LOG_DIR ? logDirEntries().filter((e) => !this.hidden.has(e.path)) : [],
+          ),
+        );
       case '/v1/logs/chains': {
         if (this.options.chainsStatus !== undefined) {
           return answer(this.options.chainsStatus, { detail: 'refused' });

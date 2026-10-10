@@ -4,10 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import { TOOLTIP_DELAY_MS, TOOLTIP_ID } from '$lib/actions/tooltip';
-import { health, tree } from '$lib/stores';
+import { files, health, tree } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
 import { treeFocusRequested } from '$lib/stores/layout';
+import { treeFocus } from '$lib/stores/treeFocus';
 import type { TreeEntry } from '$lib/types';
 import {
   CHAIN_NAMES,
@@ -81,6 +82,8 @@ async function settle() {
 afterEach(() => {
   mounted?.$destroy();
   mounted = null;
+  for (const file of get(files).openFiles) files.closeFile(file.path);
+  treeFocus.set(null);
   chainMode.set(false);
   filesView.set(DEFAULT_FILES_VIEW);
   tree.selectPath(null);
@@ -309,21 +312,35 @@ describe('the order of the files panel', () => {
 });
 
 describe('the focus request of the files panel', () => {
-  it('focuses the selected row and resets the request', async () => {
+  it('focuses the row focused last and resets the request', async () => {
     const { target } = await mount([]);
     await tree.loadRoots();
+    await tick();
+    rowOf(target, LOG_DIR)?.focus();
+    document.body.appendChild(document.createElement('button')).focus();
+
+    treeFocusRequested.set(true);
+    await settle();
+
+    expect(document.activeElement).toBe(rowOf(target, LOG_DIR));
+    expect(get(treeFocusRequested)).toBe(false);
+  });
+
+  it("focuses the open file's row when no row has had the focus", async () => {
+    const { target } = await mount([]);
+    await tree.loadRoots();
+    await tree.toggleExpanded(LOG_DIR);
+    await files.openFile(`${LOG_DIR}/fonts.log`);
     tree.selectPath(LOG_DIR);
     await tick();
 
     treeFocusRequested.set(true);
     await settle();
 
-    expect(document.activeElement).toBe(rowOf(target, LOG_DIR));
-    expect(rowOf(target, LOG_DIR)?.getAttribute('aria-selected')).toBe('true');
-    expect(get(treeFocusRequested)).toBe(false);
+    expect(document.activeElement).toBe(rowOf(target, `${LOG_DIR}/fonts.log`));
   });
 
-  it('focuses the first row when no row is selected', async () => {
+  it('focuses the first row when no row has had the focus and no file is open', async () => {
     const { target } = await mount([]);
     await tree.loadRoots();
     await tick();

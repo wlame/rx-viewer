@@ -11,7 +11,7 @@ import type { ChainPosition } from './stores/chainTabs';
 import { trace } from './stores/trace';
 import { tree } from './stores/tree';
 import type { FileMatch, SearchResponse, TreeEntry } from './types';
-import { chainKey } from './utils/tabKey';
+import { chainHandleOf, chainKey } from './utils/tabKey';
 
 /** How long the refusal of a binary file stays on screen. */
 const BINARY_NOTICE_MS = 5000;
@@ -37,6 +37,23 @@ export async function openTreeFile(
     lineCount: entry.line_count ?? undefined,
     compressionFormat: entry.compression_format,
   });
+}
+
+/**
+ * Open what the tree row `id` names, as a click on the row does, and
+ * select the row: a log chain's tab for a chain's key (`chain:<handle>`),
+ * else the file at the path. A path the loaded tree does not list opens
+ * nothing.
+ */
+export function openTreeRow(id: string): void {
+  tree.selectPath(id);
+  const handle = chainHandleOf(id);
+  if (handle !== null) {
+    void files.openChain(handle);
+    return;
+  }
+  const entry = tree.nodeAt(id);
+  if (entry) void openTreeFile(entry);
 }
 
 /** The directory that holds `path`: `/logs` for `/logs/app.log`, `/` for `/app.log`. */

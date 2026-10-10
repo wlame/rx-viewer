@@ -3,11 +3,11 @@
   import { tree, notifications } from '$lib/stores';
   import { chainModeOn } from '$lib/stores/chainMode';
   import { indexFile, treeMenuItems, type TreeMenuAction } from '$lib/indexTasks';
-  import { openTreeFile } from '$lib/fileOpening';
+  import { openTreeRow } from '$lib/fileOpening';
+  import { treeTabStop } from '$lib/stores/treeFocus';
   import { isChainRow, rowKey, shownChildren } from '$lib/utils/chainTree';
   import { formatCount, formatSize } from '$lib/utils/format';
   import { memoizeLast } from '$lib/utils/memoizeLast';
-  import { isShortcut } from '$lib/utils/shortcuts';
   import { DEFAULT_SORT, type TreeSort } from '$lib/utils/treeSort';
   import type { ValueColumn } from '$lib/utils/urlState';
   import FileIcon from './FileIcon.svelte';
@@ -16,9 +16,13 @@
   import AnalyzeDialog from './AnalyzeDialog.svelte';
   import ChainTreeNode from './ChainTreeNode.svelte';
   import TreeContextMenu from './TreeContextMenu.svelte';
+  import { TREE_ROW_FOCUS_CLASS } from './treeRowStyle';
   import ValueCell from './ValueCell.svelte';
 
   export let node: TreeNodeType;
+  /** How many rows share the row's folder, and the row's place among them (from 1). */
+  export let setSize = 1;
+  export let posInSet = 1;
   /** Whether the row shows its labels (compression, `idx`); its value and name stay either way. */
   export let showLabels = true;
   /** The value the row shows right of its name. */
@@ -64,20 +68,11 @@
 
   let showAnalyzePopup = false;
 
+  // The keys of the row are the tree's (FileTree.svelte), which reach
+  // the same actions as a click.
   function handleClick() {
-    if (node.type === 'directory') {
-      tree.toggleExpanded(node.path);
-    } else {
-      tree.selectPath(node.path);
-      openTreeFile(node);
-    }
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (isShortcut('openTreeItem', event)) {
-      event.preventDefault();
-      handleClick();
-    }
+    if (node.type === 'directory') tree.toggleExpanded(node.path);
+    else openTreeRow(node.path);
   }
 
   $: menuItems = treeMenuItems(node);
@@ -121,22 +116,27 @@
 </script>
 
 <div class="select-none">
+  <!-- The tree's key handler (FileTree.svelte) answers the keys of every row. -->
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div
     role="treeitem"
-    tabindex="0"
+    tabindex={node.path === $treeTabStop ? 0 : -1}
+    data-row-id={node.path}
+    aria-level={node.level + 1}
+    aria-setsize={setSize}
+    aria-posinset={posInSet}
     aria-expanded={node.type === 'directory' ? node.expanded : undefined}
     aria-selected={isSelected}
-    class="flex items-center gap-1 px-2 py-0.5 cursor-pointer text-sm
+    class="flex items-center gap-1 px-2 py-0.5 cursor-pointer text-sm {TREE_ROW_FOCUS_CLASS}
            hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle
            {isSelected ? 'bg-gh-accent-muted dark:bg-gh-accent-dark-muted' : ''}"
     style="padding-left: {indentPx + 8}px"
     on:click={handleClick}
-    on:keydown={handleKeydown}
     on:contextmenu={handleContextMenu}
   >
     <!-- Expand/collapse chevron for directories -->
     {#if node.type === 'directory'}
-      <span class="w-4 h-4 flex items-center justify-center flex-shrink-0">
+      <span class="w-4 h-4 flex items-center justify-center flex-shrink-0" aria-hidden="true">
         {#if node.loading}
           <Spinner size="sm" />
         {:else}
@@ -151,7 +151,7 @@
         {/if}
       </span>
     {:else}
-      <span class="w-4 h-4 flex-shrink-0" />
+      <span class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
     {/if}
 
     <!-- File/folder icon -->
@@ -183,11 +183,24 @@
   <!-- Children -->
   {#if node.type === 'directory' && node.expanded && rows.length > 0}
     <div role="group">
-      {#each rows as child (rowKey(child))}
+      {#each rows as child, index (rowKey(child))}
         {#if isChainRow(child)}
-          <ChainTreeNode row={child} {showLabels} {show} />
+          <ChainTreeNode
+            row={child}
+            setSize={rows.length}
+            posInSet={index + 1}
+            {showLabels}
+            {show}
+          />
         {:else}
-          <svelte:self node={child} {showLabels} {show} {sort} />
+          <svelte:self
+            node={child}
+            setSize={rows.length}
+            posInSet={index + 1}
+            {showLabels}
+            {show}
+            {sort}
+          />
         {/if}
       {/each}
     </div>

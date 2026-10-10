@@ -2,6 +2,8 @@
 import '$lib/testing/matchMediaStub';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
+import { get } from 'svelte/store';
+import { editorFocusRequested } from '$lib/stores/layout';
 import { CHAIN_T0, chainDescription, chainPart, chainTabOf } from '$lib/testing/chainDescription';
 import { fakeMonacoEditors } from '$lib/testing/fakeMonacoEditor';
 import type { FileLine, OpenFile } from '$lib/types';
@@ -138,6 +140,7 @@ beforeEach(() => {
 afterEach(() => {
   pane?.$destroy();
   pane = null;
+  editorFocusRequested.set(false);
   fakeMonacoEditors.length = 0;
   document.body.replaceChildren();
   vi.useRealTimers();
@@ -238,5 +241,33 @@ describe('EditorPane updates of a log chain tab', () => {
 
     expect(vi.mocked(chainGutterRuns).mock.calls.length).toBe(coloured + 1);
     expect(vi.mocked(chainLineLabels).mock.calls.length).toBe(labelled);
+  });
+});
+
+describe('EditorPane focus request', () => {
+  it('focuses its editor when the file tree asks, and resets the request', async () => {
+    const { editor } = await mountPane(openFile());
+
+    editorFocusRequested.set(true);
+    await tick();
+
+    expect(editor.focusCount).toBe(1);
+    expect(get(editorFocusRequested)).toBe(false);
+  });
+
+  it('focuses the pane itself when it shows no editor', async () => {
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    pane = new EditorPane({
+      target,
+      props: { file: openFile({ lines: [], error: 'gone' }), hideHeader: true, isActive: true },
+    });
+    await tick();
+
+    editorFocusRequested.set(true);
+    await tick();
+
+    expect(document.activeElement).toBe(target.firstElementChild);
+    expect(get(editorFocusRequested)).toBe(false);
   });
 });

@@ -37,6 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   direction, and the address bar says so. Switching between Size and
   Date moves a sort on one to the other, largest or newest first; a
   sort by name stays.
+- Keyboard navigation of the file tree, which is now one Tab stop
+  instead of one per row: ↓ and ↑ move between the rows, → opens a
+  folder and then goes to its first row, ← closes a folder or goes to
+  the folder above, Home and End go to the first and last row, PageDown
+  and PageUp move one panel height, Enter or Space opens a file or a log
+  chain or opens and closes a folder, typing a name goes to the next row
+  that starts with it, and Esc goes back to the open file's editor. Tab
+  enters the tree on the row that had the focus last, else on the open
+  file's row, else on the first row. When that row goes (its folder
+  closed, Group rotated logs turned on or off, a new listing), the
+  focus moves to the row that took its place: the log chain that shows
+  the file as a part, the file of a chain, or the folder above. Rows
+  carry their level, set size and position for screen readers.
 
 ### Changed
 
@@ -45,8 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyboard shortcuts, each with a tooltip that names its key. A click on
   the shown panel's button hides the side panel; ↓ and ↑ move between
   the buttons. From anywhere, Alt+1 or Cmd/Ctrl+Shift+E shows Files and
-  moves the focus to the file tree (its selected row, else its first
-  row), and Alt+2 or Cmd/Ctrl+Shift+F shows Search and moves the focus to
+  moves the focus to the file tree (the row that had the focus last,
+  else the open file's row, else its first row), and Alt+2 or Cmd/Ctrl+Shift+F shows Search and moves the focus to
   the first pattern field; both show a hidden side panel. The Search
   panel keeps its unsent patterns and options while Files is shown. Links
   keep `tab=files` and `tab=search`; a link that names a search runs it

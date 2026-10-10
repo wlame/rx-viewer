@@ -55,27 +55,25 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe('TreeNode keys', () => {
-  it.each(['Enter', ' '])('opens the folder on %j', (key) => {
+// The keys of a row are the tree's (FileTree.svelte, FileTreeKeyboard.test.ts):
+// a row handling them too would act twice.
+describe('TreeNode of a folder', () => {
+  it('opens or closes the folder on a click', () => {
+    const { item, toggle } = mount();
+
+    item.click();
+
+    expect(toggle).toHaveBeenCalledWith('/logs');
+  });
+
+  it.each(['Enter', ' '])('leaves %j to the tree that holds the row', (key) => {
     const { item, toggle } = mount();
 
     const event = keyDown(item, { key });
 
-    expect(toggle).toHaveBeenCalledWith('/logs');
-    expect(event.defaultPrevented).toBe(true);
+    expect(toggle).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
-
-  it.each([{ key: 'a' }, { key: 'Enter', isComposing: true }])(
-    'leaves %o to the browser',
-    (init) => {
-      const { item, toggle } = mount();
-
-      const event = keyDown(item, init);
-
-      expect(toggle).not.toHaveBeenCalled();
-      expect(event.defaultPrevented).toBe(false);
-    },
-  );
 });
 
 describe('TreeNode of a file', () => {

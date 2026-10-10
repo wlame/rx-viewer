@@ -57,6 +57,20 @@ export type GlobalShortcutId =
 export type FilesPanelShortcutId =
   'toggleChainMode' | 'toggleLabels' | 'switchValue' | 'sortByName' | 'sortByValue';
 
+/**
+ * The keys of the file tree. Its key handler hands those with a chord to
+ * its key rules (`utils/treeNav.ts`); `treeTypeName` is any letter typed.
+ */
+export type TreeShortcutId =
+  | 'treeMove'
+  | 'treeOpenFolder'
+  | 'treeCloseFolder'
+  | 'treeEnds'
+  | 'treePage'
+  | 'openTreeItem'
+  | 'treeTypeName'
+  | 'treeToEditor';
+
 export type ShortcutId =
   | GlobalShortcutId
   | FilesPanelShortcutId
@@ -71,7 +85,7 @@ export type ShortcutId =
   | 'nextAnomaly'
   | 'applyFilter'
   | 'closeFilter'
-  | 'openTreeItem'
+  | TreeShortcutId
   | 'timelineStep'
   | 'timelineBigStep'
   | 'timelineEnds'
@@ -306,11 +320,56 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chord: { code: toggle.shortcutCode, alt: true },
   })),
   {
+    id: 'treeMove',
+    scope: 'fileTree',
+    description: 'Go to the next or the previous row',
+    chord: { key: 'ArrowDown' },
+    otherChords: [{ key: 'ArrowUp' }],
+  },
+  {
+    id: 'treeOpenFolder',
+    scope: 'fileTree',
+    description: 'Open the folder, or go to its first row',
+    chord: { key: 'ArrowRight' },
+  },
+  {
+    id: 'treeCloseFolder',
+    scope: 'fileTree',
+    description: 'Close the folder, or go to the folder that holds the row',
+    chord: { key: 'ArrowLeft' },
+  },
+  {
+    id: 'treeEnds',
+    scope: 'fileTree',
+    description: 'Go to the first or the last row',
+    chord: { key: 'Home' },
+    otherChords: [{ key: 'End' }],
+  },
+  {
+    id: 'treePage',
+    scope: 'fileTree',
+    description: 'Go one panel height down or up',
+    chord: { key: 'PageDown' },
+    otherChords: [{ key: 'PageUp' }],
+  },
+  {
     id: 'openTreeItem',
     scope: 'fileTree',
     description: 'Open the file, or open or close the folder',
     chord: { key: 'Enter' },
     otherChords: [{ key: ' ' }],
+  },
+  {
+    id: 'treeTypeName',
+    scope: 'fileTree',
+    description: 'Go to the next row whose name starts with the letters typed',
+    gesture: 'Type a name',
+  },
+  {
+    id: 'treeToEditor',
+    scope: 'fileTree',
+    description: 'Go back to the open file',
+    chord: { key: 'Escape' },
   },
   {
     id: 'gotoLine',

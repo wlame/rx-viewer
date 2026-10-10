@@ -55,6 +55,13 @@ export const searchFocusRequested = writable(false);
  */
 export const treeFocusRequested = writable(false);
 
+/**
+ * Set when something asks for the open file's editor to take focus (Esc
+ * in the file tree). The editor pane of the active tab focuses its
+ * editor, or itself while it shows none, and resets it.
+ */
+export const editorFocusRequested = writable(false);
+
 /** The request each panel answers by taking the focus. */
 const FOCUS_REQUESTS: Readonly<Record<SidebarTab, Writable<boolean>>> = {
   tree: treeFocusRequested,

@@ -3,6 +3,7 @@
   import { get } from 'svelte/store';
   import type { FileLine, FileMatch, OpenFile, RegexFilter } from '$lib/types';
   import { detectors, files, settings, resolvedTheme } from '$lib/stores';
+  import { editorFocusRequested } from '$lib/stores/layout';
   import { recallPane, rememberPane, scrollOnShow } from '$lib/stores/paneMemory';
   import Spinner from '../common/Spinner.svelte';
   import MonacoEditor from './MonacoEditor.svelte';
@@ -388,6 +389,17 @@
     setTimeout(() => {
       drawDecorations(paneView);
     }, 100);
+  }
+
+  // Esc in the file tree asks for the open file's editor. A pane that
+  // shows no editor (a file loading, failed or empty, an invalid chain)
+  // takes the focus itself, so it never stays behind in the tree.
+  $: if ($editorFocusRequested && isActive) focusEditor();
+
+  function focusEditor() {
+    editorFocusRequested.set(false);
+    if (monacoComponent && monacoEditor) monacoEditor.focus();
+    else paneEl?.focus();
   }
 
   // `:` or Cmd/Ctrl+G opens the go-to box, also while the read-only

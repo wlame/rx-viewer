@@ -184,15 +184,16 @@ describe('ChainTreeNode', () => {
     expect(item.getAttribute('aria-selected')).toBe('true');
   });
 
-  it.each(['Enter', ' '])('opens the chain on %j', (key) => {
+  // Enter on a chain's row is the tree's key (FileTreeKeyboard.test.ts).
+  it.each(['Enter', ' '])('leaves %j to the tree that holds the row', (key) => {
     const openChain = vi.spyOn(files, 'openChain').mockResolvedValue(true);
     const { item } = mount();
 
     const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
     item.dispatchEvent(event);
 
-    expect(openChain).toHaveBeenCalledWith(HANDLE);
-    expect(event.defaultPrevented).toBe(true);
+    expect(openChain).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it.each([

@@ -171,6 +171,15 @@ function parentPath(path: string): string | null {
   return slash === 0 ? '/' : path.slice(0, slash);
 }
 
+/** The paths of the folders above the row `id`, nearest first; a chain's row sits where its handle does. */
+function foldersAbove(id: string): string[] {
+  const folders: string[] = [];
+  for (let path = parentPath(chainHandleOf(id) ?? id); path !== null; path = parentPath(path)) {
+    folders.push(path);
+  }
+  return folders;
+}
+
 /**
  * The row the focus moves to when the row `lostId` is no longer shown:
  * the row itself if it still is, else `hint` (the row that took its
@@ -186,11 +195,17 @@ export function fallbackFocus(
   const shown = new Set(rows.map((row) => row.id));
   if (shown.has(lostId)) return lostId;
   if (hint !== null && shown.has(hint)) return hint;
-  const lostPath = chainHandleOf(lostId) ?? lostId;
-  for (let path = parentPath(lostPath); path !== null; path = parentPath(path)) {
-    if (shown.has(path)) return path;
-  }
-  return rows[0]?.id ?? null;
+  return foldersAbove(lostId).find((path) => shown.has(path)) ?? rows[0]?.id ?? null;
+}
+
+/**
+ * Whether the row `id` may still come back: a shown folder above it is
+ * loading its rows. Listing the roots again (Retry) shows each root
+ * before its rows arrive.
+ */
+export function isLoadingAbove(rows: readonly VisibleRow[], id: string): boolean {
+  const loading = new Set(rows.filter((row) => row.loading).map((row) => row.id));
+  return loading.size > 0 && foldersAbove(id).some((path) => loading.has(path));
 }
 
 /**

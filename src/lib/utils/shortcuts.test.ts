@@ -283,6 +283,34 @@ describe('the shortcut list', () => {
     expect(missing).toEqual([]);
   });
 
+  // The file tree hands each of these keys to its key rules; a key the
+  // tree acts on without a row would be missing from the help.
+  it.each([
+    'ArrowDown',
+    'ArrowUp',
+    'ArrowRight',
+    'ArrowLeft',
+    'Home',
+    'End',
+    'PageDown',
+    'PageUp',
+    'Enter',
+    ' ',
+    'Escape',
+  ])('has a file tree row for %j, a key the tree acts on', (key) => {
+    const rows = SHORTCUTS.filter((s) => s.scope === 'fileTree');
+
+    expect(rows.some((s) => isShortcut(s.id, press(key)))).toBe(true);
+    expect(rows.some((s) => isShortcut(s.id, press(key, { metaKey: true })))).toBe(false);
+  });
+
+  it('names typing in the file tree as a gesture', () => {
+    expect(SHORTCUTS.find((s) => s.id === 'treeTypeName')).toMatchObject({
+      scope: 'fileTree',
+      gesture: 'Type a name',
+    });
+  });
+
   it('lists every row of the table once, grouped by where it works', () => {
     const listed = shortcutsByScope().flatMap((group) => group.shortcuts);
 
@@ -332,7 +360,30 @@ describe('the shortcut list', () => {
       ['Alt+G', 'Alt+L', 'Alt+V', 'Alt+N', 'Alt+S'],
     ],
     ['valueSwitch', 'On the Size/Date switch', ['valueSwitchMove'], ['← or →']],
-    ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],
+    [
+      'fileTree',
+      'In the file tree',
+      [
+        'treeMove',
+        'treeOpenFolder',
+        'treeCloseFolder',
+        'treeEnds',
+        'treePage',
+        'openTreeItem',
+        'treeTypeName',
+        'treeToEditor',
+      ],
+      [
+        '↓ or ↑',
+        '→',
+        '←',
+        'Home or End',
+        'PageDown or PageUp',
+        'Enter or Space',
+        'Type a name',
+        'Esc',
+      ],
+    ],
     [
       'openPanel',
       'While a panel is open',

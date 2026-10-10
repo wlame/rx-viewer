@@ -10,6 +10,8 @@ export interface FakeMonacoEditor {
   decorationSets: Monaco.editor.IModelDeltaDecoration[][];
   /** Each list of gutter labels the pane passed `MonacoEditorStub`, oldest first. */
   passedLabels: (readonly string[] | null)[];
+  /** How many times the pane focused the editor. */
+  focusCount: number;
   /** The editor as the pane reads it. */
   editor: Monaco.editor.IStandaloneCodeEditor;
 }
@@ -17,6 +19,12 @@ export interface FakeMonacoEditor {
 /** A fake editor whose text is `lines`. */
 export function createFakeMonacoEditor(lines: readonly string[] = []): FakeMonacoEditor {
   const decorationSets: Monaco.editor.IModelDeltaDecoration[][] = [];
+  const fake: FakeMonacoEditor = {
+    decorationSets,
+    passedLabels: [],
+    focusCount: 0,
+    editor: null as unknown as Monaco.editor.IStandaloneCodeEditor,
+  };
   const model = {
     getLineCount: () => lines.length,
     getLineContent: (lineNumber: number) => lines[lineNumber - 1] ?? '',
@@ -31,12 +39,12 @@ export function createFakeMonacoEditor(lines: readonly string[] = []): FakeMonac
     getVisibleRanges: () => [],
     getScrollTop: () => 0,
     getScrollLeft: () => 0,
+    focus: () => {
+      fake.focusCount += 1;
+    },
   };
-  return {
-    decorationSets,
-    passedLabels: [],
-    editor: editor as unknown as Monaco.editor.IStandaloneCodeEditor,
-  };
+  fake.editor = editor as unknown as Monaco.editor.IStandaloneCodeEditor;
+  return fake;
 }
 
 /** The fake editors `MonacoEditorStub` made, oldest first. */

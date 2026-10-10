@@ -4,6 +4,7 @@ import type { TreeNode } from '../types';
 import {
   TYPEAHEAD_RESET_MS,
   fallbackFocus,
+  isLoadingAbove,
   tabStopRow,
   treeKeyAction,
   type Typeahead,
@@ -285,6 +286,22 @@ describe('fallbackFocus', () => {
     expect(fallbackFocus(ROWS.slice(2), '/srv/logs/notes.txt.1', null)).toBe(MIDDLE);
     expect(fallbackFocus(ROWS, '/opt/x', null)).toBe(FIRST);
     expect(fallbackFocus([], '/srv', null)).toBeNull();
+  });
+});
+
+describe('isLoadingAbove', () => {
+  const loading = ROWS.map((r) => (r.id === '/srv/logs' ? { ...r, loading: true } : r));
+
+  it('holds for a row under a shown folder whose rows are loading', () => {
+    expect(isLoadingAbove(loading, '/srv/logs/gone.log')).toBe(true);
+    expect(isLoadingAbove(loading, '/srv/logs/old/deep.log')).toBe(true);
+    expect(isLoadingAbove(loading, 'chain:/srv/logs/app.log')).toBe(true);
+  });
+
+  it('does not hold beside such a folder, or with none loading', () => {
+    expect(isLoadingAbove(loading, '/srv/other.log')).toBe(false);
+    expect(isLoadingAbove(loading, '/srv/logs')).toBe(false);
+    expect(isLoadingAbove(ROWS, '/srv/logs/gone.log')).toBe(false);
   });
 });
 

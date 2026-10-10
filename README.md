@@ -54,8 +54,11 @@ way.
   header under it sorts each folder's rows by name (Alt+N) or by the
   value shown (Alt+S), and a second click or key press reverses the
   order; folders come first, and names with numbers sort by number
-  (`app.log.2` before `app.log.10`). The link keeps each choice. A file
-  the backend marks as not text is not opened.
+  (`app.log.2` before `app.log.10`). The link keeps each choice. The
+  tree works from the keyboard as one Tab stop: arrows, Home and End,
+  PageUp and PageDown, Enter to open, typing a name to go to it, and Esc
+  back to the open file. A file the backend marks as not text is not
+  opened.
 - **Tabs** for the open files, reordered by drag and drop. Each tab keeps
   its own filter bar and scroll position.
 - **Paged reading of large files.** The editor never loads a whole file:
@@ -113,7 +116,14 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In the files panel, while it is shown | Alt+N                     | Sort by name, or reverse a sort by name                                            |
 | In the files panel, while it is shown | Alt+S                     | Sort by the size or date shown, or reverse that sort                               |
 | On the Size/Date switch               | ← or →                    | Choose the value before or after the chosen one                                    |
+| In the file tree                      | ↓ or ↑                    | Go to the next or the previous row                                                 |
+| In the file tree                      | →                         | Open the folder, or go to its first row                                            |
+| In the file tree                      | ←                         | Close the folder, or go to the folder that holds the row                           |
+| In the file tree                      | Home or End               | Go to the first or the last row                                                    |
+| In the file tree                      | PageDown or PageUp        | Go one panel height down or up                                                     |
 | In the file tree                      | Enter or Space            | Open the file, or open or close the folder                                         |
+| In the file tree                      | Type a name               | Go to the next row whose name starts with the letters typed                        |
+| In the file tree                      | Esc                       | Go back to the open file                                                           |
 | In a search pattern field             | Enter                     | Run the search                                                                     |
 | In a search pattern field             | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
 | In the open file                      | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
@@ -141,6 +151,14 @@ keyboard stays with the dialog. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act
 only while the files panel is shown and no dialog is open; otherwise the
 key is left to the browser. Alt+G acts only on a backend that serves log
 chains.
+
+The file tree is one Tab stop. Tab enters it on the row that had the
+focus last, else on the open file's row, else on the first row, and Tab
+again leaves it; Alt+1 goes to the same row. Moving never opens a file:
+Enter or Space does. Letters typed within half a second make one name,
+and the same letter typed again goes on to the next row that starts with
+it. Esc goes back to the open file or chain, when one is open. A key
+with Ctrl, Cmd or Alt is never the tree's.
 
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
 is the one to trust if the two ever differ.
