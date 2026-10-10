@@ -74,11 +74,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group rotated logs is off unless the link turns it on with `chains=1`.
   The viewer no longer remembers the mode chosen last for a link that
   does not name it, and ignores the mode an earlier version stored.
-- Alt+C, Alt+W and Alt+R switch match case, whole word and regular
-  expression wherever the focus is in the search panel (a toggle, a
-  result), not only in a pattern field. While a dialog is open, or while
-  the toggles are disabled on a backend that takes no match options, the
-  key does nothing and is left to the browser.
+- The search options are one line under the patterns, always shown,
+  with no Options fold: the match case, whole word and regular
+  expression toggles, Only opened files as an icon toggle with the
+  number of opened files beside it (disabled while it is off and no
+  file is open), and `max`, a plain text box for the most matches to
+  find. Max takes a whole number from 1 to 10,000; any other value turns
+  the box red with "max: 1 to 10,000" under the line, and a search run
+  with it is refused (nothing is sent, the focus goes to the box). The
+  value is sent as typed, never changed. Enter in the max box runs the
+  search, as in a pattern field. Alt+C, Alt+W, Alt+R and the new Alt+O
+  (Only opened files) work wherever the focus is in the search panel (a
+  toggle, the max box, a result), not only in a pattern field; while a
+  dialog is open, or for a toggle that is disabled, the key does nothing
+  and is left to the browser. The panel keeps its unsent patterns and
+  options while Files is shown, and a link fills them with its search.
 
 ## [0.7.0] - 2026-10-09
 

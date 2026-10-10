@@ -14,6 +14,7 @@ import {
 } from '$lib/stores/layout';
 import { chainMode } from '$lib/stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from '$lib/stores/filesView';
+import { draftFromSearch, searchDraft } from '$lib/stores/searchDraft';
 import { searchRequest } from '$lib/stores/trace';
 import { LOG_ROOT, LogDirBackend, serveLogDir } from '$lib/testing/fakeLogDir';
 import KeyboardShortcuts from '../common/KeyboardShortcuts.svelte';
@@ -75,6 +76,7 @@ afterEach(() => {
   treeFocusRequested.set(false);
   searchFocusRequested.set(false);
   searchRequest.set(null);
+  searchDraft.set(draftFromSearch(null));
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
@@ -110,6 +112,35 @@ describe('the side panel', () => {
 
     expect(pattern()).toBe(field);
     expect(field.value).toBe('ERROR [0-9]+');
+  });
+
+  it('keeps an unsent pattern, a match toggle and the max when Files is shown and then Search', async () => {
+    const { target, pattern } = await mount(
+      new LogDirBackend({ features: ['trace_matching_flags'] }),
+    );
+    clickPanelButton('search');
+    await tick();
+    const field = pattern();
+    const maxBox = target.querySelector<HTMLInputElement>('input[aria-label="Most matches"]');
+    const matchCase = target.querySelector<HTMLButtonElement>('button[aria-label="Match case"]');
+    if (!field || !maxBox || !matchCase) throw new Error('the search form is not rendered');
+    await typeValue(field, 'timeout [0-9]+');
+    matchCase.click();
+    await typeValue(maxBox, '50');
+
+    clickPanelButton('tree');
+    await tick();
+    clickPanelButton('search');
+    await tick();
+
+    expect(field.value).toBe('timeout [0-9]+');
+    expect(matchCase.getAttribute('aria-pressed')).toBe('false');
+    expect(maxBox.value).toBe('50');
+    expect(get(searchDraft)).toMatchObject({
+      patterns: ['timeout [0-9]+'],
+      toggles: { matchCase: false },
+      maxResults: '50',
+    });
   });
 
   // The search panel is mounted while Files is shown, so a link that
@@ -321,5 +352,26 @@ describe('the files panel keys while something else owns the keyboard', () => {
     await mount(new LogDirBackend({ features: [] }));
 
     expectNothingChanged(await pressAnywhere({ key: '©', code: 'KeyG', altKey: true }));
+  });
+});
+
+/**
+ * The search panel's keys belong to it only while the focus is inside
+ * it; from the file tree they change nothing and are left to the browser.
+ */
+describe('the search panel keys with the focus in the file tree', () => {
+  it.each([
+    ['Alt+C', { key: 'ç', code: 'KeyC', altKey: true }],
+    ['Alt+O', { key: 'ø', code: 'KeyO', altKey: true }],
+  ])('%s does nothing and is not cancelled', async (_name, init) => {
+    const { firstRow } = await mount(new LogDirBackend({ features: ['trace_matching_flags'] }));
+    const row = firstRow();
+    if (!row) throw new Error('the tree has no row');
+    row.focus();
+
+    const event = await keyDown(row, init);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(get(searchDraft)).toEqual(draftFromSearch(null));
   });
 });

@@ -67,9 +67,14 @@ way.
   seekable-zstd files.
 - **Go to a line of the file** with `:` or Cmd/Ctrl+G, or jump to the end.
 - **Search** with one or more regex patterns over files or directories,
-  through `/v1/trace`, with match-case, whole-word and regular-expression
-  toggles when the backend's contract has them. A result opens its file at the match; a
-  line number the backend could not know is resolved by byte offset.
+  through `/v1/trace`. One line under the patterns holds the options:
+  match-case, whole-word and regular-expression toggles when the
+  backend's contract has them (Alt+C, Alt+W, Alt+R), Only opened files
+  with the number of opened files (Alt+O), and the most matches to find,
+  a whole number from 1 to 10,000 (a search with any other value is
+  refused, never changed). The panel keeps unsent patterns and options
+  while Files is shown. A result opens its file at the match; a line
+  number the backend could not know is resolved by byte offset.
 - **Regex filter** on the open file: hide or show the matches (or their
   captured groups), or highlight them. Hidden text shows in a hover.
 - **Find in the loaded lines** (Cmd/Ctrl+F, Monaco's own find).
@@ -101,48 +106,49 @@ way.
 
 Cmd/Ctrl+/ lists every shortcut in the app. They are:
 
-| Where                                 | Keys                      | Action                                                                             |
-| ------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
-| Anywhere                              | Cmd/Ctrl+K                | Go to the search pattern field                                                     |
-| Anywhere                              | Cmd/Ctrl+B                | Show or hide the sidebar                                                           |
-| Anywhere                              | Cmd/Ctrl+/                | Show or hide the shortcut list                                                     |
-| Anywhere                              | Esc                       | Close the shortcut list                                                            |
-| Panels, from anywhere                 | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
-| Panels, from anywhere                 | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
-| In the activity bar                   | ↓ or ↑                    | Move down or up through the panel buttons                                          |
-| In the files panel, while it is shown | Alt+G                     | Group rotated logs: on or off                                                      |
-| In the files panel, while it is shown | Alt+L                     | Show labels: on or off                                                             |
-| In the files panel, while it is shown | Alt+V                     | Show the size or the date of each file                                             |
-| In the files panel, while it is shown | Alt+N                     | Sort by name, or reverse a sort by name                                            |
-| In the files panel, while it is shown | Alt+S                     | Sort by the size or date shown, or reverse that sort                               |
-| On the Size/Date switch               | ← or →                    | Choose the value before or after the chosen one                                    |
-| In the file tree                      | ↓ or ↑                    | Go to the next or the previous row                                                 |
-| In the file tree                      | →                         | Open the folder, or go to its first row                                            |
-| In the file tree                      | ←                         | Close the folder, or go to the folder that holds the row                           |
-| In the file tree                      | Home or End               | Go to the first or the last row                                                    |
-| In the file tree                      | PageDown or PageUp        | Go one panel height down or up                                                     |
-| In the file tree                      | Enter or Space            | Open the file, or open or close the folder                                         |
-| In the file tree                      | Type a name               | Go to the next row whose name starts with the letters typed                        |
-| In the file tree                      | Esc                       | Go back to the open file                                                           |
-| In the search panel                   | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
-| In a search pattern field             | Enter                     | Run the search                                                                     |
-| In the open file                      | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
-| In the open file                      | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
-| In the open file                      | Cmd/Alt+click on a chip   | Next anomaly of the selected category; with Shift, the previous one                |
-| In the go-to-line box                 | Enter                     | Jump to the typed line                                                             |
-| In the go-to-line box                 | Esc                       | Close the go-to-line box                                                           |
-| In the editor filter field            | Enter                     | Apply the filter to the open file                                                  |
-| In the editor filter field            | Esc                       | Close the filter bar (an applied filter stays)                                     |
-| On the timeline bar                   | ← or →                    | Move the time by 1/200 of the bar, to a whole second                               |
-| On the timeline bar                   | Shift+← or Shift+→        | Move the time by 1/20 of the bar, to a whole second                                |
-| On the timeline bar                   | Home or End               | Move the time to the start or the end of the bar                                   |
-| On the timeline bar                   | Enter                     | Go to that time in the open file (also in the Go to time box)                      |
-| On the timeline bar                   | Esc                       | Put the time back where the open file is                                           |
-| On the timeline bar                   | Drag or click             | Go to the time under the pointer when the button is released                       |
-| In the picker of a file's time zone   | ↓ or ↑                    | Move down or up through the listed zones and the filter field                      |
-| In the picker of a file's time zone   | Enter                     | In the filter field: read the file in the first listed zone or the typed offset    |
-| In the picker of a file's time zone   | Esc                       | Close the picker and keep the zone                                                 |
-| While a panel is open                 | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
+| Where                                    | Keys                      | Action                                                                             |
+| ---------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| Anywhere                                 | Cmd/Ctrl+K                | Go to the search pattern field                                                     |
+| Anywhere                                 | Cmd/Ctrl+B                | Show or hide the sidebar                                                           |
+| Anywhere                                 | Cmd/Ctrl+/                | Show or hide the shortcut list                                                     |
+| Anywhere                                 | Esc                       | Close the shortcut list                                                            |
+| Panels, from anywhere                    | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
+| Panels, from anywhere                    | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
+| In the activity bar                      | ↓ or ↑                    | Move down or up through the panel buttons                                          |
+| In the files panel, while it is shown    | Alt+G                     | Group rotated logs: on or off                                                      |
+| In the files panel, while it is shown    | Alt+L                     | Show labels: on or off                                                             |
+| In the files panel, while it is shown    | Alt+V                     | Show the size or the date of each file                                             |
+| In the files panel, while it is shown    | Alt+N                     | Sort by name, or reverse a sort by name                                            |
+| In the files panel, while it is shown    | Alt+S                     | Sort by the size or date shown, or reverse that sort                               |
+| On the Size/Date switch                  | ← or →                    | Choose the value before or after the chosen one                                    |
+| In the file tree                         | ↓ or ↑                    | Go to the next or the previous row                                                 |
+| In the file tree                         | →                         | Open the folder, or go to its first row                                            |
+| In the file tree                         | ←                         | Close the folder, or go to the folder that holds the row                           |
+| In the file tree                         | Home or End               | Go to the first or the last row                                                    |
+| In the file tree                         | PageDown or PageUp        | Go one panel height down or up                                                     |
+| In the file tree                         | Enter or Space            | Open the file, or open or close the folder                                         |
+| In the file tree                         | Type a name               | Go to the next row whose name starts with the letters typed                        |
+| In the file tree                         | Esc                       | Go back to the open file                                                           |
+| In the search panel                      | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
+| In the search panel                      | Alt+O                     | Switch Only opened files                                                           |
+| In a search pattern field or the max box | Enter                     | Run the search                                                                     |
+| In the open file                         | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
+| In the open file                         | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
+| In the open file                         | Cmd/Alt+click on a chip   | Next anomaly of the selected category; with Shift, the previous one                |
+| In the go-to-line box                    | Enter                     | Jump to the typed line                                                             |
+| In the go-to-line box                    | Esc                       | Close the go-to-line box                                                           |
+| In the editor filter field               | Enter                     | Apply the filter to the open file                                                  |
+| In the editor filter field               | Esc                       | Close the filter bar (an applied filter stays)                                     |
+| On the timeline bar                      | ← or →                    | Move the time by 1/200 of the bar, to a whole second                               |
+| On the timeline bar                      | Shift+← or Shift+→        | Move the time by 1/20 of the bar, to a whole second                                |
+| On the timeline bar                      | Home or End               | Move the time to the start or the end of the bar                                   |
+| On the timeline bar                      | Enter                     | Go to that time in the open file (also in the Go to time box)                      |
+| On the timeline bar                      | Esc                       | Put the time back where the open file is                                           |
+| On the timeline bar                      | Drag or click             | Go to the time under the pointer when the button is released                       |
+| In the picker of a file's time zone      | ↓ or ↑                    | Move down or up through the listed zones and the filter field                      |
+| In the picker of a file's time zone      | Enter                     | In the filter field: read the file in the first listed zone or the typed offset    |
+| In the picker of a file's time zone      | Esc                       | Close the picker and keep the zone                                                 |
+| While a panel is open                    | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
 
 While a dialog is open (the shortcut list, the analysis, the API token
 prompt), the keys that show a panel or the sidebar, Alt+1, Alt+2,
@@ -150,9 +156,11 @@ Cmd/Ctrl+Shift+E or F, Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the
 keyboard stays with the dialog. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act
 only while the files panel is shown and no dialog is open; otherwise the
 key is left to the browser. Alt+G acts only on a backend that serves log
-chains. Alt+C, Alt+W and Alt+R act wherever the focus is in the search
-panel, a pattern field or not, while no dialog is open; a toggle that is
-disabled leaves the key to the browser.
+chains. Alt+C, Alt+W, Alt+R and Alt+O act wherever the focus is in the
+search panel, a pattern field or not, while no dialog is open; a toggle
+that is disabled leaves the key to the browser (the match toggles on a
+backend that takes no match options, Only opened files while it is off
+and no file is open).
 
 The file tree is one Tab stop. Tab enters it on the row that had the
 focus last, else on the open file's row, else on the first row, and Tab

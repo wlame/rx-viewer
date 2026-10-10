@@ -178,6 +178,8 @@ describe('KeyboardShortcuts help groups', () => {
     expect(rows).toContain('Alt+W');
     expect(rows).toContain('Use regular expression: on or off');
     expect(rows).toContain('Alt+R');
+    expect(rows).toContain('Only opened files: on or off');
+    expect(rows).toContain('Alt+O');
   });
 
   it('lists no group that has no shortcut', async () => {

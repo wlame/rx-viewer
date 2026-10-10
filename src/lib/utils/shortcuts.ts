@@ -18,7 +18,7 @@ export const SHORTCUT_SCOPES = {
   valueSwitch: 'On the Size/Date switch',
   fileTree: 'In the file tree',
   searchPanel: 'In the search panel',
-  searchField: 'In a search pattern field',
+  searchField: 'In a search pattern field or the max box',
   filePane: 'In the open file',
   gotoField: 'In the go-to-line box',
   filterField: 'In the editor filter field',
@@ -65,7 +65,7 @@ export type SearchToggleShortcutId = `toggle:${keyof SearchToggles}`;
  * inside it. An id is matched only when the handler is given an action
  * for it.
  */
-export type SearchPanelShortcutId = SearchToggleShortcutId;
+export type SearchPanelShortcutId = SearchToggleShortcutId | 'toggleOnlyOpened';
 
 /**
  * The keys of the file tree. Its key handler hands those with a chord to
@@ -323,6 +323,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: `${toggle.title}: on or off`,
     chord: { code: toggle.shortcutCode, alt: true },
   })),
+  {
+    id: 'toggleOnlyOpened',
+    scope: 'searchPanel',
+    description: 'Only opened files: on or off',
+    chord: { code: 'KeyO', alt: true },
+  },
   {
     id: 'runSearch',
     scope: 'searchField',

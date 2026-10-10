@@ -205,6 +205,7 @@ describe('handleSearchPanelKey', () => {
         'toggle:matchCase': act('toggle:matchCase'),
         'toggle:wholeWord': act('toggle:wholeWord'),
         'toggle:regex': act('toggle:regex'),
+        toggleOnlyOpened: act('toggleOnlyOpened'),
       },
     };
   }
@@ -214,6 +215,7 @@ describe('handleSearchPanelKey', () => {
     ['toggle:matchCase', 'ç', 'KeyC'],
     ['toggle:wholeWord', '∑', 'KeyW'],
     ['toggle:regex', '®', 'KeyR'],
+    ['toggleOnlyOpened', 'ø', 'KeyO'],
   ])('runs %s for Alt+%s and keeps the key from the browser', (id, key, code) => {
     const { actions, ran } = searchActions();
     const event = press(key, { code, altKey: true });
@@ -419,10 +421,10 @@ describe('the shortcut list', () => {
     [
       'searchPanel',
       'In the search panel',
-      ['toggle:matchCase', 'toggle:wholeWord', 'toggle:regex'],
-      ['Alt+C', 'Alt+W', 'Alt+R'],
+      ['toggle:matchCase', 'toggle:wholeWord', 'toggle:regex', 'toggleOnlyOpened'],
+      ['Alt+C', 'Alt+W', 'Alt+R', 'Alt+O'],
     ],
-    ['searchField', 'In a search pattern field', ['runSearch'], ['Enter']],
+    ['searchField', 'In a search pattern field or the max box', ['runSearch'], ['Enter']],
     [
       'fileTree',
       'In the file tree',
