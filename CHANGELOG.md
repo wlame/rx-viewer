@@ -9,34 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tooltips that name a control and its key. The activity bar's buttons,
+  the files toolbar, the column header and the search options line show
+  the control's name and its shortcut as the platform prints it (`⌥G` on
+  a Mac, `Alt+G` elsewhere): after half a second of hover, and at once
+  when the keyboard focuses the control. Esc hides the tooltip.
 - A toolbar at the top of the files panel, in place of the "Search
-  Roots" heading: Group rotated logs and Show labels as icon toggles,
-  and a Size | Date switch for the value right of each name. Show labels
-  off hides the compression, `idx` and chain marks of every row. Date
-  shows a file's or folder's modification time in the browser's time
-  zone (`Oct 8 14:31` in the current year, `2025-12-27` before), with
-  the full time and its UTC offset in the cell's tooltip; a chain's row
-  shows the newest time of its parts. A folder's size reads `24 items`.
-  Alt+G, Alt+L and Alt+V do the same while the files panel is shown and
-  no dialog is open, and ← and → move between Size and Date. The link
-  keeps the choices as `labels=0` and `show=date`.
+  Roots" heading: Group rotated logs (before, a checkbox) and Show
+  labels as icon toggles, and a Size | Date switch for the value right
+  of each name. Show labels off hides the compression, `idx` and chain
+  marks of every row. Date shows a file's or folder's modification time
+  in the browser's time zone (`Oct 8 14:31` in the current year,
+  `2025-12-27` in any other year), with the full time and its UTC offset
+  in the cell's tooltip; a chain's row shows the newest time of its
+  parts. A folder's size reads `24 items`. Alt+G, Alt+L and Alt+V do the
+  same while the files panel is shown, and ← and → move between Size and
+  Date. The link keeps the choices as `labels=0` and `show=date`.
 - Sorting of the files panel by name, size or date in both directions
   from a column header under the toolbar: Name on the left, the value
   shown (Size or Date) on the right. A click sorts by that column (names
   A to Z, sizes largest first, dates newest first) and a second click
   reverses it; the sorted column shows an arrow. Alt+N sorts by name and
-  Alt+S by the value shown, while the files panel is shown and no dialog
-  is open. Folders come first: by name under a size sort, by their own
-  time under a date sort. A log chain sorts among the files by its size
-  and the newest time of its parts; a value that is not known sorts
-  last. Names with numbers sort by number (`app.log.2` before
-  `app.log.10`), without case. The link keeps the order as
-  `sort=<key>-<dir>` (`name-desc`, `size-asc`, `size-desc`, `date-asc`,
-  `date-desc`; by name A to Z when absent). A sort on the value the link
-  does not show opens as a sort on the shown value in the same
-  direction, and the address bar says so. Switching between Size and
-  Date moves a sort on one to the other, largest or newest first; a
-  sort by name stays.
+  Alt+S by the value shown, while the files panel is shown. Folders come
+  first: by name under a size sort, by their own time under a date sort.
+  A log chain sorts among the files by its size and the newest time of
+  its parts; a value that is not known sorts last. Names with numbers
+  sort by number (`app.log.2` before `app.log.10`), without case. The
+  link keeps the order as `sort=<key>-<dir>` (`name-desc`, `size-asc`,
+  `size-desc`, `date-asc`, `date-desc`; by name A to Z when absent). A
+  sort on the value the link does not show opens as a sort on the shown
+  value in the same direction, and the address bar says so. Switching
+  between Size and Date moves a sort on one to the other, largest or
+  newest first; a sort by name stays.
 - Keyboard navigation of the file tree, which is now one Tab stop
   instead of one per row: ↓ and ↑ move between the rows, → opens a
   folder and then goes to its first row, ← closes a folder or goes to
@@ -46,10 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that starts with it, and Esc goes back to the open file's editor. Tab
   enters the tree on the row that had the focus last, else on the open
   file's row, else on the first row. When that row goes (its folder
-  closed, Group rotated logs turned on or off, a new listing), the
-  focus moves to the row that took its place: the log chain that shows
-  the file as a part, the file of a chain, or the folder above. Rows
-  carry their level, set size and position for screen readers.
+  closed, Group rotated logs turned on or off, a new listing), the focus
+  moves to the row that took its place: the log chain that shows the
+  file as a part, the file of a chain, or the folder above. A new order
+  keeps the focus on its row and scrolls the row into view. Rows carry
+  their level, set size and position for screen readers.
 
 ### Changed
 
@@ -59,18 +64,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the shown panel's button hides the side panel; ↓ and ↑ move between
   the buttons. From anywhere, Alt+1 or Cmd/Ctrl+Shift+E shows Files and
   moves the focus to the file tree (the row that had the focus last,
-  else the open file's row, else its first row), and Alt+2 or Cmd/Ctrl+Shift+F shows Search and moves the focus to
-  the first pattern field; both show a hidden side panel. The Search
-  panel keeps its unsent patterns and options while Files is shown. Links
-  keep `tab=files` and `tab=search`; a link that names a search runs it
-  on load also when it shows Files, as it does when it shows Search.
-- While a dialog is open (the shortcut list, the analysis, the API token
-  prompt), the panel keys, Cmd/Ctrl+K and Cmd/Ctrl+B do nothing and the
-  key is left to the browser, so the focus stays in the dialog. Before,
-  Cmd/Ctrl+K closed the shortcut list and went to Search, and Cmd/Ctrl+K
-  or Cmd/Ctrl+B hid an open analysis dialog with the files panel.
-- The files panel orders each folder's rows itself instead of keeping
-  the backend's order; the search roots keep their configured order.
+  else the open file's row, else its first row), and Alt+2 or
+  Cmd/Ctrl+Shift+F shows Search and moves the focus to the first pattern
+  field; both show a hidden side panel. Both panels stay in the page, so
+  Search keeps its unsent patterns and options while Files is shown.
+  Links keep `tab=files` and `tab=search`; a link that names a search
+  runs it on load also when it shows Files, as it does when it shows
+  Search.
+- Cmd/Ctrl+K no longer closes the shortcut list and goes to Search: the
+  list is a modal dialog now, which Esc or Cmd/Ctrl+/ closes.
+- The files panel orders each folder's rows itself, by name A to Z
+  unless the link says otherwise, instead of keeping the backend's
+  order; the search roots keep their configured order.
 - Group rotated logs is off unless the link turns it on with `chains=1`.
   The viewer no longer remembers the mode chosen last for a link that
   does not name it, and ignores the mode an earlier version stored.
@@ -85,10 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value is sent as typed, never changed. Enter in the max box runs the
   search, as in a pattern field. Alt+C, Alt+W, Alt+R and the new Alt+O
   (Only opened files) work wherever the focus is in the search panel (a
-  toggle, the max box, a result), not only in a pattern field; while a
-  dialog is open, or for a toggle that is disabled, the key does nothing
-  and is left to the browser. The panel keeps its unsent patterns and
-  options while Files is shown, and a link fills them with its search.
+  toggle, the max box, a result), not only in a pattern field; a toggle
+  that is disabled leaves the key to the browser.
+
+### Fixed
+
+- An open dialog keeps the keyboard. While the shortcut list, the
+  analysis, the API token prompt or the notice of a backend the viewer
+  cannot read is open, the keys that show a panel, move the focus or
+  hide the sidebar (Alt+1, Alt+2, Cmd/Ctrl+Shift+E and F, Cmd/Ctrl+K,
+  Cmd/Ctrl+B) and the keys of the files and search panels do nothing and
+  are left to the browser. Cmd/Ctrl+K and Cmd/Ctrl+B used to hide an open
+  analysis dialog together with the files panel.
 
 ## [0.7.0] - 2026-10-09
 
