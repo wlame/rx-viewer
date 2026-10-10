@@ -253,8 +253,9 @@ separate comment above, or eslint reads every word as another rule.
   one row and one view. Every panel stays mounted and the one not shown
   is `hidden`: the tree keeps its open folders and an open analysis
   dialog, the search form its unsent edits, and a link's search runs on
-  load whichever panel is shown. Change the panel only through
-  `showPanel(id, focus)` and `clickPanelButton(id)` (`stores/layout.ts`).
+  load whichever panel is shown. A component shows a panel through
+  `showPanel(id, focus)` or `clickPanelButton(id)` (`stores/layout.ts`);
+  only `restoreView` sets `sidebarTab` itself, from a link.
   A focus request (`treeFocusRequested`, `searchFocusRequested`,
   `editorFocusRequested`) is a flag that the target answers after the
   next update and resets, so a panel is drawn before it takes the focus.
