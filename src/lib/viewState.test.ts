@@ -8,6 +8,7 @@ import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { chainMode } from './stores/chainMode';
+import { DEFAULT_FILES_VIEW, filesView } from './stores/filesView';
 import { settings } from './stores/settings';
 import { chainKey } from './utils/tabKey';
 import { fileViewOf, loadView, restoreView, startViewSync, tabViewOf } from './viewState';
@@ -246,6 +247,7 @@ function resetStores() {
   searchRequest.set(null);
   trace.clear();
   sidebarTab.set('tree');
+  filesView.set(DEFAULT_FILES_VIEW);
   searchShowsOffsets.set(false);
 }
 
@@ -347,7 +349,7 @@ describe('restoreView', () => {
     },
   );
 
-  it('rebuilds the file, its line, filter and category, the tab, the search and the switch', async () => {
+  it('rebuilds the file, its line, filter and category, the tab, the files panel, the search and the switch', async () => {
     const view: ViewState = {
       file: '/logs/small.log',
       chain: null,
@@ -360,6 +362,8 @@ describe('restoreView', () => {
       category: 'error',
       tab: 'search',
       chains: false,
+      labels: false,
+      show: 'date',
       offsets: true,
       search: { patterns: ['LINE 7'], maxResults: 50, onlyOpenedFiles: true, flags: {} },
       stash: [],
@@ -376,6 +380,7 @@ describe('restoreView', () => {
     expect(file.regexFilter?.mode).toBe('hide');
     expect(file.selectedAnomalyCategory).toBe('error');
     expect(get(sidebarTab)).toBe('search');
+    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
     expect(get(searchShowsOffsets)).toBe(true);
     expect(get(searchRequest)).toEqual(view.search);
   });
@@ -1570,6 +1575,57 @@ describe('chain mode in the URL', () => {
     await loadView(readViewState());
 
     expect(get(files).openFiles.some((f) => f.path === '/logs/small.log')).toBe(false);
+  });
+});
+
+describe('the files panel view in the URL', () => {
+  let stopSync: () => void = () => {};
+
+  beforeEach(() => {
+    serveBackend();
+  });
+
+  afterEach(() => {
+    stopSync();
+    stopSync = () => {};
+    resetStores();
+    filesView.set(DEFAULT_FILES_VIEW);
+    vi.unstubAllGlobals();
+  });
+
+  it('writes labels=0 and show=date, each by rewriting the entry', () => {
+    const calls = stubWindow();
+    stopSync = startViewSync();
+
+    filesView.update((view) => ({ ...view, labels: false }));
+    expect(urlParams().get('labels')).toBe('0');
+
+    filesView.update((view) => ({ ...view, show: 'date' }));
+    expect(urlParams().get('show')).toBe('date');
+
+    filesView.set(DEFAULT_FILES_VIEW);
+    expect(window.location.search).toBe('');
+    expect(calls.map((call) => call.mode)).toEqual(['replace', 'replace', 'replace']);
+  });
+
+  it('restores the labels and the value shown of a view', async () => {
+    stubWindow();
+
+    await restoreView({ ...DEFAULT_VIEW, labels: false, show: 'date' });
+    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
+
+    await restoreView(DEFAULT_VIEW);
+    expect(get(filesView)).toEqual(DEFAULT_FILES_VIEW);
+  });
+
+  it('opens a link with labels=0 and show=date with the labels off and the dates shown', async () => {
+    stubWindow('?labels=0&show=date');
+
+    await loadView(readViewState());
+    stopSync = startViewSync();
+
+    expect(get(filesView)).toEqual({ labels: false, show: 'date' });
+    expect(window.location.search).toBe('?labels=0&show=date');
   });
 });
 

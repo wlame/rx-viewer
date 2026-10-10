@@ -5,7 +5,8 @@
  * active file or log chain, the line its view is anchored on or the
  * time it jumped to (in a chain, with the fingerprint of the files that
  * line was read in), its highlighting, filter and anomaly category, the
- * sidebar tab, whether rotated logs are grouped into chains, the last
+ * sidebar tab, whether rotated logs are grouped into chains, whether the
+ * files panel shows its labels and which value it shows, the last
  * search, whether its results show byte offsets, the timestamps stash,
  * and the time zones chosen for files and chains. Each key has one row
  * in
@@ -31,6 +32,12 @@ import { normalizeStash } from './timeStash';
 
 /** The sidebar's two tabs. */
 export type SidebarTab = 'tree' | 'search';
+
+/** The value the files panel shows beside each row's name. */
+export type ValueColumn = 'size' | 'date';
+
+/** Every value the files panel can show, in the order the switch lists them. */
+export const VALUE_COLUMNS: readonly ValueColumn[] = ['size', 'date'];
 
 /** What the editor's regex filter does with the lines it matches. */
 export type FilterMode = 'hide' | 'show' | 'highlight';
@@ -100,6 +107,10 @@ export interface ViewState {
   tab: SidebarTab;
   /** Rotated logs are grouped into log chains (`chains=1`). */
   chains: boolean;
+  /** The files panel shows the labels of its rows (`labels=0` when off). */
+  labels: boolean;
+  /** The value the files panel shows beside each name (`show=date` for the date). */
+  show: ValueColumn;
   /** The search results show byte offsets instead of line numbers. */
   offsets: boolean;
   /** The last search run, or null for none. */
@@ -127,6 +138,8 @@ export const DEFAULT_VIEW: ViewState = {
   category: null,
   tab: 'tree',
   chains: false,
+  labels: true,
+  show: 'size',
   offsets: false,
   search: null,
   stash: [],
@@ -419,6 +432,18 @@ const CODECS: { [K in keyof ViewState]: ParamCodec<ViewState[K]> } = {
     parse: (params) => isOn(params.get('chains')),
     serialize: (on) => (on ? [['chains', '1']] : []),
   },
+  // Hiding the labels or showing another value rewrites the current entry.
+  labels: {
+    names: ['labels'],
+    parse: (params) => params.get('labels') !== '0',
+    serialize: (on) => (on ? [] : [['labels', '0']]),
+  },
+  show: {
+    names: ['show'],
+    parse: (params) =>
+      VALUE_COLUMNS.find((value) => value === params.get('show')) ?? DEFAULT_VIEW.show,
+    serialize: (show) => (show === DEFAULT_VIEW.show ? [] : [['show', show]]),
+  },
   offsets: {
     names: ['offsets'],
     parse: (params) => isOn(params.get('offsets')),
@@ -508,8 +533,8 @@ function isStepKey<K extends keyof ViewState>(
  * any key changed in a way that is a step (opening a file or a chain,
  * running a search, switching the sidebar tab, a jump by time),
  * otherwise a replace (the line and its part, the highlighting, the
- * filter, the category, chain mode, the offsets switch, the stash, the
- * file zones).
+ * filter, the category, chain mode, the files panel's labels and value,
+ * the offsets switch, the stash, the file zones).
  */
 export function historyModeFor(previous: ViewState, next: ViewState): HistoryMode {
   return VIEW_KEYS.some((key) => isStepKey(key, previous, next)) ? 'push' : 'replace';

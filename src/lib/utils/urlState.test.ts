@@ -250,6 +250,7 @@ describe('serializeViewState and parseViewState', () => {
     ['a search on its tab', view({ search: plainSearch, tab: 'search' })],
     ['a search on the Files tab', view({ search: plainSearch, tab: 'tree' })],
     ['the Search tab with no search', view({ tab: 'search' })],
+    ['labels off and the dates shown', view({ labels: false, show: 'date' })],
     ['byte offsets', view({ offsets: true, search: plainSearch, tab: 'search' })],
     [
       'a search with every option',
@@ -317,6 +318,44 @@ describe('serializeViewState and parseViewState', () => {
     expect(serializeViewState(view({ file: '/a.log' }), '?debug=1&line=4')).toBe(
       '?debug=1&file=%2Fa.log',
     );
+  });
+});
+
+describe('the files panel view in the URL', () => {
+  it('reads the labels on and the size shown for a link without them', () => {
+    const parsed = parseViewState('?file=%2Fa.log');
+
+    expect(parsed.labels).toBe(true);
+    expect(parsed.show).toBe('size');
+  });
+
+  it('reads labels=0 as the labels off', () => {
+    expect(parseViewState('?labels=0').labels).toBe(false);
+  });
+
+  it.each(['1', 'no', 'false', 'off', ''])('reads labels=%j as the labels on', (value) => {
+    expect(parseViewState(`?labels=${value}`).labels).toBe(true);
+  });
+
+  it('reads show=date as the dates shown', () => {
+    expect(parseViewState('?show=date').show).toBe('date');
+  });
+
+  it.each(['size', 'lines', 'DATE', 'constructor', ''])(
+    'reads show=%j as the sizes shown',
+    (value) => {
+      expect(parseViewState(`?show=${value}`).show).toBe('size');
+    },
+  );
+
+  it('writes labels=0 for the labels off and nothing for them on', () => {
+    expect(serializeViewState(view({ labels: false }), '')).toBe('?labels=0');
+    expect(serializeViewState(view({ labels: true }), '?labels=0')).toBe('');
+  });
+
+  it('writes show=date for the dates and nothing for the sizes', () => {
+    expect(serializeViewState(view({ show: 'date' }), '')).toBe('?show=date');
+    expect(serializeViewState(view({ show: 'size' }), '?show=date')).toBe('');
   });
 });
 
@@ -420,6 +459,24 @@ describe('historyModeFor', () => {
         name: 'moving by line after a time jump',
         previous: view({ file: '/a.log', time: 1_000 }),
         next: view({ file: '/a.log', line: 640 }),
+        mode: 'replace',
+      },
+      {
+        name: 'hiding the labels',
+        previous: fileA,
+        next: view({ file: '/a.log', labels: false }),
+        mode: 'replace',
+      },
+      {
+        name: 'showing the dates',
+        previous: fileA,
+        next: view({ file: '/a.log', show: 'date' }),
+        mode: 'replace',
+      },
+      {
+        name: 'showing the labels and the sizes again',
+        previous: view({ file: '/a.log', labels: false, show: 'date' }),
+        next: fileA,
         mode: 'replace',
       },
       { name: 'changing nothing', previous: fileA, next: fileA, mode: 'replace' },
