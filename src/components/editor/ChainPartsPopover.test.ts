@@ -96,4 +96,18 @@ describe('ChainPartsPopover', () => {
 
     expect(target.querySelector('ul')).toBeNull();
   });
+
+  // The file tree takes Esc to go to the editor: one press acts once.
+  it('stays open on an Escape that the control with the focus acted on', async () => {
+    const { target } = await mount();
+    const row = document.body.appendChild(document.createElement('div'));
+    row.addEventListener('keydown', (event) => event.preventDefault());
+
+    row.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await tick();
+
+    expect(target.querySelector('ul')).not.toBeNull();
+  });
 });

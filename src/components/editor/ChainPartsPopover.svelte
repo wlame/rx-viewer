@@ -41,7 +41,9 @@
     dispatch('goto', { kind: 'local', part: part.name, line: 1 });
   }
 
+  /** Escape closes the list, unless the control with the focus already acted on it. */
   function handleKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
     if (isOpen && isShortcut('closeChainParts', event)) isOpen = false;
   }
 </script>

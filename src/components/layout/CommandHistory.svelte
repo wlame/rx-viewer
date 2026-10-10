@@ -25,7 +25,9 @@
     return new Date(at).toLocaleTimeString();
   }
 
+  /** Escape closes the panel, unless the control with the focus already acted on it. */
   function handleKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
     if (isShortcut('closeHistory', event)) dispatch('close');
   }
 </script>

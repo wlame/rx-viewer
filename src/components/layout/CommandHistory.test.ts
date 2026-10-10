@@ -51,6 +51,19 @@ describe('CommandHistory keys', () => {
 
     expect(close).not.toHaveBeenCalled();
   });
+
+  // The file tree takes Esc to go to the editor: one press acts once.
+  it('stays open on an Escape that the control with the focus acted on', () => {
+    const { close } = mount();
+    const row = document.body.appendChild(document.createElement('div'));
+    row.addEventListener('keydown', (event) => event.preventDefault());
+
+    row.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+
+    expect(close).not.toHaveBeenCalled();
+  });
 });
 
 describe('CommandHistory per-part commands', () => {
