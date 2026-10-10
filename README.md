@@ -120,6 +120,11 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In the picker of a file's time zone | Esc                       | Close the picker and keep the zone                                                 |
 | While a panel is open               | Esc                       | Close the recent commands, the analysis dialog, or the list of a log chain's parts |
 
+While a dialog is open (the shortcut list, the analysis, the API token
+prompt), the keys that show a panel or the sidebar, Alt+1, Alt+2,
+Cmd/Ctrl+Shift+E or F, Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the
+keyboard stays with the dialog.
+
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
 is the one to trust if the two ever differ.
 

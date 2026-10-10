@@ -6,6 +6,7 @@
    * itself once the backend reports a supported contract.
    */
   import { tick } from 'svelte';
+  import { modal } from '$lib/actions/modal';
   import { health } from '$lib/stores';
   import { BLOCKED_RECHECK_MS, contractRefused } from '$lib/stores/health';
   import { SUPPORTED_CONTRACT_MAJOR } from '$lib/utils/contractVersion';
@@ -30,6 +31,7 @@
       aria-modal="true"
       aria-labelledby="contract-refused-title"
       aria-describedby="contract-refused-detail"
+      use:modal
     >
       <h2 id="contract-refused-title" class="text-lg font-semibold mb-3">
         This backend speaks an API this viewer cannot read

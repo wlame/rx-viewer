@@ -20,8 +20,8 @@ import Sidebar from './Sidebar.svelte';
 let mounted: (Sidebar | KeyboardShortcuts)[] = [];
 
 /** The side panel and the window's key handler, over a backend with one search root. */
-async function mount() {
-  serveLogDir(new LogDirBackend({ features: [] }));
+async function mount(backend = new LogDirBackend({ features: [] })) {
+  serveLogDir(backend);
   await health.check();
   await tree.loadRoots();
   const target = document.createElement('div');
@@ -37,6 +37,13 @@ async function mount() {
     tree: () => target.querySelector<HTMLElement>('[role="tree"]'),
     firstRow: () => target.querySelector<HTMLElement>('[role="treeitem"]'),
   };
+}
+
+/** The tree row whose text starts with `name`. */
+function rowNamed(target: HTMLElement, name: string): HTMLElement | undefined {
+  return [...target.querySelectorAll<HTMLElement>('[role="treeitem"]')].find((row) =>
+    row.textContent?.trim().startsWith(name),
+  );
 }
 
 async function typeValue(input: HTMLInputElement, value: string) {
@@ -154,5 +161,76 @@ describe('the panel keys over the side panel', () => {
     expect(firstRow()?.textContent).toContain(LOG_ROOT.slice(1));
     expect(document.activeElement).toBe(firstRow());
     expect(get(treeFocusRequested)).toBe(false);
+  });
+});
+
+describe('the analysis dialog in the files panel', () => {
+  /**
+   * Open the analysis of a file from its row's context menu, as a user
+   * does, with the backend holding the answer so the dialog stays open;
+   * the focus goes to its Close button.
+   */
+  async function openAnalysisFromTree() {
+    const backend = new LogDirBackend({ features: [] });
+    backend.hold('/v1/index');
+    const { target } = await mount(backend);
+    rowNamed(target, 'logs')?.click();
+    await vi.waitFor(() => expect(rowNamed(target, 'agentctl.log')).toBeDefined());
+    rowNamed(target, 'agentctl.log')?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    await tick();
+    const analyze = [...target.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent?.trim() === 'Analyze',
+    );
+    analyze?.click();
+    await tick();
+    const dialog = target.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
+    const closeButton = dialog?.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
+    if (!dialog || !closeButton) throw new Error('the analysis dialog did not open');
+    closeButton.focus();
+    return { target, dialog, closeButton };
+  }
+
+  async function keyDown(element: HTMLElement, init: KeyboardEventInit) {
+    const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+    element.dispatchEvent(event);
+    await tick();
+    await tick();
+    return event;
+  }
+
+  it.each([
+    ['Alt+2', { key: '™', code: 'Digit2', altKey: true }],
+    ['Cmd+Shift+F', { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true }],
+    ['Ctrl+K', { key: 'k', code: 'KeyK', ctrlKey: true }],
+    ['Alt+1', { key: '¡', code: 'Digit1', altKey: true }],
+    ['Cmd+Shift+E', { key: 'E', code: 'KeyE', metaKey: true, shiftKey: true }],
+    ['Cmd+B', { key: 'b', code: 'KeyB', metaKey: true }],
+  ])(
+    '%s leaves the dialog shown, the focus in it and the key to the browser',
+    async (_name, init) => {
+      const { target, dialog, closeButton } = await openAnalysisFromTree();
+
+      const event = await keyDown(closeButton, init);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(target.contains(dialog)).toBe(true);
+      expect(dialog.closest('[hidden]')).toBeNull();
+      expect(target.querySelector('aside')?.style.display).not.toBe('none');
+      expect(document.activeElement).toBe(closeButton);
+    },
+  );
+
+  it('lets Alt+2 show Search once the dialog is closed', async () => {
+    const { target, closeButton } = await openAnalysisFromTree();
+    closeButton.click();
+    await tick();
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    const event = await pressAnywhere({ key: '™', code: 'Digit2', altKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(get(sidebarTab)).toBe('search');
   });
 });

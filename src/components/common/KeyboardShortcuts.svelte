@@ -1,6 +1,7 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { shortcutsHelpOpen, showPanel, toggleSidebar, type SidebarTab } from '$lib/stores/layout';
+  import { modal } from '$lib/actions/modal';
+  import { modalOpen, shortcutsHelpOpen, showPanel, toggleSidebar } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
   import {
     handleGlobalKey,
@@ -13,27 +14,23 @@
   const groups = shortcutsByScope();
 
   /**
-   * Show a panel and move the focus into it. Not while this help covers
-   * the window: the key is then left to the browser.
+   * An action that acts only while no modal dialog is open. A key that
+   * would show a panel behind the dialog, move the focus out of it or
+   * hide it is left to the dialog and the browser instead.
    */
-  function showPanelByKey(id: SidebarTab): boolean {
-    if ($shortcutsHelpOpen) return false;
-    showPanel(id, true);
-    return true;
+  function unlessModalOpen(act: () => void): () => boolean {
+    return () => {
+      if ($modalOpen) return false;
+      act();
+      return true;
+    };
   }
 
   const actions: GlobalShortcutActions = {
-    focusSearch: () => {
-      shortcutsHelpOpen.set(false);
-      showPanel('search', true);
-      return true;
-    },
-    showFiles: () => showPanelByKey('tree'),
-    showSearch: () => showPanelByKey('search'),
-    toggleSidebar: () => {
-      toggleSidebar();
-      return true;
-    },
+    focusSearch: unlessModalOpen(() => showPanel('search', true)),
+    showFiles: unlessModalOpen(() => showPanel('tree', true)),
+    showSearch: unlessModalOpen(() => showPanel('search', true)),
+    toggleSidebar: unlessModalOpen(toggleSidebar),
     showShortcuts: () => {
       shortcutsHelpOpen.update((open) => !open);
       return true;
@@ -75,6 +72,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-title"
+      use:modal
       on:click|stopPropagation
       on:keydown|stopPropagation
     >

@@ -2,7 +2,9 @@
 import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
+import { get } from 'svelte/store';
 import { notifications } from '$lib/stores';
+import { modalOpen } from '$lib/stores/layout';
 import { AnalysisUnavailableError } from '$lib/indexTasks';
 import AnalyzeDialog from './AnalyzeDialog.svelte';
 
@@ -71,6 +73,18 @@ describe('AnalyzeDialog keys', () => {
     keyDown(init);
 
     expect(close).not.toHaveBeenCalled();
+  });
+});
+
+describe('AnalyzeDialog as a modal dialog', () => {
+  it('counts as an open modal dialog until it is closed', () => {
+    mount();
+    expect(get(modalOpen)).toBe(true);
+
+    dialog?.$destroy();
+    dialog = null;
+
+    expect(get(modalOpen)).toBe(false);
   });
 });
 

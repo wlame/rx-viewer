@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import '$lib/testing/matchMediaStub';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
 import {
@@ -9,9 +10,18 @@ import {
   sidebarVisible,
   treeFocusRequested,
 } from '$lib/stores/layout';
+import AnalyzeDialog from '../tree/AnalyzeDialog.svelte';
 import KeyboardShortcuts from './KeyboardShortcuts.svelte';
 
+// The analysis dialog waits on the backend; here it never answers, so the
+// dialog stays open until a test closes it.
+vi.mock('$lib/indexTasks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$lib/indexTasks')>()),
+  analyzeFile: () => new Promise(() => {}),
+}));
+
 let shortcuts: KeyboardShortcuts | null = null;
+let analysis: AnalyzeDialog | null = null;
 
 function mount(): HTMLElement {
   const target = document.createElement('div');
@@ -53,8 +63,29 @@ const SHOW_SEARCH_KEYS: [string, KeyboardEventInit][] = [
   ['Cmd+Shift+F', { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true }],
   ['Ctrl+Shift+F', { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true }],
 ];
+/** Every window-wide key that shows a panel, moves the focus or hides the side panel. */
+const PANEL_AND_SIDEBAR_KEYS: [string, KeyboardEventInit][] = [
+  ...SHOW_FILES_KEYS,
+  ...SHOW_SEARCH_KEYS,
+  ['Cmd+K', { key: 'k', code: 'KeyK', metaKey: true }],
+  ['Ctrl+K', { key: 'k', code: 'KeyK', ctrlKey: true }],
+  ['Cmd+B', { key: 'b', code: 'KeyB', metaKey: true }],
+  ['Ctrl+B', { key: 'b', code: 'KeyB', ctrlKey: true }],
+];
+
+/** Open the analysis dialog, with the focus on its Close button as a keyboard user has it. */
+function openAnalysis() {
+  const target = document.body.appendChild(document.createElement('div'));
+  analysis = new AnalyzeDialog({ target, props: { path: '/logs/app.log', name: 'app.log' } });
+  const closeButton = target.querySelector<HTMLButtonElement>('button[aria-label="Close"]');
+  if (!closeButton) throw new Error('the analysis dialog is not rendered');
+  closeButton.focus();
+  return { target, closeButton };
+}
 
 afterEach(() => {
+  analysis?.$destroy();
+  analysis = null;
   shortcuts?.$destroy();
   shortcuts = null;
   shortcutsHelpOpen.set(false);
@@ -167,12 +198,11 @@ describe('the panel keys', () => {
     },
   );
 
-  it('Cmd+K still closes the help and goes to the search pattern field', async () => {
-    const { target } = await openHelp();
+  it('Cmd+K from anywhere shows Search and asks for the pattern focus', async () => {
+    mount();
 
     const event = await pressAnywhere({ key: 'k', metaKey: true });
 
-    expect(target.querySelector('[role="dialog"]')).toBeNull();
     expect(get(sidebarTab)).toBe('search');
     expect(get(searchFocusRequested)).toBe(true);
     expect(event.defaultPrevented).toBe(true);
@@ -180,7 +210,7 @@ describe('the panel keys', () => {
 });
 
 describe('the panel keys while something else owns the keyboard', () => {
-  it.each([...SHOW_FILES_KEYS, ...SHOW_SEARCH_KEYS])(
+  it.each(PANEL_AND_SIDEBAR_KEYS)(
     '%s does nothing while the shortcuts dialog is open and is not cancelled',
     async (_name, init) => {
       const { target } = await openHelp();
@@ -195,6 +225,46 @@ describe('the panel keys while something else owns the keyboard', () => {
       expect(target.querySelector('[role="dialog"]')).not.toBeNull();
     },
   );
+
+  it.each(PANEL_AND_SIDEBAR_KEYS)(
+    '%s does nothing while the analysis dialog is open, is not cancelled and leaves the focus in it',
+    async (_name, init) => {
+      mount();
+      const { target, closeButton } = openAnalysis();
+
+      const event = await keyDown(closeButton, init);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(get(sidebarTab)).toBe('tree');
+      expect(get(sidebarVisible)).toBe(true);
+      expect(get(treeFocusRequested)).toBe(false);
+      expect(get(searchFocusRequested)).toBe(false);
+      expect(target.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(document.activeElement).toBe(closeButton);
+    },
+  );
+
+  it('lets the panel keys act again once the analysis dialog closes', async () => {
+    mount();
+    openAnalysis();
+    analysis?.$destroy();
+    analysis = null;
+
+    const event = await pressAnywhere(SHOW_SEARCH_KEYS[0][1]);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(get(sidebarTab)).toBe('search');
+  });
+
+  it('opens the shortcut list over the analysis dialog', async () => {
+    const target = mount();
+    const { closeButton } = openAnalysis();
+
+    const event = await keyDown(closeButton, { key: '/', metaKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(target.querySelector('[aria-labelledby="shortcuts-title"]')).not.toBeNull();
+  });
 
   it('takes no key press of an input method that composes as a panel key', async () => {
     sidebarTab.set('search');

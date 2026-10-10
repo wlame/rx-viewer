@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import {
   clickPanelButton,
+  modalOpen,
+  registerModal,
   searchFocusRequested,
   showPanel,
   sidebarTab,
@@ -84,5 +86,33 @@ describe('layout', () => {
 
     toggleSidebar();
     expect(get(sidebarVisible)).toBe(true);
+  });
+});
+
+describe('modalOpen', () => {
+  it('holds while any registered dialog is open, and not after the last one closes', () => {
+    expect(get(modalOpen)).toBe(false);
+
+    const closeFirst = registerModal();
+    const closeSecond = registerModal();
+    expect(get(modalOpen)).toBe(true);
+
+    closeFirst();
+    expect(get(modalOpen)).toBe(true);
+
+    closeSecond();
+    expect(get(modalOpen)).toBe(false);
+  });
+
+  it('counts a dialog closed twice once', () => {
+    const closeFirst = registerModal();
+    const closeSecond = registerModal();
+
+    closeFirst();
+    closeFirst();
+
+    expect(get(modalOpen)).toBe(true);
+    closeSecond();
+    expect(get(modalOpen)).toBe(false);
   });
 });

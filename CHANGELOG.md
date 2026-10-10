@@ -16,11 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the buttons. From anywhere, Alt+1 or Cmd/Ctrl+Shift+E shows Files and
   moves the focus to the file tree (its selected row, else its first
   row), and Alt+2 or Cmd/Ctrl+Shift+F shows Search and moves the focus to
-  the first pattern field; both show a hidden side panel, and neither
-  acts while the shortcut list is open. The Search panel keeps its unsent
-  patterns and options while Files is shown. Links keep `tab=files` and
-  `tab=search`; a link that names a search runs it on load also when it
-  shows Files, as it does when it shows Search.
+  the first pattern field; both show a hidden side panel. The Search
+  panel keeps its unsent patterns and options while Files is shown. Links
+  keep `tab=files` and `tab=search`; a link that names a search runs it
+  on load also when it shows Files, as it does when it shows Search.
+- While a dialog is open (the shortcut list, the analysis, the API token
+  prompt), the panel keys, Cmd/Ctrl+K and Cmd/Ctrl+B do nothing and the
+  key is left to the browser, so the focus stays in the dialog. Before,
+  Cmd/Ctrl+K closed the shortcut list and went to Search, and Cmd/Ctrl+K
+  or Cmd/Ctrl+B hid an open analysis dialog with the files panel.
 
 ## [0.7.0] - 2026-10-09
 

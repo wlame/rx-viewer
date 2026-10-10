@@ -1,4 +1,4 @@
-import { get, writable, type Writable } from 'svelte/store';
+import { derived, get, writable, type Readable, type Writable } from 'svelte/store';
 import type { SidebarTab } from '../utils/urlState';
 
 export type { SidebarTab };
@@ -14,6 +14,32 @@ export const sidebarVisible = writable(true);
 
 /** Whether the help dialog of keyboard shortcuts is open. */
 export const shortcutsHelpOpen = writable(false);
+
+/** How many modal dialogs are open; each one counts itself while it is in the page. */
+const openModalCount = writable(0);
+
+/**
+ * Whether a modal dialog owns the keyboard: the shortcut list, the
+ * analysis, the API token prompt or the refused-contract cover (each
+ * carries `use:modal`). While it holds, the window-wide keys that show a
+ * panel, move the focus or hide the side panel do nothing, and leave the
+ * key to the dialog.
+ */
+export const modalOpen: Readable<boolean> = derived(openModalCount, (count) => count > 0);
+
+/**
+ * Count a modal dialog as open until the returned function is called;
+ * calling it again does nothing.
+ */
+export function registerModal(): () => void {
+  openModalCount.update((count) => count + 1);
+  let isOpen = true;
+  return () => {
+    if (!isOpen) return;
+    isOpen = false;
+    openModalCount.update((count) => count - 1);
+  };
+}
 
 /**
  * Set when something asks for the search pattern field to take focus.

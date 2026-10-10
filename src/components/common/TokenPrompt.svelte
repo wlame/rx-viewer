@@ -10,6 +10,7 @@
    */
   import { tick } from 'svelte';
   import { getApiToken, setApiToken, tokenRequired } from '$lib/utils/apiToken';
+  import { modal } from '$lib/actions/modal';
 
   let token = '';
   let inputEl: HTMLInputElement;
@@ -40,6 +41,7 @@
       aria-modal="true"
       aria-labelledby="token-title"
       aria-describedby="token-help"
+      use:modal
       on:submit|preventDefault={submit}
     >
       <h2 id="token-title" class="text-lg font-semibold">This server requires an API token</h2>

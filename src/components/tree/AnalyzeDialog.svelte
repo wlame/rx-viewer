@@ -5,6 +5,7 @@
   import { AnalysisUnavailableError, analyzeFile } from '$lib/indexTasks';
   import { isAbortError } from '$lib/utils/latestRequest';
   import { isShortcut } from '$lib/utils/shortcuts';
+  import { modal } from '$lib/actions/modal';
   import Spinner from '../common/Spinner.svelte';
   import AnalysisReport from './AnalysisReport.svelte';
 
@@ -66,7 +67,7 @@
 
   /** Escape closes the dialog. Without it the only way out is a click,
    *  which leaves a keyboard user trapped behind the overlay. A dialog
-   *  hidden with the tree (the Search tab is shown) ignores Escape, which
+   *  hidden with the tree (the Search panel is shown) ignores Escape, which
    *  belongs to what is on screen. */
   function handleKeydown(event: KeyboardEvent) {
     const isOnScreen = backdropEl?.getClientRects().length > 0;
@@ -113,6 +114,7 @@
     role="dialog"
     aria-modal="true"
     aria-labelledby="analyze-dialog-title"
+    use:modal
   >
     <!-- Header -->
     <div
