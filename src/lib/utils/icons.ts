@@ -1,4 +1,4 @@
-/**
+/*!
  * The shapes below are copied from Lucide (lucide-static v1.54.0,
  * https://lucide.dev), under this licence:
  *

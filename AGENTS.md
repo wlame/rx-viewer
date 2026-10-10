@@ -279,8 +279,10 @@ separate comment above, or eslint reads every word as another rule.
   with `<svelte:element>`, never `{@html}`. The file's header holds
   Lucide's ISC notice, the Lucide version the shapes come from, and the
   MIT notice of Feather, from which `search`, `arrow-up` and `arrow-down`
-  derive. A shape from another source brings its own notice and version
-  into that header.
+  derive. The header is a legal comment (`/*! … */`), which the build
+  keeps in the bundle; a plain `/** */` comment would be dropped. A
+  shape from another source brings its own notice and version into that
+  header.
 - `use:tooltip={{ label, shortcut?, detail?, placement? }}`
   (`actions/tooltip.ts`) is the viewer's tooltip. It shares one
   `#rx-tooltip` element, appears after 500 ms of hover and at once when
