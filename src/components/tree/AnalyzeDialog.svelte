@@ -63,8 +63,11 @@
   }
 
   /** Escape closes the dialog. Without it the only way out is a click,
-   *  which leaves a keyboard user trapped behind the overlay. */
+   *  which leaves a keyboard user trapped behind the overlay. An Escape
+   *  something else already acted on (the shortcut list over the dialog
+   *  closed) is that one's: one press closes one dialog. */
   function handleKeydown(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
     if (isShortcut('closeAnalysis', event)) {
       close();
     }

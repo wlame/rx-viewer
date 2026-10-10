@@ -69,6 +69,19 @@ describe('AnalyzeDialog keys', () => {
 
     expect(close).not.toHaveBeenCalled();
   });
+
+  // The shortcut list over the dialog takes Esc to close: one press acts once.
+  it('stays open on an Escape that something under the window acted on', () => {
+    const { close } = mount();
+    const list = document.body.appendChild(document.createElement('div'));
+    list.addEventListener('keydown', (event) => event.preventDefault());
+
+    list.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+
+    expect(close).not.toHaveBeenCalled();
+  });
 });
 
 describe('AnalyzeDialog as a modal dialog', () => {

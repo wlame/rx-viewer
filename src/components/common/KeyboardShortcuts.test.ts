@@ -314,6 +314,26 @@ describe('the panel keys while something else owns the keyboard', () => {
     expect(target.querySelector('[aria-labelledby="shortcuts-title"]')).not.toBeNull();
   });
 
+  it('closes only the shortcut list on one Esc over the analysis dialog', async () => {
+    const target = mount();
+    const { closeButton } = openAnalysis();
+    const analysisClosed = vi.fn();
+    analysis?.$on('close', analysisClosed);
+    await keyDown(closeButton, { key: '/', metaKey: true });
+    const backdrop = target.querySelector<HTMLElement>('[aria-label="Close dialog"]');
+    if (!backdrop) throw new Error('the shortcut list is not open');
+
+    // In a browser an Esc on the list's Close reaches the window after
+    // the list closed, as its own listeners go with it first. jsdom keeps
+    // them for the whole dispatch, so the Esc goes to the list's
+    // backdrop, which is outside them, to take the same route.
+    const event = await keyDown(backdrop, { key: 'Escape' });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(target.querySelector('[aria-labelledby="shortcuts-title"]')).toBeNull();
+    expect(analysisClosed).not.toHaveBeenCalled();
+  });
+
   it('takes no key press of an input method that composes as a panel key', async () => {
     sidebarTab.set('search');
     mount();

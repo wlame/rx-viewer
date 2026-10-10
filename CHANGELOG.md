@@ -114,6 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its backdrop or Esc closes it. Back or Forward to a view of the Search
   panel used to hide it with the files panel until Files was shown
   again.
+- One Esc with the shortcut list open over the analysis dialog closes
+  only the list; it used to close both.
 
 ## [0.7.0] - 2026-10-09
 
