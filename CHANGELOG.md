@@ -20,12 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Alt+G, Alt+L and Alt+V do the same while the files panel is shown and
   no dialog is open, and ← and → move between Size and Date. The link
   keeps the choices as `labels=0` and `show=date`.
-- The link keeps the order of the files panel as `sort=<key>-<dir>`
-  (`name-desc`, `size-asc`, `size-desc`, `date-asc`, `date-desc`; by
-  name A to Z when absent). A sort on the value the link does not show
-  opens as a sort on the shown value in the same direction, and the
-  address bar says so. Switching between Size and Date moves a sort on
-  one to the other, largest or newest first; a sort by name stays.
+- Sorting of the files panel by name, size or date in both directions
+  from a column header under the toolbar: Name on the left, the value
+  shown (Size or Date) on the right. A click sorts by that column (names
+  A to Z, sizes largest first, dates newest first) and a second click
+  reverses it; the sorted column shows an arrow. Alt+N sorts by name and
+  Alt+S by the value shown, while the files panel is shown and no dialog
+  is open. Folders come first: by name under a size sort, by their own
+  time under a date sort. A log chain sorts among the files by its size
+  and the newest time of its parts; a value that is not known sorts
+  last. Names with numbers sort by number (`app.log.2` before
+  `app.log.10`), without case. The link keeps the order as
+  `sort=<key>-<dir>` (`name-desc`, `size-asc`, `size-desc`, `date-asc`,
+  `date-desc`; by name A to Z when absent). A sort on the value the link
+  does not show opens as a sort on the shown value in the same
+  direction, and the address bar says so. Switching between Size and
+  Date moves a sort on one to the other, largest or newest first; a
+  sort by name stays.
 
 ### Changed
 
@@ -45,11 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key is left to the browser, so the focus stays in the dialog. Before,
   Cmd/Ctrl+K closed the shortcut list and went to Search, and Cmd/Ctrl+K
   or Cmd/Ctrl+B hid an open analysis dialog with the files panel.
-- The files panel orders the names in each folder itself, without case
-  and with the numbers in them read as numbers, so `app.log.2` comes
-  before `app.log.10`; a log chain's row sorts among the files by the
-  same rule. Folders still come first; the search roots keep their
-  configured order.
+- The files panel orders each folder's rows itself instead of keeping
+  the backend's order; the search roots keep their configured order.
 - Group rotated logs is off unless the link turns it on with `chains=1`.
   The viewer no longer remembers the mode chosen last for a link that
   does not name it, and ignores the mode an earlier version stored.

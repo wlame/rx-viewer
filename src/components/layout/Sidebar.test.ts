@@ -248,6 +248,9 @@ describe('the files panel keys while something else owns the keyboard', () => {
     ['Alt+G', { key: '©', code: 'KeyG', altKey: true }],
     ['Alt+L', { key: '¬', code: 'KeyL', altKey: true }],
     ['Alt+V', { key: '√', code: 'KeyV', altKey: true }],
+    // Option+N is a dead key on a Mac's US layout.
+    ['Alt+N', { key: 'Dead', code: 'KeyN', altKey: true }],
+    ['Alt+S', { key: 'ß', code: 'KeyS', altKey: true }],
   ];
 
   afterEach(() => {

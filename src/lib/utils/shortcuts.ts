@@ -50,8 +50,9 @@ export type GlobalShortcutId =
 
 /**
  * The shortcuts of the files panel, which act while it is shown. An id is
- * matched only when the handler is given an action for it, so an id
- * without a row in the table (the sort keys) is never looked up.
+ * matched only when the handler is given an action for it, so the
+ * toolbar and the column header each handle the keys of their own
+ * controls.
  */
 export type FilesPanelShortcutId =
   'toggleChainMode' | 'toggleLabels' | 'switchValue' | 'sortByName' | 'sortByValue';
@@ -270,6 +271,20 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: 'filesPanel',
     description: 'Show the size or the date of each file',
     chord: { code: 'KeyV', alt: true },
+  },
+  // Option+N is a dead key on a Mac's US layout: its key reads "Dead",
+  // and its code still names the letter.
+  {
+    id: 'sortByName',
+    scope: 'filesPanel',
+    description: 'Sort by name, or reverse a sort by name',
+    chord: { code: 'KeyN', alt: true },
+  },
+  {
+    id: 'sortByValue',
+    scope: 'filesPanel',
+    description: 'Sort by the size or date shown, or reverse that sort',
+    chord: { code: 'KeyS', alt: true },
   },
   {
     id: 'valueSwitchMove',

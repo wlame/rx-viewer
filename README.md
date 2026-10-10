@@ -50,8 +50,12 @@ way.
   logs into chains (Alt+G), shows or hides the labels of the rows (the
   compression, index and chain marks; Alt+L), and switches the value
   right of each name between the size (a folder's item count) and the
-  modification time in the browser's time zone (Alt+V); the link keeps
-  each choice. A file the backend marks as not text is not opened.
+  modification time in the browser's time zone (Alt+V). The column
+  header under it sorts each folder's rows by name (Alt+N) or by the
+  value shown (Alt+S), and a second click or key press reverses the
+  order; folders come first, and names with numbers sort by number
+  (`app.log.2` before `app.log.10`). The link keeps each choice. A file
+  the backend marks as not text is not opened.
 - **Tabs** for the open files, reordered by drag and drop. Each tab keeps
   its own filter bar and scroll position.
 - **Paged reading of large files.** The editor never loads a whole file:
@@ -106,6 +110,8 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In the files panel, while it is shown | Alt+G                     | Group rotated logs: on or off                                                      |
 | In the files panel, while it is shown | Alt+L                     | Show labels: on or off                                                             |
 | In the files panel, while it is shown | Alt+V                     | Show the size or the date of each file                                             |
+| In the files panel, while it is shown | Alt+N                     | Sort by name, or reverse a sort by name                                            |
+| In the files panel, while it is shown | Alt+S                     | Sort by the size or date shown, or reverse that sort                               |
 | On the Size/Date switch               | ← or →                    | Choose the value before or after the chosen one                                    |
 | In the file tree                      | Enter or Space            | Open the file, or open or close the folder                                         |
 | In a search pattern field             | Enter                     | Run the search                                                                     |
@@ -131,9 +137,10 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 While a dialog is open (the shortcut list, the analysis, the API token
 prompt), the keys that show a panel or the sidebar, Alt+1, Alt+2,
 Cmd/Ctrl+Shift+E or F, Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the
-keyboard stays with the dialog. Alt+G, Alt+L and Alt+V act only while the
-files panel is shown and no dialog is open; otherwise the key is left to
-the browser. Alt+G acts only on a backend that serves log chains.
+keyboard stays with the dialog. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act
+only while the files panel is shown and no dialog is open; otherwise the
+key is left to the browser. Alt+G acts only on a backend that serves log
+chains.
 
 The table in the app is generated from `src/lib/utils/shortcuts.ts`, so it
 is the one to trust if the two ever differ.

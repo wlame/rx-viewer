@@ -158,6 +158,10 @@ describe('KeyboardShortcuts help groups', () => {
     expect(rows).toContain('Alt+L');
     expect(rows).toContain('Show the size or the date of each file');
     expect(rows).toContain('Alt+V');
+    expect(rows).toContain('Sort by name, or reverse a sort by name');
+    expect(rows).toContain('Alt+N');
+    expect(rows).toContain('Sort by the size or date shown, or reverse that sort');
+    expect(rows).toContain('Alt+S');
   });
 
   it('lists no group that has no shortcut', async () => {

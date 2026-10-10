@@ -123,7 +123,7 @@ describe('handleGlobalKey', () => {
 });
 
 describe('handleFilesPanelKey', () => {
-  /** Actions for the three files panel keys, each acting unless told not to. */
+  /** Actions for the five files panel keys, each acting unless told not to. */
   function filesActions(acting = true) {
     const ran: string[] = [];
     const act = (id: string) => () => {
@@ -136,15 +136,20 @@ describe('handleFilesPanelKey', () => {
         toggleChainMode: act('toggleChainMode'),
         toggleLabels: act('toggleLabels'),
         switchValue: act('switchValue'),
+        sortByName: act('sortByName'),
+        sortByValue: act('sortByValue'),
       },
     };
   }
 
   // A Mac types the Option symbol as the key; the code names the letter.
+  // Option+N is a dead key on a Mac's US layout: its key is "Dead".
   it.each([
     ['toggleChainMode', '©', 'KeyG'],
     ['toggleLabels', '¬', 'KeyL'],
     ['switchValue', '√', 'KeyV'],
+    ['sortByName', 'Dead', 'KeyN'],
+    ['sortByValue', 'ß', 'KeyS'],
   ])('runs %s for Alt+%s and keeps the key from the browser', (id, key, code) => {
     const { actions, ran } = filesActions();
     const event = press(key, { code, altKey: true });
@@ -323,8 +328,8 @@ describe('the shortcut list', () => {
     [
       'filesPanel',
       'In the files panel, while it is shown',
-      ['toggleChainMode', 'toggleLabels', 'switchValue'],
-      ['Alt+G', 'Alt+L', 'Alt+V'],
+      ['toggleChainMode', 'toggleLabels', 'switchValue', 'sortByName', 'sortByValue'],
+      ['Alt+G', 'Alt+L', 'Alt+V', 'Alt+N', 'Alt+S'],
     ],
     ['valueSwitch', 'On the Size/Date switch', ['valueSwitchMove'], ['← or →']],
     ['fileTree', 'In the file tree', ['openTreeItem'], ['Enter or Space']],

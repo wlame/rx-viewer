@@ -245,6 +245,31 @@ describe('the order of the files panel', () => {
     expect(shown).not.toEqual(expectedUnderLogDir(mode, DEFAULT_FILES_VIEW.sort));
   });
 
+  it('shows the rows by size, largest first, when the Size header is clicked', async () => {
+    const { target } = await mountLogDir(true);
+
+    target.querySelector<HTMLButtonElement>('button[aria-label="Sort by size"]')?.click();
+    await tick();
+
+    expect(shownUnderLogDir(target)).toEqual(
+      expectedUnderLogDir(true, { key: 'size', dir: 'desc' }),
+    );
+  });
+
+  it('has its column header under the toolbar and outside the tree', async () => {
+    const { target } = await mountLogDir(false);
+    const toolbar = target.querySelector('h2');
+    const header = target.querySelector('button[aria-label^="Sort by name"]');
+    const fileTree = target.querySelector('[role="tree"]');
+    if (!toolbar || !header || !fileTree) throw new Error('the files panel is not rendered');
+
+    expect(header.closest('[role="tree"]')).toBeNull();
+    expect(toolbar.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      header.compareDocumentPosition(fileTree) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('keeps the search roots in their configured order', async () => {
     serveRoots(['/zeta', '/alpha', '/mid']);
     await health.check();
