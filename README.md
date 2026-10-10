@@ -124,8 +124,8 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | In the file tree                      | Enter or Space            | Open the file, or open or close the folder                                         |
 | In the file tree                      | Type a name               | Go to the next row whose name starts with the letters typed                        |
 | In the file tree                      | Esc                       | Go back to the open file                                                           |
+| In the search panel                   | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
 | In a search pattern field             | Enter                     | Run the search                                                                     |
-| In a search pattern field             | Alt+C, Alt+W, Alt+R       | Switch match case, whole word, regular expression                                  |
 | In the open file                      | `:` or Cmd/Ctrl+G         | Go to a line of the file; in a log chain's tab, see below                          |
 | In the open file                      | Cmd/Ctrl+F                | Find in the lines loaded in the editor                                             |
 | In the open file                      | Cmd/Alt+click on a chip   | Next anomaly of the selected category; with Shift, the previous one                |
@@ -150,7 +150,9 @@ Cmd/Ctrl+Shift+E or F, Cmd/Ctrl+K and Cmd/Ctrl+B, do nothing: the
 keyboard stays with the dialog. Alt+G, Alt+L, Alt+V, Alt+N and Alt+S act
 only while the files panel is shown and no dialog is open; otherwise the
 key is left to the browser. Alt+G acts only on a backend that serves log
-chains.
+chains. Alt+C, Alt+W and Alt+R act wherever the focus is in the search
+panel, a pattern field or not, while no dialog is open; a toggle that is
+disabled leaves the key to the browser.
 
 The file tree is one Tab stop. Tab enters it on the row that had the
 focus last, else on the open file's row, else on the first row, and Tab

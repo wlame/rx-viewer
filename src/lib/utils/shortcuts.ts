@@ -7,7 +7,7 @@
  * chord. A row with a `gesture` is a mouse action, listed for help only.
  */
 import { belongsToInputMethod, type CompositionState } from './keyTargets';
-import { SEARCH_TOGGLES } from './searchToggles';
+import { SEARCH_TOGGLES, type SearchToggles } from './searchToggles';
 
 /** Where a shortcut works, in the order the help dialog lists them. */
 export const SHORTCUT_SCOPES = {
@@ -57,6 +57,16 @@ export type GlobalShortcutId =
 export type FilesPanelShortcutId =
   'toggleChainMode' | 'toggleLabels' | 'switchValue' | 'sortByName' | 'sortByValue';
 
+/** The key of each search toggle: `toggle:matchCase` and so on. */
+export type SearchToggleShortcutId = `toggle:${keyof SearchToggles}`;
+
+/**
+ * The shortcuts of the search panel, which act wherever the focus is
+ * inside it. An id is matched only when the handler is given an action
+ * for it.
+ */
+export type SearchPanelShortcutId = SearchToggleShortcutId;
+
 /**
  * The keys of the file tree. Its key handler hands those with a chord to
  * its key rules (`utils/treeNav.ts`); `treeTypeName` is any letter typed.
@@ -76,8 +86,8 @@ export type ShortcutId =
   | FilesPanelShortcutId
   | 'activityBarMove'
   | 'valueSwitchMove'
+  | SearchPanelShortcutId
   | 'runSearch'
-  | `toggle:${string}`
   | 'gotoLine'
   | 'gotoJump'
   | 'gotoClose'
@@ -307,18 +317,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     chord: { key: 'ArrowLeft' },
     otherChords: [{ key: 'ArrowRight' }],
   },
+  ...SEARCH_TOGGLES.map((toggle): Shortcut => ({
+    id: `toggle:${toggle.key}`,
+    scope: 'searchPanel',
+    description: `${toggle.title}: on or off`,
+    chord: { code: toggle.shortcutCode, alt: true },
+  })),
   {
     id: 'runSearch',
     scope: 'searchField',
     description: 'Run the search',
     chord: { key: 'Enter', shift: false },
   },
-  ...SEARCH_TOGGLES.map((toggle): Shortcut => ({
-    id: `toggle:${toggle.key}`,
-    scope: 'searchField',
-    description: `${toggle.title}: on or off`,
-    chord: { code: toggle.shortcutCode, alt: true },
-  })),
   {
     id: 'treeMove',
     scope: 'fileTree',
@@ -561,11 +571,30 @@ export function handleGlobalKey(
   return true;
 }
 
+/** What each of some shortcuts does; an action returns whether it acted. */
+type ShortcutActions<Id extends ShortcutId> = Partial<Record<Id, () => boolean>>;
+
+/**
+ * Run the shortcut `event` is, among those `actions` holds; an id without
+ * an action is not matched. `preventDefault` is called only when the
+ * action acted.
+ */
+function runShortcutAmong<Id extends ShortcutId>(
+  event: KeyPress & { preventDefault(): void },
+  actions: ShortcutActions<Id>,
+): boolean {
+  const ids = Object.keys(actions) as Id[];
+  const id = ids.find((candidate) => isShortcut(candidate, event));
+  if (!id || !actions[id]?.()) return false;
+  event.preventDefault();
+  return true;
+}
+
 /**
  * What each files panel shortcut does; an id without an action is not
  * matched. An action returns whether it acted.
  */
-export type FilesPanelShortcutActions = Partial<Record<FilesPanelShortcutId, () => boolean>>;
+export type FilesPanelShortcutActions = ShortcutActions<FilesPanelShortcutId>;
 
 /**
  * Run the files panel shortcut `event` is, among those `actions` holds.
@@ -577,9 +606,24 @@ export function handleFilesPanelKey(
   event: KeyPress & { preventDefault(): void },
   actions: FilesPanelShortcutActions,
 ): boolean {
-  const ids = Object.keys(actions) as FilesPanelShortcutId[];
-  const id = ids.find((candidate) => isShortcut(candidate, event));
-  if (!id || !actions[id]?.()) return false;
-  event.preventDefault();
-  return true;
+  return runShortcutAmong(event, actions);
+}
+
+/**
+ * What each search panel shortcut does; an id without an action is not
+ * matched. An action returns whether it acted: a disabled toggle does not.
+ */
+export type SearchPanelShortcutActions = ShortcutActions<SearchPanelShortcutId>;
+
+/**
+ * Run the search panel shortcut `event` is, among those `actions` holds.
+ * The caller hears the keys of the whole panel and decides whether they
+ * apply at all (no dialog is open). `preventDefault` is called only when
+ * the action acted.
+ */
+export function handleSearchPanelKey(
+  event: KeyPress & { preventDefault(): void },
+  actions: SearchPanelShortcutActions,
+): boolean {
+  return runShortcutAmong(event, actions);
 }

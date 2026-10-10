@@ -3,7 +3,6 @@ import {
   DEFAULT_SEARCH_TOGGLES,
   SEARCH_TOGGLES,
   matchingFlagParams,
-  toggleForShortcut,
   togglesFromFlags,
   type SearchToggles,
 } from './searchToggles';
@@ -30,22 +29,7 @@ describe('matchingFlagParams', () => {
   });
 });
 
-describe('toggleForShortcut', () => {
-  it('finds the toggle for Alt with its key code', () => {
-    expect(toggleForShortcut({ altKey: true, code: 'KeyC' })?.key).toBe('matchCase');
-    expect(toggleForShortcut({ altKey: true, code: 'KeyW' })?.key).toBe('wholeWord');
-    expect(toggleForShortcut({ altKey: true, code: 'KeyR' })?.key).toBe('regex');
-  });
-
-  it('ignores the key without Alt, so typing the letter still types it', () => {
-    expect(toggleForShortcut({ altKey: false, code: 'KeyC' })).toBeUndefined();
-  });
-
-  it('ignores the key while an input method composes', () => {
-    expect(toggleForShortcut({ altKey: true, code: 'KeyC', isComposing: true })).toBeUndefined();
-    expect(toggleForShortcut({ altKey: true, code: 'KeyC', keyCode: 229 })).toBeUndefined();
-  });
-
+describe('SEARCH_TOGGLES', () => {
   it('gives every toggle its own shortcut', () => {
     const codes = SEARCH_TOGGLES.map((spec) => spec.shortcutCode);
     expect(new Set(codes).size).toBe(codes.length);

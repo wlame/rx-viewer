@@ -5,7 +5,6 @@
  * trace request sends when the toggle is away from ripgrep's default.
  */
 import type { TraceMatchingFlags } from '../types';
-import { belongsToInputMethod, type CompositionState } from './keyTargets';
 
 export interface SearchToggles {
   matchCase: boolean;
@@ -96,16 +95,4 @@ export function toggleTooltip(spec: SearchToggleSpec): string {
   const key = spec.shortcutCode.replace('Key', '');
   const state = spec.sendsWhen ? 'On' : 'Off';
   return `${spec.title} (Alt+${key}). ${state}: ripgrep ${spec.ripgrepFlag}`;
-}
-
-/**
- * The toggle an Alt+key press flips, or undefined. Matched on the key's
- * code rather than its character, because on a Mac Alt+C types "ç".
- * A key press an input method is composing with flips nothing.
- */
-export function toggleForShortcut(
-  event: CompositionState & { altKey: boolean; code: string },
-): SearchToggleSpec | undefined {
-  if (!event.altKey || belongsToInputMethod(event)) return undefined;
-  return SEARCH_TOGGLES.find((spec) => spec.shortcutCode === event.code);
 }

@@ -5,6 +5,7 @@ import { tick } from 'svelte';
 import { writable } from 'svelte/store';
 import { health, trace } from '$lib/stores';
 import { chainMode } from '$lib/stores/chainMode';
+import { registerModal } from '$lib/stores/layout';
 import { searchRequest } from '$lib/stores/trace';
 import SearchPanel from './SearchPanel.svelte';
 
@@ -72,9 +73,9 @@ async function typeValue(input: HTMLInputElement, value: string) {
   await tick();
 }
 
-function keyDown(input: HTMLInputElement, init: KeyboardEventInit): KeyboardEvent {
+function keyDown(element: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
   const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
-  input.dispatchEvent(event);
+  element.dispatchEvent(event);
   return event;
 }
 
@@ -175,5 +176,131 @@ describe('SearchPanel route', () => {
 
     expect(search).toHaveBeenCalledWith(['/logs/notes.txt'], ['timeout'], expect.anything());
     expect(target.querySelector('label[for="only-opened-files"]')?.textContent).toContain('(1)');
+  });
+});
+
+/** The pressed state of the toggle named `name`. */
+function pressed(target: HTMLElement, name: string): string | null {
+  const button = target.querySelector(`button[aria-label="${name}"]`);
+  if (!button) throw new Error(`no button named ${name}`);
+  return button.getAttribute('aria-pressed');
+}
+
+// A Mac types the Option symbol as the key; the code names the letter.
+const TOGGLE_KEYS: [string, string, KeyboardEventInit][] = [
+  ['Alt+C', 'Match case', { key: 'ç', code: 'KeyC', altKey: true }],
+  ['Alt+W', 'Match whole word', { key: '∑', code: 'KeyW', altKey: true }],
+  ['Alt+R', 'Use regular expression', { key: '®', code: 'KeyR', altKey: true }],
+];
+
+describe('the search panel keys', () => {
+  it.each(TOGGLE_KEYS)('%s switches %s from a pattern field', async (_key, name, init) => {
+    await backendWith(['trace_matching_flags'], false);
+    const { target, input } = mount();
+    const before = pressed(target, name);
+    input.focus();
+
+    const event = keyDown(input, init);
+    await tick();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(pressed(target, name)).not.toBe(before);
+  });
+
+  it.each(TOGGLE_KEYS)('%s switches %s from a toggle button', async (_key, name, init) => {
+    await backendWith(['trace_matching_flags'], false);
+    const { target } = mount();
+    const before = pressed(target, name);
+    const button = target.querySelector<HTMLButtonElement>('button[aria-label="Match case"]');
+    if (!button) throw new Error('the toggles are not rendered');
+    button.focus();
+
+    const event = keyDown(button, init);
+    await tick();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(pressed(target, name)).not.toBe(before);
+  });
+
+  it('sends the toggle a key switched with the next search', async () => {
+    await backendWith(['trace_matching_flags'], false);
+    const { input, search } = mount();
+    await typeValue(input, 'timeout');
+
+    keyDown(input, { key: 'ç', code: 'KeyC', altKey: true });
+    await tick();
+    keyDown(input, { key: 'Enter', code: 'Enter' });
+
+    expect(search).toHaveBeenCalledWith(['/logs'], ['timeout'], {
+      maxResults: 100,
+      flags: { ignore_case: true },
+    });
+  });
+});
+
+/**
+ * The search panel's keys belong to it only while the focus is inside it
+ * and no dialog owns the keyboard; a key that does not act changes
+ * nothing and is left to the browser.
+ */
+describe('the search panel keys while something else owns the keyboard', () => {
+  it.each(TOGGLE_KEYS)(
+    '%s with the focus outside the panel does nothing',
+    async (_k, name, init) => {
+      await backendWith(['trace_matching_flags'], false);
+      const { target } = mount();
+      const before = pressed(target, name);
+      const elsewhere = document.body.appendChild(document.createElement('button'));
+      elsewhere.focus();
+
+      const event = keyDown(elsewhere, init);
+      await tick();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(pressed(target, name)).toBe(before);
+    },
+  );
+
+  it.each(TOGGLE_KEYS)(
+    '%s does nothing on a backend that takes no match options',
+    async (_key, name, init) => {
+      await backendWith([], false);
+      const { target, input } = mount();
+      const before = pressed(target, name);
+      input.focus();
+
+      const event = keyDown(input, init);
+      await tick();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(pressed(target, name)).toBe(before);
+    },
+  );
+
+  it.each(TOGGLE_KEYS)('%s does nothing while a modal dialog is open', async (_key, name, init) => {
+    await backendWith(['trace_matching_flags'], false);
+    const { target, input } = mount();
+    const before = pressed(target, name);
+    const closeDialog = registerModal();
+    try {
+      const event = keyDown(input, init);
+      await tick();
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(pressed(target, name)).toBe(before);
+    } finally {
+      closeDialog();
+    }
+  });
+
+  it('leaves Alt+C of an input method alone', async () => {
+    await backendWith(['trace_matching_flags'], false);
+    const { target, input } = mount();
+
+    const event = keyDown(input, { key: 'ç', code: 'KeyC', altKey: true, isComposing: true });
+    await tick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(pressed(target, 'Match case')).toBe('true');
   });
 });

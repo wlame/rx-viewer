@@ -164,12 +164,25 @@ describe('KeyboardShortcuts help groups', () => {
     expect(rows).toContain('Alt+S');
   });
 
+  it('lists the search toggles under "In the search panel"', async () => {
+    const { target } = await openHelp();
+
+    const heading = [...target.querySelectorAll('h3')].find(
+      (h) => h.textContent?.trim() === 'In the search panel',
+    );
+    const rows = heading?.nextElementSibling?.textContent ?? '';
+
+    expect(rows).toContain('Match case: on or off');
+    expect(rows).toContain('Alt+C');
+    expect(rows).toContain('Match whole word: on or off');
+    expect(rows).toContain('Alt+W');
+    expect(rows).toContain('Use regular expression: on or off');
+    expect(rows).toContain('Alt+R');
+  });
+
   it('lists no group that has no shortcut', async () => {
     const { target } = await openHelp();
 
-    const titles = [...target.querySelectorAll('h3')].map((h) => h.textContent?.trim());
-
-    expect(titles).not.toContain('In the search panel');
     for (const heading of target.querySelectorAll('h3')) {
       expect(heading.nextElementSibling?.querySelectorAll('dt').length).toBeGreaterThan(0);
     }

@@ -4,12 +4,16 @@
   import { trace, tree, files, health, backendHas } from '$lib/stores';
   import { searchRequest } from '$lib/stores/trace';
   import { chainModeOn } from '$lib/stores/chainMode';
-  import { searchFocusRequested } from '$lib/stores/layout';
-  import { isShortcut } from '$lib/utils/shortcuts';
+  import { modalOpen, searchFocusRequested } from '$lib/stores/layout';
+  import {
+    handleSearchPanelKey,
+    isShortcut,
+    type SearchPanelShortcutActions,
+  } from '$lib/utils/shortcuts';
   import {
     DEFAULT_SEARCH_TOGGLES,
+    SEARCH_TOGGLES,
     matchingFlagParams,
-    toggleForShortcut,
     togglesFromFlags,
     type SearchToggles as Toggles,
   } from '$lib/utils/searchToggles';
@@ -140,21 +144,39 @@
     });
   }
 
-  function handleKeydown(event: KeyboardEvent, _index: number) {
-    const toggle = toggleForShortcut(event);
-    if (toggle && flagsSupported) {
-      event.preventDefault();
-      toggles = { ...toggles, [toggle.key]: !toggles[toggle.key] };
-      return;
-    }
-    if (isShortcut('runSearch', event)) {
-      event.preventDefault();
-      handleSearch();
-    }
+  function handlePatternKeydown(event: KeyboardEvent) {
+    if (!isShortcut('runSearch', event)) return;
+    event.preventDefault();
+    handleSearch();
+  }
+
+  // The toggles' buttons are disabled without a root to search or on a
+  // backend that ignores the flags; a key does nothing then either.
+  $: canSwitchToggles = hasRoots && flagsSupported;
+
+  /** Switch the toggle `key`; returns whether it could. */
+  function switchToggle(key: keyof Toggles): boolean {
+    if (!canSwitchToggles) return false;
+    toggles = { ...toggles, [key]: !toggles[key] };
+    return true;
+  }
+
+  const panelActions: SearchPanelShortcutActions = Object.fromEntries(
+    SEARCH_TOGGLES.map((spec) => [`toggle:${spec.key}`, () => switchToggle(spec.key)]),
+  );
+
+  // The panel hears the keys of every control inside it; a dialog that
+  // owns the keyboard keeps them.
+  function handlePanelKeydown(event: KeyboardEvent) {
+    if ($modalOpen) return;
+    handleSearchPanelKey(event, panelActions);
   }
 </script>
 
-<div class="flex flex-col h-full">
+<!-- The panel's keys work wherever the focus is inside it, so the panel
+     itself hears them; it takes no focus of its own. -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
+<div class="flex flex-col h-full" on:keydown={handlePanelKeydown}>
   <!-- Search patterns -->
   <div class="p-3 border-b border-gh-border-default dark:border-gh-border-dark-default">
     <!-- The fields stay usable during a search: a disabled field drops its
@@ -170,7 +192,7 @@
             value={pattern}
             bind:this={patternInputs[index]}
             on:input={(e) => updatePattern(index, e.currentTarget.value)}
-            on:keydown={(e) => handleKeydown(e, index)}
+            on:keydown={handlePatternKeydown}
             disabled={!hasRoots}
           />
           {#if searchPatterns.length > 1}

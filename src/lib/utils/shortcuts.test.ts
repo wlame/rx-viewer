@@ -9,6 +9,7 @@ import {
   detectPlatform,
   handleFilesPanelKey,
   handleGlobalKey,
+  handleSearchPanelKey,
   isShortcut,
   shortcutKeys,
   shortcutLabel,
@@ -190,6 +191,61 @@ describe('handleFilesPanelKey', () => {
   });
 });
 
+describe('handleSearchPanelKey', () => {
+  /** Actions for the search panel keys, each acting unless told not to. */
+  function searchActions(acting = true) {
+    const ran: string[] = [];
+    const act = (id: string) => () => {
+      ran.push(id);
+      return acting;
+    };
+    return {
+      ran,
+      actions: {
+        'toggle:matchCase': act('toggle:matchCase'),
+        'toggle:wholeWord': act('toggle:wholeWord'),
+        'toggle:regex': act('toggle:regex'),
+      },
+    };
+  }
+
+  // A Mac types the Option symbol as the key; the code names the letter.
+  it.each([
+    ['toggle:matchCase', 'ç', 'KeyC'],
+    ['toggle:wholeWord', '∑', 'KeyW'],
+    ['toggle:regex', '®', 'KeyR'],
+  ])('runs %s for Alt+%s and keeps the key from the browser', (id, key, code) => {
+    const { actions, ran } = searchActions();
+    const event = press(key, { code, altKey: true });
+
+    expect(handleSearchPanelKey(event, actions)).toBe(true);
+    expect(ran).toEqual([id]);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('leaves the key to the browser when the toggle did not act', () => {
+    const { actions, ran } = searchActions(false);
+    const event = press('ç', { code: 'KeyC', altKey: true });
+
+    expect(handleSearchPanelKey(event, actions)).toBe(false);
+    expect(ran).toEqual(['toggle:matchCase']);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['C without Alt', press('c', { code: 'KeyC' })],
+    ['Cmd+Alt+C', press('ç', { code: 'KeyC', altKey: true, metaKey: true })],
+    ['Alt+C of an input method', press('ç', { code: 'KeyC', altKey: true, isComposing: true })],
+    ['Alt+G', press('©', { code: 'KeyG', altKey: true })],
+  ])('leaves %s alone', (_name, event) => {
+    const { actions, ran } = searchActions();
+
+    expect(handleSearchPanelKey(event, actions)).toBe(false);
+    expect(ran).toEqual([]);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
 describe('isShortcut', () => {
   it('matches the go-to-line colon, which needs Shift on most layouts', () => {
     expect(isShortcut('gotoLine', press(':', { shiftKey: true }))).toBe(true);
@@ -361,6 +417,13 @@ describe('the shortcut list', () => {
     ],
     ['valueSwitch', 'On the Size/Date switch', ['valueSwitchMove'], ['← or →']],
     [
+      'searchPanel',
+      'In the search panel',
+      ['toggle:matchCase', 'toggle:wholeWord', 'toggle:regex'],
+      ['Alt+C', 'Alt+W', 'Alt+R'],
+    ],
+    ['searchField', 'In a search pattern field', ['runSearch'], ['Enter']],
+    [
       'fileTree',
       'In the file tree',
       [
@@ -417,11 +480,10 @@ describe('the shortcut list', () => {
     expect(group?.shortcuts.map(shortcutLabel)).toEqual(labels);
   });
 
-  it('lists no group for a place that has no shortcut yet', () => {
+  it('lists every place a shortcut works, in the order of the places, none empty', () => {
     const groups = shortcutsByScope();
 
-    expect(SHORTCUT_SCOPES.searchPanel).toBe('In the search panel');
-    expect(groups.map((g) => g.scope)).not.toContain('searchPanel');
+    expect(groups.map((g) => g.scope)).toEqual(Object.keys(SHORTCUT_SCOPES));
     expect(groups.every((g) => g.shortcuts.length > 0)).toBe(true);
   });
 

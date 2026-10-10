@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Group rotated logs is off unless the link turns it on with `chains=1`.
   The viewer no longer remembers the mode chosen last for a link that
   does not name it, and ignores the mode an earlier version stored.
+- Alt+C, Alt+W and Alt+R switch match case, whole word and regular
+  expression wherever the focus is in the search panel (a toggle, a
+  result), not only in a pattern field. While a dialog is open, or while
+  the toggles are disabled on a backend that takes no match options, the
+  key does nothing and is left to the browser.
 
 ## [0.7.0] - 2026-10-09
 
