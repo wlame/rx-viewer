@@ -94,6 +94,7 @@ interchangeable backends, no vendoring.
 | `src/lib/actions/`                                        | Svelte actions: `tooltip` (label and keys on hover and focus), `modal` (counts an open modal dialog), `takeFocus` (focus to a dialog, then back)   |
 | `src/lib/utils/icons.ts`                                  | The icon table (Lucide outlines); `src/components/common/Icon.svelte` draws it                                                                     |
 | `src/lib/utils/treeSort.ts`, `treeRows.ts`, `treeNav.ts`  | The files panel's sort, the rows the tree shows as one list, and the tree's key rules                                                              |
+| `src/lib/utils/tabOrder.ts`, `recentSwitch.ts`            | The open tabs' strip and recent orders; the recent-tab switcher's state machine                                                                    |
 | `vite.config.ts`                                          | Dev proxy `/v1`, `/health` → `localhost:8080`; Monaco manual chunk                                                                                 |
 | `.github/workflows/`                                      | `ci.yml` (build) and `release.yml` (tag → `dist.tar.gz` release)                                                                                   |
 
@@ -180,6 +181,33 @@ separate comment above, or eslint reads every word as another rule.
   zones, `ftz=<zone>@<key>`), so a chain and the file at its handle never
   share state. Code that reads a file (samples, index, time range) takes
   the file's path, which is its key.
+- The files store keeps two orders of the open tabs: the strip's
+  (`openFiles`, which drag and drop changes) and the recent order
+  (`recentTabs`, most recently used first). Every change of the store
+  goes through its `update`, which follows the tabs with `followTabs`
+  (`utils/tabOrder.ts`): the active tab comes first, a closed tab
+  leaves, a new one joins at the end, and when the active tab closes the
+  most recent remaining one becomes active. So no way of showing a tab
+  (a click, a link, a jump, a chain's own steps, a key) needs code of its
+  own. A chain mode switch, whose opening and closing would reorder it,
+  puts each turned tab in the place of the tabs it replaced
+  (`replaceInRecent` in `turnTabs`). The recent order is session state
+  and stays out of the URL; a link opens with its tab first and the
+  others in strip order.
+- The tab strip (`components/layout/TabStrip.svelte`) is a WAI-ARIA tab
+  list with automatic activation: one Tab stop on the active tab, ←/→
+  round the ends, Home/End, Delete closes. A tab is a `<button
+role="tab">` that also carries the drag handlers; its close button is a
+  sibling inside a `role="presentation"` wrapper, `tabindex="-1"` and
+  `aria-hidden`, so the tab list holds only tabs. The editor area in
+  `MainContent.svelte` is the `tabpanel` every tab controls.
+- The recent-tab switcher (`components/layout/RecentTabsSwitcher.svelte`,
+  drawn by `App.svelte`) runs the pure state machine of
+  `utils/recentSwitch.ts`. It counts as a modal dialog from the first
+  Alt+Q, its list shows after `RECENT_LIST_DELAY_MS` (a quick Alt+Q draws
+  nothing), and a keyup without Alt held shows the chosen tab. Esc, the
+  window's `blur` and `visibilitychange` close it without a switch, and a
+  tab that closes meanwhile leaves its list.
 - Log chains act only while `chainModeOn` holds (`stores/chainMode.ts`:
   the "Group rotated logs" toggle button, `chains=1`, and `log_chains` in
   `/health`), and only through the `/v1/logs` routes. The mode is not
@@ -222,23 +250,30 @@ separate comment above, or eslint reads every word as another rule.
   theirs and the help dialog (Cmd/Ctrl+/) lists it, so add a shortcut
   there, never as a bare `event.key` check. A handler calls
   `preventDefault` only when it acted. A row belongs to a scope
-  (`SHORTCUT_SCOPES`, in the help's order: anywhere, panels, activity
-  bar, files panel, Size/Date switch, file tree, search panel, search
-  field, then the editor's and the dialogs'); the help lists a scope
+  (`SHORTCUT_SCOPES`, in the help's order: anywhere, panels, open file
+  tabs, activity bar, files panel, Size/Date switch, file tree, search
+  panel, search field, tab strip, then the editor's and the dialogs');
+  the help lists a scope
   only once it has a row. The README's table lists the same rows, and a
   test fails when the two differ: change both in one commit.
   - A scope's handler is a pure function that is given only the actions
     of the controls that call it, and matches the ids it is given:
     `handleGlobalKey` (`KeyboardShortcuts.svelte`, on the window in the
     capture phase, since Monaco binds Cmd/Ctrl+K and Cmd/Ctrl+/ itself),
+    `handleFileTabsKey` (`KeyboardShortcuts.svelte` too: Alt+], Alt+[ and
+    Alt+X, acting only while no modal dialog is open),
+    `handleRecentTabsKey` (`RecentTabsSwitcher.svelte`, on the window in
+    the capture phase: Alt+Q, Alt+Shift+Q and its Esc),
     `handleFilesPanelKey` (`FilesToolbar.svelte` and `TreeHeader.svelte`,
     each with its own controls' actions, acting only while
     `filesPanelShown` holds and no modal dialog is open) and
     `handleSearchPanelKey` (the search panel's root element, wherever the
-    focus is inside it). The file tree has one `keydown` on `role="tree"`:
+    focus is inside it). Each tab of the strip checks its rows with
+    `isShortcut`. The file tree has one `keydown` on `role="tree"`:
     it checks the chord rows with `isShortcut`, then gives the other keys
     to `treeKeyAction`. An Alt+letter or Alt+digit row matches by `code`,
-    because a Mac's Option changes `key` (`©`, `¡`, `Dead`). The keys
+    because a Mac's Option changes `key` (`©`, `¡`, `Dead`, `‘` for
+    Option+], `œ` for Option+Q). The keys
     shown on a Mac (`⌥G`) or elsewhere (`Alt+G`) come from
     `shortcutKeys(id, platform)`.
   - The one exception to the one-table rule: Esc hides a tooltip through
@@ -267,9 +302,11 @@ separate comment above, or eslint reads every word as another rule.
 - Every element with `aria-modal="true"` carries `use:modal`
   (`actions/modal.ts`), which counts the dialog in `modalOpen`
   (`stores/layout.ts`) while it is in the page. While `modalOpen` holds,
-  the panel keys, Cmd/Ctrl+K, Cmd/Ctrl+B and the keys of the activity
-  bar, the file tree, the Size/Date switch and the files and search
-  panels do nothing and are not cancelled, so the keyboard stays with
+  the panel keys, Cmd/Ctrl+K, Cmd/Ctrl+B, the open file tab keys and
+  the keys of the activity bar, the tab strip, the file tree, the
+  Size/Date switch and the files and search panels do nothing and are
+  not cancelled (the recent-tab switcher's own Alt+Q is the one key that
+  acts in its own dialog), so the keyboard stays with
   the dialog; a key handler outside a dialog checks it on its first
   line, and a button whose Enter would act behind a dialog checks it in
   its click handler. A source test (`actions/modal.test.ts`) fails
