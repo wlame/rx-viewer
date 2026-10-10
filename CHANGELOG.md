@@ -91,7 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   find. Max takes a whole number from 1 to 10,000; any other value turns
   the box red with "max: 1 to 10,000" under the line, and a search run
   with it is refused (nothing is sent, the focus goes to the box). The
-  value is sent as typed, never changed. Enter in the max box runs the
+  value is sent as typed, never changed, and the box takes text of any
+  length, so a pasted `100000` shows red rather than becoming `10000`. Enter in the max box runs the
   search, as in a pattern field. Alt+C, Alt+W, Alt+R and the new Alt+O
   (Only opened files) work wherever the focus is in the search panel (a
   toggle, the max box, a result), not only in a pattern field; a toggle

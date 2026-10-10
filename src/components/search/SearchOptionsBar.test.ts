@@ -71,13 +71,14 @@ describe('the search options line', () => {
     expect(target.textContent).not.toContain('Options');
   });
 
-  it('has a plain text max box five characters wide, without spinner arrows', () => {
+  // A length limit would cut a pasted 100000 to 10000 without a word.
+  it('has a plain text max box five characters wide, with no length limit and no spinner arrows', () => {
     const { target, maxBox } = mount();
 
     expect(maxBox().getAttribute('type')).toBe('text');
     expect(maxBox().getAttribute('inputmode')).toBe('numeric');
     expect(maxBox().getAttribute('size')).toBe('5');
-    expect(maxBox().getAttribute('maxlength')).toBe('5');
+    expect(maxBox().hasAttribute('maxlength')).toBe(false);
     expect(target.querySelector('input[type="number"]')).toBeNull();
   });
 
@@ -211,7 +212,7 @@ describe('the max box', () => {
     expect(document.getElementById(TOOLTIP_ID)?.textContent).toBe('Stop after this many matches');
   });
 
-  it.each(['', '0', '10001', '12a', ' 5'])(
+  it.each(['', '0', '10001', '100000', '12a', ' 5'])(
     'marks %j red and invalid, with the rule under the line',
     async (text) => {
       const { maxBox, rule } = mount();

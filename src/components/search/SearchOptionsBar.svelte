@@ -113,7 +113,6 @@
         type="text"
         inputmode="numeric"
         size="5"
-        maxlength="5"
         class="{MAX_BOX_CLASS} {isMaxValid ? '' : INVALID_CLASS}"
         aria-label="Most matches"
         aria-invalid={isMaxValid ? undefined : 'true'}

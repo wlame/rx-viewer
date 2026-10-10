@@ -401,6 +401,18 @@ describe('a max the search cannot take', () => {
     expect(ruleOf(target)?.textContent?.trim()).toBe('max: 1 to 10,000');
   });
 
+  it('refuses a pasted 100000 as it reads, never as 10000', async () => {
+    const { target, input, search } = await mountWithMax('100000');
+
+    keyDown(input, { key: 'Enter' });
+    await tick();
+
+    expect(search).not.toHaveBeenCalled();
+    expect(maxBox(target).value).toBe('100000');
+    expect(maxBox(target).getAttribute('aria-invalid')).toBe('true');
+    expect(get(searchDraft).maxResults).toBe('100000');
+  });
+
   it('refuses the Search button the same way', async () => {
     const { target, search } = await mountWithMax('10001');
     const button = [...target.querySelectorAll('button')].find(
