@@ -95,13 +95,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- An open dialog keeps the keyboard. While the shortcut list, the
-  analysis, the API token prompt or the notice of a backend the viewer
-  cannot read is open, the keys that show a panel, move the focus or
-  hide the sidebar (Alt+1, Alt+2, Cmd/Ctrl+Shift+E and F, Cmd/Ctrl+K,
-  Cmd/Ctrl+B) and the keys of the files and search panels do nothing and
-  are left to the browser. Cmd/Ctrl+K and Cmd/Ctrl+B used to hide an open
-  analysis dialog together with the files panel.
+- An open dialog keeps the keyboard. Cmd/Ctrl+K and Cmd/Ctrl+B used to
+  hide an open analysis dialog together with the files panel. While the
+  shortcut list, the analysis, the API token prompt or the notice of a
+  backend the viewer cannot read is open, they and every key that shows
+  a panel or acts in the files or search panel do nothing and are left
+  to the browser.
 
 ## [0.7.0] - 2026-10-09
 
