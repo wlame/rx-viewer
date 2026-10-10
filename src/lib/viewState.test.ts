@@ -6,6 +6,7 @@ import { health } from './stores/health';
 import { timeCursor } from './stores/timeCursor';
 import { timeStash } from './stores/timeStash';
 import { searchRequest, trace } from './stores/trace';
+import { draftFromSearch, searchDraft } from './stores/searchDraft';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { chainMode } from './stores/chainMode';
 import { DEFAULT_FILES_VIEW, filesView } from './stores/filesView';
@@ -247,6 +248,7 @@ function urlParams(): URLSearchParams {
 function resetStores() {
   for (const file of get(files).openFiles) files.closeFile(file.path);
   searchRequest.set(null);
+  searchDraft.set(draftFromSearch(null));
   trace.clear();
   sidebarTab.set('tree');
   filesView.set(DEFAULT_FILES_VIEW);
@@ -386,6 +388,55 @@ describe('restoreView', () => {
     expect(get(filesView)).toEqual({ labels: false, show: 'date', sort: DATE_ASC });
     expect(get(searchShowsOffsets)).toBe(true);
     expect(get(searchRequest)).toEqual(view.search);
+  });
+
+  it("fills the search panel's form from the link's search", async () => {
+    const search: SearchState = {
+      patterns: ['LINE 7', 'LINE 8'],
+      maxResults: 50,
+      onlyOpenedFiles: true,
+      flags: { word_regexp: true },
+    };
+
+    await restoreView({ ...DEFAULT_VIEW, search });
+
+    expect(get(searchDraft)).toEqual({
+      patterns: ['LINE 7', 'LINE 8'],
+      toggles: { matchCase: true, wholeWord: true, regex: true },
+      onlyOpenedFiles: true,
+      maxResults: '50',
+    });
+  });
+
+  // Back and Forward through steps that keep the search (a file opened,
+  // a panel shown) restore the same search; the form keeps its edits.
+  it('keeps an unsent edit of the form when the view names the search already run', async () => {
+    const search: SearchState = {
+      patterns: ['LINE 7'],
+      maxResults: 100,
+      onlyOpenedFiles: false,
+      flags: {},
+    };
+    searchRequest.set(search);
+    searchDraft.set({
+      ...draftFromSearch(search),
+      patterns: ['LINE 7', 'LINE 9'],
+      maxResults: '20',
+    });
+
+    await restoreView({ ...DEFAULT_VIEW, search: { ...search, patterns: ['LINE 7'] } });
+
+    expect(get(searchDraft).patterns).toEqual(['LINE 7', 'LINE 9']);
+    expect(get(searchDraft).maxResults).toBe('20');
+  });
+
+  it('empties the form for a view that names no search', async () => {
+    searchRequest.set({ patterns: ['LINE 7'], maxResults: 100, onlyOpenedFiles: false, flags: {} });
+    searchDraft.set({ ...draftFromSearch(null), patterns: ['LINE 7'], maxResults: '20' });
+
+    await restoreView(DEFAULT_VIEW);
+
+    expect(get(searchDraft)).toEqual(draftFromSearch(null));
   });
 });
 

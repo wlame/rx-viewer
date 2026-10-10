@@ -52,7 +52,7 @@ export interface FilterState {
 export const DEFAULT_MAX_RESULTS = 100;
 
 /** The highest cap the search panel accepts. */
-const MAX_RESULTS_LIMIT = 10_000;
+export const MAX_RESULTS_LIMIT = 10_000;
 
 /** A search as the URL carries it: what the search panel needs to run it again. */
 export interface SearchState {

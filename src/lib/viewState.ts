@@ -7,6 +7,7 @@ import { fileZones } from './stores/fileZones';
 import { notifications } from './stores/notifications';
 import { searchShowsOffsets, sidebarTab } from './stores/layout';
 import { timeStash } from './stores/timeStash';
+import { draftFromSearch, searchDraft } from './stores/searchDraft';
 import { searchRequest, trace } from './stores/trace';
 import { tree } from './stores/tree';
 import {
@@ -197,11 +198,14 @@ function isSameSearch(a: SearchState | null, b: SearchState | null): boolean {
 
 /**
  * Make `search` the current search. A different search drops the old
- * answer; the search panel runs the new one once the backend can take it.
+ * answer and fills the search panel's form with it, which runs it once
+ * the backend can take it. The same search keeps the form as it is,
+ * with any edit not yet sent.
  */
 function restoreSearch(search: SearchState | null): void {
   if (isSameSearch(search, get(searchRequest))) return;
   trace.clear();
+  searchDraft.set(draftFromSearch(search));
   searchRequest.set(search);
 }
 
