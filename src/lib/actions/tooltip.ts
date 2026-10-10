@@ -1,7 +1,7 @@
 /**
- * `use:tooltip={{ label, shortcut, detail }}`: a styled tooltip that
- * names a control and the keys of its shortcut, as this platform prints
- * them.
+ * `use:tooltip={{ label, shortcut, detail, placement }}`: a styled
+ * tooltip that names a control and the keys of its shortcut, as this
+ * platform prints them, below the control or right of it.
  *
  * Every trigger shares one element, `#rx-tooltip` in `document.body`,
  * shown for one trigger at a time. It appears after a hover of
@@ -23,12 +23,21 @@ import {
   type ShortcutId,
 } from '$lib/utils/shortcuts';
 
+/**
+ * The side of its trigger a tooltip sits on: below it (above when below
+ * does not fit), or right of it (left when right does not fit), for a
+ * control at the window's left edge.
+ */
+export type TooltipPlacement = 'below' | 'right';
+
 export interface TooltipParams {
   label: string;
   /** The shortcut row whose first chord the tooltip shows as keys. */
   shortcut?: ShortcutId;
   /** A second line under the label. */
   detail?: string;
+  /** Where the tooltip sits; below its trigger unless set. */
+  placement?: TooltipPlacement;
 }
 
 export const TOOLTIP_ID = 'rx-tooltip';
@@ -72,31 +81,56 @@ interface Size {
   height: number;
 }
 
+type Anchor = Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>;
+
+interface Point {
+  left: number;
+  top: number;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
 }
 
+/** Where each placement puts a tooltip, before it is kept inside the window. */
+const PLACEMENTS: Readonly<
+  Record<TooltipPlacement, (anchor: Anchor, size: Size, viewport: Size) => Point>
+> = {
+  below: (anchor, size, viewport) => {
+    const below = anchor.top + anchor.height + TOOLTIP_GAP_PX;
+    const fitsBelow = below + size.height <= viewport.height - TOOLTIP_EDGE_PX;
+    return {
+      left: anchor.left + anchor.width / 2 - size.width / 2,
+      top: fitsBelow ? below : anchor.top - TOOLTIP_GAP_PX - size.height,
+    };
+  },
+  right: (anchor, size, viewport) => {
+    const right = anchor.left + anchor.width + TOOLTIP_GAP_PX;
+    const fitsRight = right + size.width <= viewport.width - TOOLTIP_EDGE_PX;
+    return {
+      left: fitsRight ? right : anchor.left - TOOLTIP_GAP_PX - size.width,
+      top: anchor.top + anchor.height / 2 - size.height / 2,
+    };
+  },
+};
+
 /**
  * Where a tooltip of `size` goes for a trigger at `anchor`, in window
- * coordinates: below the trigger and centred on it; above it when below
- * would leave the window; never nearer than `TOOLTIP_EDGE_PX` to an edge.
+ * coordinates. Below: centred under the trigger, above it when below
+ * would leave the window. Right: centred beside the trigger, left of it
+ * when right would leave the window. Never nearer than `TOOLTIP_EDGE_PX`
+ * to an edge.
  */
 export function tooltipPosition(
-  anchor: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
+  anchor: Anchor,
   size: Size,
   viewport: Size,
-): { left: number; top: number } {
-  const below = anchor.top + anchor.height + TOOLTIP_GAP_PX;
-  const above = anchor.top - TOOLTIP_GAP_PX - size.height;
-  const fitsBelow = below + size.height <= viewport.height - TOOLTIP_EDGE_PX;
-  const centred = anchor.left + anchor.width / 2 - size.width / 2;
+  placement: TooltipPlacement = 'below',
+): Point {
+  const { left, top } = PLACEMENTS[placement](anchor, size, viewport);
   return {
-    left: clamp(centred, TOOLTIP_EDGE_PX, viewport.width - TOOLTIP_EDGE_PX - size.width),
-    top: clamp(
-      fitsBelow ? below : above,
-      TOOLTIP_EDGE_PX,
-      viewport.height - TOOLTIP_EDGE_PX - size.height,
-    ),
+    left: clamp(left, TOOLTIP_EDGE_PX, viewport.width - TOOLTIP_EDGE_PX - size.width),
+    top: clamp(top, TOOLTIP_EDGE_PX, viewport.height - TOOLTIP_EDGE_PX - size.height),
   };
 }
 
@@ -224,7 +258,12 @@ function showTooltip(node: HTMLElement, params: TooltipParams): void {
   element.style.top = '0px';
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const size = { width: element.offsetWidth, height: element.offsetHeight };
-  const { left, top } = tooltipPosition(node.getBoundingClientRect(), size, viewport);
+  const { left, top } = tooltipPosition(
+    node.getBoundingClientRect(),
+    size,
+    viewport,
+    params.placement,
+  );
   element.style.left = `${left}px`;
   element.style.top = `${top}px`;
 }

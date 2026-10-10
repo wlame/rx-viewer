@@ -303,6 +303,16 @@ describe('the tooltip action', () => {
     expect(shownTooltip()?.style.top).toBe(`${50 + 20 + TOOLTIP_GAP_PX}px`);
   });
 
+  it('places itself right of its trigger, centred on it, when its placement is right', () => {
+    const { trigger } = mount({ label: 'Files', placement: 'right' });
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 40, 40));
+
+    focusByKeyboard(trigger);
+
+    expect(shownTooltip()?.style.left).toBe(`${40 + TOOLTIP_GAP_PX}px`);
+    expect(shownTooltip()?.style.top).toBe('120px');
+  });
+
   // A box with `position: fixed` and `left` set is at most as wide as the
   // room right of `left`. The stub gives jsdom that rule: the tooltip is
   // 10 px per character, cut to the room right of its current `left`.
@@ -489,5 +499,27 @@ describe('tooltipPosition', () => {
     const anchor = new DOMRect(100, 50, 40, 20);
 
     expect(tooltipPosition(anchor, { width: 900, height: 24 }, viewport).left).toBe(8);
+  });
+
+  it('is right of the trigger and centred on it when its placement is right', () => {
+    const anchor = new DOMRect(0, 100, 40, 40);
+
+    expect(tooltipPosition(anchor, size, viewport, 'right')).toEqual({
+      left: 40 + TOOLTIP_GAP_PX,
+      top: 100 + 20 - 12,
+    });
+  });
+
+  it('flips left of the trigger when right would leave the window', () => {
+    const anchor = new DOMRect(760, 100, 40, 40);
+
+    expect(tooltipPosition(anchor, size, viewport, 'right').left).toBe(760 - TOOLTIP_GAP_PX - 60);
+  });
+
+  it('keeps 8 pixels from the top and bottom when its placement is right', () => {
+    expect(tooltipPosition(new DOMRect(0, 0, 40, 10), size, viewport, 'right').top).toBe(8);
+    expect(tooltipPosition(new DOMRect(0, 590, 40, 10), size, viewport, 'right').top).toBe(
+      600 - 8 - 24,
+    );
   });
 });
