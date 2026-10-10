@@ -94,6 +94,54 @@ describe('the tree when the Files tab is shown again', () => {
   });
 });
 
+describe('the tree opening and closing a folder', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('loads and opens a folder on expand, and closes it on collapse', async () => {
+    serveTree();
+    await tree.loadRoots();
+
+    await tree.expand('/logs/app');
+    expect(tree.nodeAt('/logs/app')?.expanded).toBe(true);
+    expect(tree.nodeAt('/logs/app/a.log')).not.toBeNull();
+
+    tree.collapse('/logs/app');
+    expect(tree.nodeAt('/logs/app')?.expanded).toBe(false);
+    expect(tree.nodeAt('/logs/app/a.log')).not.toBeNull();
+  });
+
+  it('asks once for a folder that expand meets while its rows load', async () => {
+    const backend = new LogDirBackend({ features: [] });
+    serveLogDir(backend);
+    await tree.loadRoots();
+    backend.hold('/v1/tree');
+
+    const first = tree.expand(LOG_DIR);
+    expect(tree.nodeAt(LOG_DIR)?.loading).toBe(true);
+    const second = tree.expand(LOG_DIR);
+    backend.release();
+    await Promise.all([first, second]);
+
+    expect(
+      backend.requestsTo('/v1/tree').filter((r) => r === listed('/v1/tree', LOG_DIR)),
+    ).toHaveLength(1);
+    expect(tree.nodeAt(LOG_DIR)?.expanded).toBe(true);
+  });
+
+  it('leaves an open folder open on expand and a closed one closed on collapse', async () => {
+    const fetchSpy = serveTree();
+    await tree.loadRoots();
+    const calls = fetchSpy.mock.calls.length;
+
+    await tree.expand('/logs');
+    tree.collapse('/logs/app');
+
+    expect(tree.nodeAt('/logs')?.expanded).toBe(true);
+    expect(tree.nodeAt('/logs/app')?.expanded).toBe(false);
+    expect(fetchSpy.mock.calls.length).toBe(calls);
+  });
+});
+
 /** The request of `pathname` for the directory `dir`, as the backend records it. */
 function listed(pathname: string, dir: string): string {
   return `${pathname}?path=${encodeURIComponent(dir)}`;

@@ -246,31 +246,52 @@ function createTreeStore() {
     await Promise.all(shownDirectories(nodes).map(ensureChains));
   }
 
-  async function toggleExpanded(path: string) {
-    const state = get({ subscribe });
-    const node = findNode(state.roots, path);
-    if (!node || node.type !== 'directory') return;
+  /** Close the folder at `path`; its rows stay loaded. */
+  function collapse(path: string) {
+    const node = findNode(get({ subscribe }).roots, path);
+    if (!node || node.type !== 'directory' || !node.expanded) return;
+    update((s) => ({
+      ...s,
+      roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: false })),
+    }));
+  }
 
-    if (node.expanded) {
-      // Collapse
-      update((s) => ({
-        ...s,
-        roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: false })),
-      }));
-    } else if (node.children.length > 0) {
-      // Already loaded, just expand. Its chains, and those of the expanded
-      // folders it shows again, are asked for when not listed: the mode
-      // may have turned on while it was collapsed, or a listing failed.
-      update((s) => ({
-        ...s,
-        roots: updateNode(s.roots, path, (n) => ({ ...n, expanded: true })),
-      }));
-      const expanded = findNode(get({ subscribe }).roots, path);
-      if (expanded) await listChainsOfShownDirectories([expanded]);
-    } else {
-      // Load and expand
-      await loadDirectory(path);
+  /**
+   * Show the rows of the closed folder `node`: at once when they are
+   * loaded, else after loading them. Its chains, and those of the expanded
+   * folders it shows again, are asked for when not listed: the mode may
+   * have turned on while it was closed, or a listing failed.
+   */
+  async function showFolder(node: TreeNode) {
+    if (node.children.length === 0) {
+      await loadDirectory(node.path);
+      return;
     }
+    update((s) => ({
+      ...s,
+      roots: updateNode(s.roots, node.path, (n) => ({ ...n, expanded: true })),
+    }));
+    const expanded = findNode(get({ subscribe }).roots, node.path);
+    if (expanded) await listChainsOfShownDirectories([expanded]);
+  }
+
+  /**
+   * Open the folder at `path`, loading its rows first when the tree has
+   * none. A folder that is open, or whose rows are loading, is left as it
+   * is: the load already running opens it.
+   */
+  async function expand(path: string) {
+    const node = findNode(get({ subscribe }).roots, path);
+    if (!node || node.type !== 'directory' || node.expanded || node.loading) return;
+    await showFolder(node);
+  }
+
+  /** A click on a folder: close it when open, else open it (a click on a loading folder asks again). */
+  async function toggleExpanded(path: string) {
+    const node = findNode(get({ subscribe }).roots, path);
+    if (!node || node.type !== 'directory') return;
+    if (node.expanded) collapse(path);
+    else await showFolder(node);
   }
 
   function selectPath(path: string | null) {
@@ -373,6 +394,8 @@ function createTreeStore() {
     loadRoots,
     ensureRoots,
     loadDirectory,
+    expand,
+    collapse,
     toggleExpanded,
     selectPath,
     markIndexed,
