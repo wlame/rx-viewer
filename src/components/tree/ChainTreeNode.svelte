@@ -123,24 +123,26 @@
       <path d="M4 6v14a2 2 0 002 2h10" />
     </svg>
 
-    <!-- The name keeps at least 40% of a narrow row; the marks give way
-         first, clipped where the value's column starts. The path is the
-         name's tooltip, not the row's, so it does not cover the time's. -->
-    <span class="truncate flex-1 min-w-[40%]" title={chain.path}>{chain.name}</span>
-
-    {#if showLabels}
-      <span class="flex items-center gap-1 min-w-0 overflow-hidden">
-        {#each badges as badge (badge.text)}
-          <span
-            data-chain-badge
-            class="badge text-[10px] py-0 flex-shrink-0 {TONE_CLASSES[badge.tone]}"
-            title={badge.title}
-          >
-            {badge.text}
-          </span>
-        {/each}
-      </span>
-    {/if}
+    <!-- The value keeps its column. Left of it, the name keeps at least
+         40% of the room; the marks give way first, clipped. The path is
+         the name's tooltip, not the row's, so it does not cover the
+         time's. -->
+    <span class="flex-1 min-w-0 flex items-center gap-1">
+      <span class="truncate flex-1 min-w-[40%]" title={chain.path}>{chain.name}</span>
+      {#if showLabels}
+        <span class="flex items-center gap-1 min-w-0 overflow-hidden">
+          {#each badges as badge (badge.text)}
+            <span
+              data-chain-badge
+              class="badge text-[10px] py-0 flex-shrink-0 {TONE_CLASSES[badge.tone]}"
+              title={badge.title}
+            >
+              {badge.text}
+            </span>
+          {/each}
+        </span>
+      {/if}
+    </span>
 
     <ValueCell {show} size={sizeText} modifiedAt={row.modifiedAt} />
   </div>

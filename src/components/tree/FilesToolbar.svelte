@@ -37,11 +37,12 @@
   const OFF_CLASS =
     'bg-gh-canvas-inset dark:bg-gh-canvas-dark-inset text-gh-fg-muted dark:text-gh-fg-dark-muted ' +
     'hover:bg-gh-canvas-subtle dark:hover:bg-gh-canvas-dark-subtle';
+  // An outline outside the control, so it shows on the accent fill as well.
   const FOCUS_CLASS =
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset ' +
-    'focus-visible:ring-gh-accent-emphasis dark:focus-visible:ring-gh-accent-dark-emphasis';
+    'focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ' +
+    'focus-visible:outline-gh-accent-emphasis dark:focus-visible:outline-gh-accent-dark-emphasis';
   const TOGGLE_CLASS = `p-1 rounded flex-shrink-0 transition-colors ${FOCUS_CLASS}`;
-  const VALUE_CLASS = `px-1.5 py-0.5 text-xs leading-4 transition-colors ${FOCUS_CLASS}`;
+  const VALUE_CLASS = `px-1.5 py-0.5 text-xs leading-4 transition-colors first:rounded-l last:rounded-r ${FOCUS_CLASS}`;
 
   let valueSwitch: HTMLElement;
 
@@ -134,7 +135,7 @@
     bind:this={valueSwitch}
     role="radiogroup"
     aria-label="Value shown"
-    class="flex flex-shrink-0 rounded overflow-hidden border border-gh-border-default dark:border-gh-border-dark-default"
+    class="flex flex-shrink-0 rounded border border-gh-border-default dark:border-gh-border-dark-default"
   >
     {#each VALUE_COLUMNS as value (value)}
       {@const isChecked = value === $filesView.show}

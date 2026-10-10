@@ -16,7 +16,7 @@
   export let modifiedAt: string | null;
 
   const CELL_CLASS =
-    'w-[12ch] flex-shrink-0 text-right text-xs tabular-nums whitespace-nowrap overflow-hidden ' +
+    'w-[11ch] flex-shrink-0 text-right text-xs tabular-nums whitespace-nowrap overflow-hidden ' +
     'text-gh-fg-subtle dark:text-gh-fg-dark-subtle';
 
   $: time = show === 'date' && modifiedAt !== null ? formatFileTime(modifiedAt) : null;
