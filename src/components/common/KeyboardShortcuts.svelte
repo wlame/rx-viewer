@@ -2,15 +2,20 @@
   import { get } from 'svelte/store';
   import { modal } from '$lib/actions/modal';
   import { takeFocus } from '$lib/actions/takeFocus';
+  import { files } from '$lib/stores';
+  import { activeOpenFile } from '$lib/stores/files';
   import { modalOpen, shortcutsHelpOpen, showPanel, toggleSidebar } from '$lib/stores/layout';
   import { contractRefused } from '$lib/stores/health';
   import {
+    handleFileTabsKey,
     handleGlobalKey,
     isShortcut,
     shortcutLabel,
     shortcutsByScope,
+    type FileTabsShortcutActions,
     type GlobalShortcutActions,
   } from '$lib/utils/shortcuts';
+  import { tabBeside } from '$lib/utils/tabOrder';
 
   const groups = shortcutsByScope();
 
@@ -43,11 +48,42 @@
     },
   };
 
+  /** Show the tab `step` places from the active one in strip order; not with fewer than two. */
+  function showTabBeside(step: number): boolean {
+    const state = get(files);
+    const active = activeOpenFile(state);
+    if (!active) return false;
+    const target = tabBeside(
+      state.openFiles.map((f) => f.path),
+      active.path,
+      step,
+    );
+    if (target === null) return false;
+    files.setActiveFile(target);
+    return true;
+  }
+
+  /** Close the active tab; the store shows the tab used before it. */
+  function closeActiveTab(): boolean {
+    const active = activeOpenFile(get(files));
+    if (!active) return false;
+    files.closeFile(active.path);
+    return true;
+  }
+
+  // A key that would change the tab behind a dialog is left to the dialog.
+  const tabActions: FileTabsShortcutActions = {
+    nextTab: () => !$modalOpen && showTabBeside(1),
+    previousTab: () => !$modalOpen && showTabBeside(-1),
+    closeTab: () => !$modalOpen && closeActiveTab(),
+  };
+
   // Under the cover of a refused contract the app is blocked; its
   // shortcuts would act on panels the user cannot see or reach.
   function handleKeydown(event: KeyboardEvent) {
     if (get(contractRefused)) return;
-    handleGlobalKey(event, actions);
+    if (handleGlobalKey(event, actions)) return;
+    handleFileTabsKey(event, tabActions);
   }
 </script>
 

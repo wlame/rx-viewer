@@ -184,7 +184,7 @@
         aria-hidden="true"
         class="mr-2 p-0.5 rounded hover:bg-gh-danger-subtle dark:hover:bg-gh-danger-dark-subtle
                hover:text-gh-danger-fg dark:hover:text-gh-danger-dark-fg transition-colors"
-        use:tooltip={{ label: 'Close' }}
+        use:tooltip={{ label: 'Close', shortcut: 'closeTab' }}
         on:mousedown|preventDefault
         on:click={() => files.closeFile(file.path)}
         on:dragover={(e) => handleDragOver(e, index)}

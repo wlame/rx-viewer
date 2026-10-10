@@ -7,6 +7,7 @@ import {
   chordKeys,
   chordLabel,
   detectPlatform,
+  handleFileTabsKey,
   handleFilesPanelKey,
   handleGlobalKey,
   handleSearchPanelKey,
@@ -186,6 +187,64 @@ describe('handleFilesPanelKey', () => {
     const { actions, ran } = filesActions();
 
     expect(handleFilesPanelKey(event, actions)).toBe(false);
+    expect(ran).toEqual([]);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleFileTabsKey', () => {
+  /** Actions for the open file tab keys, each acting unless told not to. */
+  function tabActions(acting = true) {
+    const ran: string[] = [];
+    const act = (id: string) => () => {
+      ran.push(id);
+      return acting;
+    };
+    return {
+      ran,
+      actions: {
+        nextTab: act('nextTab'),
+        previousTab: act('previousTab'),
+        closeTab: act('closeTab'),
+      },
+    };
+  }
+
+  // A Mac types the Option symbol as the key: Option+] is "‘", Option+[
+  // is "“" and Option+X is "≈". Other systems send the bracket itself.
+  it.each([
+    ['nextTab', '‘', 'BracketRight'],
+    ['previousTab', '“', 'BracketLeft'],
+    ['closeTab', '≈', 'KeyX'],
+    ['nextTab', ']', 'BracketRight'],
+    ['previousTab', '[', 'BracketLeft'],
+    ['closeTab', 'x', 'KeyX'],
+  ])('runs %s for Alt+%s and keeps the key from the browser', (id, key, code) => {
+    const { actions, ran } = tabActions();
+    const event = press(key, { code, altKey: true });
+
+    expect(handleFileTabsKey(event, actions)).toBe(true);
+    expect(ran).toEqual([id]);
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+
+  it('leaves the key to the browser when the action did nothing', () => {
+    const { actions, ran } = tabActions(false);
+    const event = press('‘', { code: 'BracketRight', altKey: true });
+
+    expect(handleFileTabsKey(event, actions)).toBe(false);
+    expect(ran).toEqual(['nextTab']);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['] without Alt', press(']', { code: 'BracketRight' })],
+    ['Cmd+Alt+]', press('‘', { code: 'BracketRight', altKey: true, metaKey: true })],
+    ['Ctrl+Alt+X, which AltGr sends', press('x', { code: 'KeyX', altKey: true, ctrlKey: true })],
+  ])('leaves %s alone', (_name, event) => {
+    const { actions, ran } = tabActions();
+
+    expect(handleFileTabsKey(event, actions)).toBe(false);
     expect(ran).toEqual([]);
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
@@ -460,6 +519,12 @@ describe('the shortcut list', () => {
       ['showFiles', 'showSearch'],
       ['Alt+1 or ⌘/Ctrl+Shift+E', 'Alt+2 or ⌘/Ctrl+Shift+F'],
     ],
+    [
+      'fileTabs',
+      'Open file tabs, from anywhere',
+      ['nextTab', 'previousTab', 'closeTab'],
+      ['Alt+]', 'Alt+[', 'Alt+X'],
+    ],
     ['activityBar', 'In the activity bar', ['activityBarMove'], ['↓ or ↑']],
     [
       'filesPanel',
@@ -545,12 +610,12 @@ describe('the shortcut list', () => {
     expect(groups.every((g) => g.shortcuts.length > 0)).toBe(true);
   });
 
-  it('lists the panel keys right after the window-wide ones', () => {
+  it('lists the panel keys right after the window-wide ones, then the open file tab keys', () => {
     expect(
       shortcutsByScope()
         .map((g) => g.scope)
-        .slice(0, 2),
-    ).toEqual(['anywhere', 'panels']);
+        .slice(0, 3),
+    ).toEqual(['anywhere', 'panels', 'fileTabs']);
   });
 
   it('holds one row per search toggle, from the toggle table', () => {
@@ -571,6 +636,8 @@ describe('chordKeys', () => {
   it.each<[KeyChord, string[], string[]]>([
     [{ code: 'KeyG', alt: true }, ['⌥', 'G'], ['Alt', 'G']],
     [{ code: 'Digit1', alt: true }, ['⌥', '1'], ['Alt', '1']],
+    [{ code: 'BracketRight', alt: true }, ['⌥', ']'], ['Alt', ']']],
+    [{ code: 'BracketLeft', alt: true }, ['⌥', '['], ['Alt', '[']],
     [{ key: 'e', mod: true, shift: true }, ['⌘', '⇧', 'E'], ['Ctrl', 'Shift', 'E']],
     [{ key: 'Escape' }, ['Esc'], ['Esc']],
     [{ key: '/', mod: true }, ['⌘', '/'], ['Ctrl', '/']],

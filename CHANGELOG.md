@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file as a part, the file of a chain, or the folder above. A new order
   keeps the focus on its row and scrolls the row into view. Rows carry
   their level, set size and position for screen readers.
+- Keys that switch the open file and chain tabs from anywhere: Alt+] and
+  Alt+[ show the next and the previous tab of the strip, round the ends,
+  and Alt+X closes the tab shown and shows the tab used before it. They
+  act while no dialog is open, also from a text field or the editor;
+  Alt+] and Alt+[ need two tabs open. A tab's close button names Alt+X
+  in its tooltip.
 - Arrow keys on the tab strip, which is now a tab list for the keyboard
   and screen readers: one Tab stop on the tab shown; with a tab focused
   ← and → show the tab beside it (round the ends), Home and End the

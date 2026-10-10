@@ -13,6 +13,7 @@ import { SEARCH_TOGGLES, type SearchToggles } from './searchToggles';
 export const SHORTCUT_SCOPES = {
   anywhere: 'Anywhere',
   panels: 'Panels, from anywhere',
+  fileTabs: 'Open file tabs, from anywhere',
   activityBar: 'In the activity bar',
   filesPanel: 'In the files panel, while it is shown',
   valueSwitch: 'On the Size/Date switch',
@@ -82,12 +83,19 @@ export type TreeShortcutId =
   | 'treeTypeName'
   | 'treeToEditor';
 
+/**
+ * The keys of the open file tabs, which act from anywhere while no modal
+ * dialog is open.
+ */
+export type FileTabsShortcutId = 'nextTab' | 'previousTab' | 'closeTab';
+
 /** The keys of the tab strip, which act on the focused tab. */
 export type TabStripShortcutId = 'tabStripMove' | 'tabStripEnds' | 'tabStripClose';
 
 export type ShortcutId =
   | GlobalShortcutId
   | FilesPanelShortcutId
+  | FileTabsShortcutId
   | 'activityBarMove'
   | 'valueSwitchMove'
   | SearchPanelShortcutId
@@ -128,9 +136,14 @@ export interface Shortcut {
 /** The modifier labels, as the help shows them on every platform. */
 const MOD_LABEL = '⌘/Ctrl';
 
-/** The help's name for a key whose `KeyboardEvent.key` reads badly or not at all. */
+/**
+ * The help's name for a key whose `KeyboardEvent.key` reads badly or not
+ * at all, or whose `KeyboardEvent.code` names no letter or digit.
+ */
 const KEY_LABELS: Readonly<Record<string, string>> = {
   Escape: 'Esc',
+  BracketRight: ']',
+  BracketLeft: '[',
   ' ': 'Space',
   ArrowLeft: '←',
   ArrowRight: '→',
@@ -274,6 +287,28 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: 'Show the search panel and go to the first pattern field',
     chord: { code: 'Digit2', alt: true },
     otherChords: [{ key: 'f', mod: true, shift: true }],
+  },
+  // Alt+] and Alt+[ are matched by the key's code: on a Mac Option+]
+  // types "‘". The browsers keep Ctrl+Tab, Ctrl+PageUp/PageDown, ⌘/Ctrl
+  // with a digit and ⌘/Ctrl+W for their own tabs; Alt+W is the search
+  // panel's whole word.
+  {
+    id: 'nextTab',
+    scope: 'fileTabs',
+    description: 'Show the next tab of the strip (after the last, the first)',
+    chord: { code: 'BracketRight', alt: true },
+  },
+  {
+    id: 'previousTab',
+    scope: 'fileTabs',
+    description: 'Show the previous tab of the strip (before the first, the last)',
+    chord: { code: 'BracketLeft', alt: true },
+  },
+  {
+    id: 'closeTab',
+    scope: 'fileTabs',
+    description: 'Close the tab shown and show the tab used before it',
+    chord: { code: 'KeyX', alt: true },
   },
   {
     id: 'activityBarMove',
@@ -638,6 +673,23 @@ export type FilesPanelShortcutActions = ShortcutActions<FilesPanelShortcutId>;
 export function handleFilesPanelKey(
   event: KeyPress & { preventDefault(): void },
   actions: FilesPanelShortcutActions,
+): boolean {
+  return runShortcutAmong(event, actions);
+}
+
+/** What each open file tab shortcut does; an action returns whether it acted. */
+export type FileTabsShortcutActions = ShortcutActions<FileTabsShortcutId>;
+
+/**
+ * Run the open file tab shortcut `event` is, among those `actions` holds.
+ * The actions decide whether the keys apply at all (no dialog is open,
+ * enough tabs are open). `preventDefault` is called only when the action
+ * acted, which also keeps the character an Alt+key types out of a text
+ * field.
+ */
+export function handleFileTabsKey(
+  event: KeyPress & { preventDefault(): void },
+  actions: FileTabsShortcutActions,
 ): boolean {
   return runShortcutAmong(event, actions);
 }

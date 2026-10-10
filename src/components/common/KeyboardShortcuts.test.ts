@@ -3,7 +3,9 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
+import { files } from '$lib/stores';
 import {
+  registerModal,
   searchFocusRequested,
   shortcutsHelpOpen,
   sidebarTab,
@@ -144,6 +146,19 @@ describe('KeyboardShortcuts help', () => {
 });
 
 describe('KeyboardShortcuts help groups', () => {
+  it('lists the open file tab keys under "Open file tabs, from anywhere"', async () => {
+    const { target } = await openHelp();
+
+    const heading = [...target.querySelectorAll('h3')].find(
+      (h) => h.textContent?.trim() === 'Open file tabs, from anywhere',
+    );
+    const rows = heading?.nextElementSibling?.textContent ?? '';
+
+    expect(rows).toContain('Alt+]');
+    expect(rows).toContain('Alt+[');
+    expect(rows).toContain('Alt+X');
+  });
+
   it('lists the panel keys under "Panels, from anywhere", with both chords', async () => {
     const { target } = await openHelp();
 
@@ -343,5 +358,120 @@ describe('the panel keys while something else owns the keyboard', () => {
     expect(get(sidebarTab)).toBe('search');
     expect(get(treeFocusRequested)).toBe(false);
     expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe('the open file tab keys', () => {
+  const A = '/d/app.log';
+  const B = '/d/worker.log.3.gz';
+  const C = '/d/syslog-20260930.gz';
+  // A Mac types the Option symbol as the key: Option+] is "‘", Option+[
+  // is "“" and Option+X is "≈". The code names the key.
+  const NEXT: KeyboardEventInit = { key: '‘', code: 'BracketRight', altKey: true };
+  const PREVIOUS: KeyboardEventInit = { key: '“', code: 'BracketLeft', altKey: true };
+  const CLOSE: KeyboardEventInit = { key: '≈', code: 'KeyX', altKey: true };
+
+  let closeModal: (() => void) | null = null;
+
+  /** Open the tabs without waiting for their lines: the backend here never answers. */
+  function openTabs(...paths: string[]) {
+    vi.stubGlobal('fetch', () => new Promise(() => {}));
+    for (const path of paths) void files.openFile(path, { isIndexed: false });
+  }
+
+  const activeTab = () => get(files).activeFilePath;
+  const openKeys = () => get(files).openFiles.map((f) => f.path);
+
+  afterEach(() => {
+    closeModal?.();
+    closeModal = null;
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    vi.unstubAllGlobals();
+  });
+
+  it('Alt+] and Alt+[ show the next and the previous tab in strip order, round the ends', async () => {
+    openTabs(A, B, C);
+    mount();
+
+    const next = await pressAnywhere(NEXT);
+    expect(next.defaultPrevented).toBe(true);
+    expect(activeTab()).toBe(A);
+
+    const previous = await pressAnywhere(PREVIOUS);
+    expect(previous.defaultPrevented).toBe(true);
+    expect(activeTab()).toBe(C);
+
+    await pressAnywhere(PREVIOUS);
+    expect(activeTab()).toBe(B);
+  });
+
+  it('takes Alt+] and Alt+[ as Windows and Linux send them', async () => {
+    openTabs(A, B, C);
+    mount();
+
+    await pressAnywhere({ key: '[', code: 'BracketLeft', altKey: true });
+    expect(activeTab()).toBe(B);
+    await pressAnywhere({ key: ']', code: 'BracketRight', altKey: true });
+    expect(activeTab()).toBe(C);
+  });
+
+  it('Alt+] and Alt+[ do nothing with one tab open and leave the key to the browser', async () => {
+    openTabs(A);
+    mount();
+
+    for (const init of [NEXT, PREVIOUS]) {
+      const event = await pressAnywhere(init);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(activeTab()).toBe(A);
+  });
+
+  it('Alt+X closes the active tab and shows the tab used before it, not its neighbour', async () => {
+    openTabs(A, B, C);
+    files.setActiveFile(A);
+    files.setActiveFile(C);
+    mount();
+
+    const event = await pressAnywhere(CLOSE);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(openKeys()).toEqual([A, B]);
+    // B is the left neighbour of C; A was used last.
+    expect(activeTab()).toBe(A);
+  });
+
+  it('Alt+X closes the one tab open, and with none open leaves the key to the browser', async () => {
+    openTabs(A);
+    mount();
+
+    expect((await pressAnywhere(CLOSE)).defaultPrevented).toBe(true);
+    expect(openKeys()).toEqual([]);
+
+    expect((await pressAnywhere(CLOSE)).defaultPrevented).toBe(false);
+  });
+
+  it('do nothing while a modal dialog is open, and leave the key to the browser', async () => {
+    openTabs(A, B, C);
+    mount();
+    closeModal = registerModal();
+
+    for (const init of [NEXT, PREVIOUS, CLOSE]) {
+      const event = await pressAnywhere(init);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(openKeys()).toEqual([A, B, C]);
+    expect(activeTab()).toBe(C);
+  });
+
+  it('act from a text field and keep the typed character out of it', async () => {
+    openTabs(A, B, C);
+    mount();
+    const field = document.body.appendChild(document.createElement('input'));
+    field.focus();
+
+    const event = await keyDown(field, NEXT);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(activeTab()).toBe(A);
   });
 });

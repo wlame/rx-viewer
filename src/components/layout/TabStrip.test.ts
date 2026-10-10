@@ -3,6 +3,7 @@ import '$lib/testing/matchMediaStub';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { get } from 'svelte/store';
+import { TOOLTIP_DELAY_MS, TOOLTIP_ID } from '$lib/actions/tooltip';
 import { files } from '$lib/stores';
 import { registerModal } from '$lib/stores/layout';
 import TabStrip from './TabStrip.svelte';
@@ -154,6 +155,22 @@ describe('the tab strip', () => {
 
     expect(get(files).openFiles.map((f) => f.path)).toEqual([A, B]);
     expect(get(files).activeFilePath).toBe(A);
+  });
+
+  it('names Alt+X, the key that closes the tab shown, in the tooltip of a close button', async () => {
+    vi.stubGlobal('navigator', { platform: 'Linux x86_64', userAgent: 'X11; Linux x86_64' });
+    openTabs(A, B);
+    const { tabOf } = mount();
+    await tick();
+    vi.useFakeTimers();
+
+    (tabOf(B).nextElementSibling as HTMLElement).dispatchEvent(new MouseEvent('mouseenter'));
+    vi.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    vi.useRealTimers();
+
+    const keys = [...(document.getElementById(TOOLTIP_ID)?.querySelectorAll('kbd') ?? [])];
+    expect(document.getElementById(TOOLTIP_ID)?.textContent).toContain('Close');
+    expect(keys.map((kbd) => kbd.textContent)).toEqual(['Alt', 'X']);
   });
 
   it('shows a tab that is clicked', async () => {

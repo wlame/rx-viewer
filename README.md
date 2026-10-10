@@ -122,6 +122,9 @@ Cmd/Ctrl+/ lists every shortcut in the app. They are:
 | Anywhere                                 | Esc                       | Close the shortcut list                                                            |
 | Panels, from anywhere                    | Alt+1 or Cmd/Ctrl+Shift+E | Show the files panel and go to the file tree                                       |
 | Panels, from anywhere                    | Alt+2 or Cmd/Ctrl+Shift+F | Show the search panel and go to the first pattern field                            |
+| Open file tabs, from anywhere            | Alt+]                     | Show the next tab of the strip (after the last, the first)                         |
+| Open file tabs, from anywhere            | Alt+[                     | Show the previous tab of the strip (before the first, the last)                    |
+| Open file tabs, from anywhere            | Alt+X                     | Close the tab shown and show the tab used before it                                |
 | In the activity bar                      | ↓ or ↑                    | Move down or up through the panel buttons                                          |
 | In the files panel, while it is shown    | Alt+G                     | Group rotated logs: on or off                                                      |
 | In the files panel, while it is shown    | Alt+L                     | Show labels: on or off                                                             |
@@ -173,6 +176,14 @@ Alt+W, Alt+R and Alt+O act wherever the focus is in the search panel, a
 pattern field or not, while no dialog is open; a toggle that is disabled
 leaves the key to the browser (the match toggles on a backend that takes
 no match options, Only opened files while it is off and no file is open).
+
+Alt+], Alt+[ and Alt+X act from anywhere, a text field or the editor
+too, while no dialog is open: Alt+] and Alt+[ go through the tabs in the
+order of the strip, round the ends, and Alt+X closes the tab shown and
+shows the tab used before it. With one tab open, Alt+] and Alt+[ leave
+the key to the browser. The browsers keep their own tab keys (Ctrl+Tab,
+Ctrl+PageUp and PageDown, Cmd/Ctrl with a digit, Cmd/Ctrl+W), so the
+viewer does not use them.
 
 The file tree is one Tab stop. Tab enters it on the row that had the
 focus last, else on the open file's row, else on the first row, and Tab
