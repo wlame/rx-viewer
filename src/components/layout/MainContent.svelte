@@ -66,19 +66,10 @@
     }
   }
 
+  // Closing the active tab shows the most recently used remaining one (the files store).
   function handleClose(index: number, event: Event) {
     event.stopPropagation();
-    const file = $files.openFiles[index];
-
-    // If closing the active file, switch to an adjacent tab first
-    if (index === validActiveIndex) {
-      const newIndex = index > 0 ? index - 1 : index < $files.openFiles.length - 1 ? index + 1 : -1;
-      if (newIndex >= 0) {
-        files.setActiveFile($files.openFiles[newIndex].path);
-      }
-    }
-
-    files.closeFile(file.path);
+    files.closeFile($files.openFiles[index].path);
   }
 
   // Drag and drop handlers

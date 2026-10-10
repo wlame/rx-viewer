@@ -8,10 +8,10 @@
  * and selects that part. On: each file tab of a chain's part becomes the
  * chain's tab at the same line; the tabs of one chain become one. A chain
  * that is not valid keeps its parts as file tabs, since its tab would show
- * no line. A tab that turns into another keeps its place in the tab row,
- * its zone, the highlighting chosen for it, its filter, word wrap,
- * invisible characters and search marks, and the active tab stays
- * active.
+ * no line. A tab that turns into another keeps its place in the tab row
+ * and in the order the tabs were used in, its zone, the highlighting
+ * chosen for it, its filter, word wrap, invisible characters and search
+ * marks, and the active tab stays active.
  *
  * Neither way shows another file's line in silence after a rotation.
  * Off: each chain's tab describes its chain with its fingerprint first
@@ -41,6 +41,7 @@ import {
 import { defaultSyntaxHighlighting } from '../utils/highlighting';
 import { fileLineNotice, knownInZone, type KnownLine } from '../utils/knownLine';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
+import { replaceInRecent, type TabReplacement } from '../utils/tabOrder';
 import { chainMode } from './chainMode';
 import type { ChainPosition, LineToFind } from './chainTabs';
 import { fileZones } from './fileZones';
@@ -132,11 +133,17 @@ async function isReadable(chain: ChainEntry): Promise<boolean> {
   return false;
 }
 
-/** Run `turn`, which opens and closes tabs, as one change of the view that rewrites its entry. */
-function turnTabs(turn: () => void): void {
+/**
+ * Run `turn`, which opens and closes tabs and returns which tabs became
+ * which, as one change of the view that rewrites its entry. Each tab
+ * that replaced others then takes their place in the order the tabs were
+ * used in, which the opening and closing inside `turn` disturbed.
+ */
+function turnTabs(turn: () => TabReplacement[]): void {
+  const recentBefore = get(files).recentTabs;
   turningTabs += 1;
   try {
-    turn();
+    files.setRecentOrder(replaceInRecent(recentBefore, turn()));
   } finally {
     turningTabs -= 1;
   }
@@ -202,15 +209,18 @@ async function turnChainsIntoFiles(generation: number): Promise<void> {
   let revealed: string | null = null;
 
   turnTabs(() => {
+    const replacements: TabReplacement[] = [];
     for (const tab of chainTabs) {
       const isActive = tab.path === before.activeFilePath;
       const known = lineOf.get(tab.path) ?? { text: null, timeMs: null };
       const path = turnChainIntoFile(tab, isActive, loads, known);
+      if (path !== null) replacements.push({ from: [tab.path], to: path });
       if (isActive) active = path;
       revealed ??= path;
       if (isActive && path !== null) revealed = path;
     }
     if (active !== null) files.setActiveFile(active);
+    return replacements;
   });
 
   if (revealed !== null) loads.push(tree.expandToPath(revealed));
@@ -339,11 +349,14 @@ async function turnPartsIntoChains(generation: number): Promise<void> {
   let active = before.activeFilePath;
 
   turnTabs(() => {
+    const replacements: TabReplacement[] = [];
     for (const merge of merges) {
-      turnFilesIntoChain(merge, loads);
-      if (active !== null && merge.members.includes(active)) active = chainKey(merge.handle);
+      const key = chainKey(merge.handle);
+      if (turnFilesIntoChain(merge, loads)) replacements.push({ from: merge.members, to: key });
+      if (active !== null && merge.members.includes(active)) active = key;
     }
     if (active !== null) files.setActiveFile(active);
+    return replacements;
   });
   await Promise.all(loads);
 }
@@ -361,15 +374,16 @@ function anchorLineOf(tab: OpenFile): FileLine | null {
  * lead's line there (`files.confirmChainLine`): after a rotation it looks
  * for it by its time and text. The lead's search marks are carried only
  * when the line is where the lead had it; the other tabs' marks, whose
- * lines are not checked, are not carried.
+ * lines are not checked, are not carried. Returns whether the tabs
+ * turned over: not when the lead's tab closed meanwhile.
  */
-function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void {
+function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): boolean {
   const state = get(files);
   const members = merge.members
     .map((key) => state.openFiles.find((f) => f.path === key))
     .filter((tab): tab is OpenFile => tab !== undefined);
   const lead = members.find((tab) => tab.path === merge.lead);
-  if (lead === undefined) return;
+  if (lead === undefined) return false;
   const key = chainKey(merge.handle);
   const isChainOpen = placeOf(key) >= 0;
   if (!isChainOpen) carryZone(lead.path, key);
@@ -419,6 +433,7 @@ function turnFilesIntoChain(merge: ChainMerge, loads: Promise<unknown>[]): void 
     );
   }
   for (const tab of members) files.closeFile(tab.path);
+  return true;
 }
 
 /**

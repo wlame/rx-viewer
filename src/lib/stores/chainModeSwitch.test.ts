@@ -226,6 +226,51 @@ describe('switching chain mode off and on', () => {
     ]);
     expect(get(files).activeFilePath).toBe('/l/notes.txt');
   });
+
+  it('keeps the place of each tab it turns over in the order the tabs were used in', async () => {
+    await serve();
+    chainMode.set(true);
+    await files.openFile('/l/notes.txt');
+    await files.openChain(HANDLE, { position: { kind: 'local', part: 'app.log.1', line: 750 } });
+    await files.openFile('/l/other.txt');
+    files.setActiveFile('/l/notes.txt');
+    expect(get(files).recentTabs).toEqual(['/l/notes.txt', '/l/other.txt', KEY]);
+
+    await switchChainMode(false);
+    expect(get(files).recentTabs).toEqual(['/l/notes.txt', '/l/other.txt', '/l/app.log.1']);
+
+    await switchChainMode(true);
+    expect(get(files).recentTabs).toEqual(['/l/notes.txt', '/l/other.txt', KEY]);
+  });
+
+  it('holds only the open tabs, each once, in the recent order after each switch', async () => {
+    await serve();
+    await files.openFile('/l/app.log.3.gz', { scrollToLine: 10 });
+    await files.openFile('/l/notes.txt');
+    await files.openFile('/l/app.log.1', { scrollToLine: 20 });
+    await files.openFile('/l/app.log', { scrollToLine: 30 });
+    files.setActiveFile('/l/notes.txt');
+    const isValid = () => {
+      const { openFiles, recentTabs, activeFilePath } = get(files);
+      const open = openFiles.map((f) => f.path);
+      return (
+        recentTabs.length === open.length &&
+        new Set(recentTabs).size === recentTabs.length &&
+        recentTabs.every((key) => open.includes(key)) &&
+        recentTabs[0] === activeFilePath
+      );
+    };
+
+    await switchChainMode(true);
+    await settled(KEY);
+    expect(get(files).recentTabs).toEqual(['/l/notes.txt', KEY]);
+    expect(isValid()).toBe(true);
+
+    await switchChainMode(false);
+    expect(isValid()).toBe(true);
+    await switchChainMode(true);
+    expect(isValid()).toBe(true);
+  });
 });
 
 describe('switching chain mode after a rotation the tabs have not seen', () => {
@@ -429,6 +474,7 @@ describe('switching chain mode on with file tabs of a chain open', () => {
 
     expect(get(files).openFiles.map((f) => f.path)).toEqual([KEY, '/l/notes.txt']);
     expect(get(files).activeFilePath).toBe(KEY);
+    expect(get(files).recentTabs).toEqual([KEY, '/l/notes.txt']);
     expect(openTab(KEY).chain?.anchor).toMatchObject({ part: 'app.log.1', line: 20 });
     expect(lineInView(KEY)).toEqual(before);
     expect(before.text).toBe(chain.partLineText('app.log.1', 20));

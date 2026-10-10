@@ -479,6 +479,79 @@ describe('the anchor line', () => {
   });
 });
 
+describe('the order the tabs were used in', () => {
+  beforeEach(() => setLocation(''));
+
+  afterEach(() => {
+    for (const file of get(files).openFiles) files.closeFile(file.path);
+    for (const shown of get(notifications)) notifications.dismiss(shown.id);
+    vi.unstubAllGlobals();
+  });
+
+  async function openThree() {
+    serveFileOf(1000);
+    await files.openFile('/logs/a.log', { isIndexed: false });
+    await files.openFile('/logs/b.log', { isIndexed: false });
+    await files.openFile('/logs/c.log', { isIndexed: false });
+  }
+
+  it('puts each tab opened or shown first and drops a closed one', async () => {
+    await openThree();
+    expect(get(files).recentTabs).toEqual(['/logs/c.log', '/logs/b.log', '/logs/a.log']);
+
+    files.setActiveFile('/logs/a.log');
+    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/c.log', '/logs/b.log']);
+
+    files.closeFile('/logs/c.log');
+    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/b.log']);
+  });
+
+  it('puts a tab a jump to a line brings forward first', async () => {
+    await openThree();
+
+    await files.jumpToLine('/logs/a.log', 50);
+
+    expect(get(files).recentTabs[0]).toBe('/logs/a.log');
+    expect(get(files).activeFilePath).toBe('/logs/a.log');
+  });
+
+  it('shows the most recently used tab when the active one closes, not its neighbour', async () => {
+    await openThree();
+    files.setActiveFile('/logs/a.log');
+    files.setActiveFile('/logs/b.log');
+
+    files.closeFile('/logs/b.log');
+
+    // The left neighbour of b.log is a.log and the right one c.log; c.log was used last.
+    expect(get(files).activeFilePath).toBe('/logs/a.log');
+    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/c.log']);
+  });
+
+  it('shows the tab used before a binary file the backend refuses, and forgets the file', async () => {
+    const serve = serveFileOf(1000);
+    const refusing = vi.fn(async (url: string) => {
+      if (!url.includes(encodeURIComponent('/logs/data.bin'))) return serve(url);
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ detail: 'Cannot read a binary file' }),
+      };
+    });
+    await files.openFile('/logs/a.log', { isIndexed: false });
+    await files.openFile('/logs/b.log', { isIndexed: false });
+    files.setActiveFile('/logs/a.log');
+    vi.stubGlobal('fetch', refusing);
+
+    await files.openFile('/logs/data.bin', { isIndexed: false });
+
+    expect(get(files).openFiles.map((f) => f.path)).toEqual(['/logs/a.log', '/logs/b.log']);
+    expect(get(files).activeFilePath).toBe('/logs/a.log');
+    expect(get(files).recentTabs).toEqual(['/logs/a.log', '/logs/b.log']);
+  });
+});
+
 /** rx-go refuses a samples request with more than 100 context lines on a side (422). */
 describe('the context of a jump', () => {
   beforeEach(() => setLocation(''));

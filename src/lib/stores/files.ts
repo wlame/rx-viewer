@@ -13,6 +13,7 @@ import { formatInFileLayout } from '../utils/timeFormat';
 import { addPage, linesPerPage, maxHeldLines } from '../utils/slidingWindow';
 import { taskPolls } from '../utils/taskPolling';
 import { chainKey, isChainKey, type TabKey } from '../utils/tabKey';
+import { followTabs } from '../utils/tabOrder';
 import { anchorAt } from '../utils/chainWindow';
 import type { KnownLine } from '../utils/knownLine';
 import type {
@@ -151,11 +152,41 @@ interface FilesState {
   matches: Map<TabKey, FileMatch[]>;
   /** The key of the active tab. */
   activeFilePath: TabKey | null;
+  /**
+   * The keys of the open tabs, most recently used first: the active tab,
+   * then the one shown before it, and so on (`utils/tabOrder.ts`). Session
+   * state, which the URL does not hold.
+   */
+  recentTabs: TabKey[];
 }
 
 /**
- * The tab the editor shows: the one `activeFilePath` names, or the last
- * open tab when it names none that is open.
+ * The state after a change, with the recent order and the active tab
+ * following the open tabs (`followTabs`): a closed tab leaves the order,
+ * the active tab comes first, and when the active tab closed the most
+ * recent remaining one becomes active. A change that keeps the order as
+ * it was keeps its array, so a reader of `recentTabs` sees no change.
+ */
+function withTabOrder(state: FilesState): FilesState {
+  const followed = followTabs({
+    openKeys: state.openFiles.map((f) => f.path),
+    activeKey: state.activeFilePath,
+    recentTabs: state.recentTabs,
+  });
+  const isSameOrder =
+    followed.recentTabs.length === state.recentTabs.length &&
+    followed.recentTabs.every((key, i) => key === state.recentTabs[i]);
+  if (isSameOrder && followed.activeKey === state.activeFilePath) return state;
+  return {
+    ...state,
+    activeFilePath: followed.activeKey,
+    recentTabs: isSameOrder ? state.recentTabs : followed.recentTabs,
+  };
+}
+
+/**
+ * The tab the editor shows: the one `activeFilePath` names, which the
+ * store keeps on an open tab while any is open, or else the last open tab.
  */
 export function activeOpenFile(state: Pick<FilesState, 'openFiles' | 'activeFilePath'>) {
   return state.openFiles.find((f) => f.path === state.activeFilePath) ?? state.openFiles.at(-1);
@@ -177,11 +208,22 @@ function compileFilterPattern(pattern: string): {
 }
 
 function createFilesStore() {
-  const { subscribe, update } = writable<FilesState>({
+  const tabs = writable<FilesState>({
     openFiles: [],
     matches: new Map(),
     activeFilePath: null,
+    recentTabs: [],
   });
+  const { subscribe } = tabs;
+
+  /**
+   * Every change of the store goes through here, so no way of opening,
+   * showing or closing a tab (a click, a link, a jump, a chain's own
+   * steps) can leave the recent order or the active tab behind.
+   */
+  function update(change: (s: FilesState) => FilesState) {
+    tabs.update((s) => withTabOrder(change(s)));
+  }
 
   /** The tabs of log chains, built on this store's tabs and request slots. */
   const chains = createChainTabs({
@@ -951,7 +993,11 @@ function createFilesStore() {
     }));
   }
 
-  /** Close a tab, and cancel and forget everything kept for its key. */
+  /**
+   * Close a tab, and cancel and forget everything kept for its key. When
+   * it was the active tab, the most recently used remaining tab becomes
+   * active (`withTabOrder`).
+   */
   function closeFile(key: TabKey) {
     // Cancel anything still loading for this file and drop its slot.
     fileLoads.forget(key);
@@ -1210,12 +1256,22 @@ function createFilesStore() {
     }));
   }
 
-  /** Make the tab `key` the active one (a click on its tab, say). */
+  /** Make the tab `key` the active one (a click on its tab, say); it becomes the most recent. */
   function setActiveFile(key: TabKey) {
     update((s) => ({
       ...s,
       activeFilePath: key,
     }));
+  }
+
+  /**
+   * Put the recent order back as `order` says, after tabs turned into
+   * others (`stores/chainModeSwitch.ts`, with `replaceInRecent`). A key
+   * that is not open is left out, an open tab `order` lacks goes last,
+   * and the active tab stays first.
+   */
+  function setRecentOrder(order: readonly TabKey[]) {
+    update((s) => ({ ...s, recentTabs: [...order] }));
   }
 
   /**
@@ -1286,6 +1342,7 @@ function createFilesStore() {
     toggleInvisibleChars,
     toggleWordWrap,
     setActiveFile,
+    setRecentOrder,
     setHighlightedLines,
     setSelectedAnomalyCategory,
     toggleAnomalyCategory,
