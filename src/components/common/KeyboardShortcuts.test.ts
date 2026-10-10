@@ -93,6 +93,7 @@ afterEach(() => {
   sidebarVisible.set(true);
   treeFocusRequested.set(false);
   searchFocusRequested.set(false);
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -103,6 +104,19 @@ describe('KeyboardShortcuts help', () => {
     await keyDown(backdrop, { key: 'Escape' });
 
     expect(target.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  // The Close button stands under a list taller than most windows.
+  it('opens at the top of the list, with the focus on Close', async () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    const { target } = await openHelp();
+    const close = [...target.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Close',
+    );
+
+    expect(document.activeElement).toBe(close);
+    expect(focus.mock.contexts).toEqual([close]);
+    expect(focus.mock.calls).toEqual([[{ preventScroll: true }]]);
   });
 
   it('stays open on an Escape that cancels a composition', async () => {
